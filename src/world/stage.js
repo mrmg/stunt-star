@@ -171,6 +171,14 @@ export class Stage {
     this.cam.update(Math.min(dt, 0.05));
     this._updateEnv(sdt);
     this.rec.tick(this.t);
+    // generic "never got going" watchdog: a performer who does not move off the mark eventually loses the light
+    if (this.started && !this.ended && this.subject && (this.idleWatch ?? (this.def.mode === 'drive' || this.def.mode === 'run'))) {
+      const w = this._idle ||= { p: null, t: 0, warned: false }; const p = this.subject.getWorldPosition(new THREE.Vector3());
+      if (!w.p || p.distanceTo(w.p) > 4) { w.p = p; w.t = this.t; }
+      const still = this.t - w.t, adv = 'The cameras are rolling the moment you hear ACTION — read THE SHOT card and get moving straight away.';
+      if (still > 12 && !w.warned) { w.warned = true; this.flub('Sitting on the mark', { penalty: 0.15, advice: adv }); }
+      if (still > 22) this.fail('Never got going — we lost the light', { injury: 0, advice: adv });
+    }
     if (this.started && !this.ended) { this.musicBoost = Math.max(0, (this.musicBoost || 0) - dt); this.audio.setIntensity?.(this.slow.s < 0.7 || this.musicBoost > 0 ? 1 : 0.62); }
     if (this.ended && this.finishAt != null && this.t >= this.finishAt) { this.finishAt = null; this.onFinish?.(this.result); }
   }

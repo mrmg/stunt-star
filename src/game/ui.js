@@ -93,7 +93,7 @@ export class Screens {
     const flubs = take.flubs.map(f => `<div class="row neg"><span class="lb">✗ ${f.label}</span><b>-${Math.round(f.penalty * 100)}%</b></div>`).join('');
     const notes = take.advice.length ? take.advice : ok ? (take.stars >= 4 ? ['That is the one. Check the gate.'] : ['Good — but I know you have a better one in you.']) : ['Again, please.'];
     const btns = [];
-    if (ok) { btns.push(`<button class="go" data-a="print">Print it — wrap the shoot <kbd>ENTER</kbd></button>`); if (left > 0) btns.push(`<button class="go sec" data-a="again">Go again for a better one (${left} left · -${money(def.resetCost).slice(1)}) <kbd>R</kbd></button>`); }
+    if (ok) { btns.push(`<button class="go" data-a="print">Print it — back to the trailer <kbd>ENTER</kbd></button>`); if (left > 0) btns.push(`<button class="go sec" data-a="again">Go again for a better one (${left} left · -${money(def.resetCost).slice(1)}) <kbd>R</kbd></button>`); }
     else if (left > 0) { btns.push(`<button class="go" data-a="again">Reset — go again (${left} left · -${money(def.resetCost).slice(1)}) <kbd>R</kbd></button>`); btns.push(`<button class="go sec" data-a="print">Wrap the day — use what we got <kbd>ENTER</kbd></button>`); }
     else btns.push(`<button class="go" data-a="print">Out of takes — we go with it <kbd>ENTER</kbd></button>`);
     btns.push(`<button class="go sec" data-a="watch">Watch the replay <kbd>V</kbd></button>`);

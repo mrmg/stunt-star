@@ -30,7 +30,7 @@ const butch = {
   build(s) {
     s.env('day', { backdrop: 'bd_river_gorge', look: 'warm60s', fog: 0.0011, hz: 0.5 });
     const H = 130, CX = 9, CZ = -30, R = 7.5, inp = s.input;
-    s.ground({ tex: 'tx_rock', tile: 16, y: -3, color: 0x7d7262 }); s.water({ y: 0, color: 0x2c6e62, w: 1400, d: 80, z: -38, opacity: 0.88 });
+    s.ground({ tex: 'tx_rock', tile: 16, y: -3, color: 0x7d7262 }); s.water({ y: 0, color: 0x2c6e62, w: 1400, d: 80, z: -38, opacity: 0.88 }); s.course.addPiece({ x0: -700, x1: 700, z0: -78, z1: -1.2, fn: () => 0, step: 1e9 }); // river surface (keeps replay cameras above the water)
     const rock = s.mat({ tex: 'tx_rock', color: 0xc2a27e }), dirt = s.mat({ tex: 'tx_dirt', color: 0xc9a77c }), mats = [rock, rock, dirt, dirt, rock, rock];
     s.box({ x: 0, y: -3, z: 150, w: 1400, h: H + 3, d: 300, mats, tile: 26, tileTop: 9, top: true });
     s.box({ x: 0, y: -3, z: -78 - 200, w: 1400, h: H + 9, d: 400, mats, tile: 26, tileTop: 9 });
@@ -42,15 +42,18 @@ const butch = {
     const pal = f.addBody('ch_adventurer', { x: 1.9, y: H, z: 41.2, pose: 'ready', frozen: true, vy: 0 });
     pal.ai = (b, dt) => { const v = -b.vy; b.vy -= G * (1 - (v > 0 ? v * v / 2700 : 0)) * dt; b.vz = damp(b.vz, clamp((CZ + 2.5 - b.pos.z) * 0.6, -4, 4), 0.8, dt); b.vx = damp(b.vx, clamp((CX - 3 - b.pos.x) * 0.6, -4, 4), 1.5, dt); };
     pal.onLand = b => { s.fx.splash(b.pos, 50, 1.6); s.audio.splash(); b.c.root.visible = false; };
-    let phase = 'run', v = 0, hold = 0, straight = 0, pen = false; s.phase = () => phase;
+    let phase = 'run', v = 0, hold = 0, straight = 0, pen = false, leapM = null, said = false; s.phase = () => phase;
     s.objective('Sprint for the edge — SPACE to jump at the lip');
     const leap = (clean, z) => {
-      phase = 'air'; s.rate('Take-off', clean ? near(z, 1.2, 1.2, 9) : 0.1, 0.8); s.msg(clean ? 'JUMP!' : 'STUMBLED OFF THE EDGE', clean ? 'good' : 'bad'); s.audio.whoosh(); s.slowmo(0.5, 0.5);
+      phase = 'air'; s.rate('Take-off', clean ? near(z, 1.2, 1.2, 9) : 0.25, 0.8); s.msg(clean ? 'JUMP!' : 'STUMBLED OFF THE EDGE', clean ? 'good' : 'bad'); s.audio.whoosh(); s.slowmo(0.45, 0.8);
+      if (!clean) s.flub('Stumbled off the edge', { penalty: 0.15, advice: 'Press SPACE when the EDGE readout turns green (under 10 ft) — run off the rim without jumping and you tumble.' });
       f.launch(0, clean ? 4.2 : 0, -(v + (clean ? 2 : -3))); f.poseLock = true; f.c.setCycle('flail', 0.75); f.view('top', { dist: 5, height: 10.5, ahead: 4, up: -6, fov: 66 });
       pal.frozen = false; pal.vy = 3.6; pal.vz = -(v + 1); pal.c.setCycle('flail', 0.8); s.objective('Hit the deep channel — hold SPACE to go in feet first');
+      leapM = s.moment('the leap', { t0: s.t - 1.6, dur: 8, w: 3 }); f.cine('front', 1.1); // a beat from across the canyon, then back to you
     };
     s.onUpdate((dt, t) => {
       if (!s.started || s.ended) return;
+      if (!said && t - s.t0 > 0.6) { said = true; s.audio.say('I can\'t swim!', { rate: 1.15, pitch: 1.05 }); }
       if (phase === 'run') {
         v = damp(v, 5 + 3.6 * Math.max(0, inp.y), 2.2, dt); f.pos.z -= v * dt; f.pos.x = clamp(f.pos.x + inp.x * 2.5 * dt, -4, 4); f.c.setCycle('run', v * 2.1); pal.pos.z = f.pos.z + 1.2; pal.c.setCycle('run', v * 2.1);
         s.hud.readout('edge', 'Edge (ft)', Math.max(0, ftOf(f.pos.z)), f.pos.z < 3 ? 'ok' : '');
@@ -63,14 +66,15 @@ const butch = {
       }
     });
     f.onLand = i => {
-      phase = 'done'; const d = Math.hypot(i.x - CX, i.z - CZ), onRock = rocks.some(r => Math.hypot(i.x - r[0], i.z - r[1]) < r[2] + 0.4);
-      if (!i.water) { f.c.setPose('lie', 0.1); s.audio.impact(1.3); s.engine.addShake(1.6); return s.fail('Missed the river altogether and hit the rocks', { injury: 1 }); }
+      phase = 'done'; if (leapM) leapM.t1 = s.t + 1.6; const d = Math.hypot(i.x - CX, i.z - CZ), miss = d - R, onRock = rocks.some(r => Math.hypot(i.x - r[0], i.z - r[1]) < r[2] + 0.4);
+      if (!i.water) { f.c.setPose('lie', 0.1); s.audio.impact(1.3); s.engine.addShake(1.6); return s.fail('Missed the river altogether and hit the rocks', { injury: 1, advice: 'Steer for the yellow ring from the moment you leave the rim — the red ring under you shows where you will land, and the wind drags it left (hold D).' }); }
       s.fx.splash(f.pos, 90, 2.6); s.audio.splash(); s.engine.addShake(0.8); f.c.root.visible = false;
-      if (onRock) { s.audio.impact(1.2); return s.fail('Came down on a boulder in the shallows', { injury: 1 }); }
-      if (d > R) return s.fail(`Missed the deep channel by ${ftOf(d - R)} ft — one foot of water over rock`, { injury: 0.9 });
-      if (straight < 0.4) return s.fail('Hit the water flat from 400 ft — like landing on a barn door', { injury: 0.7 });
-      s.rate('On the mark', near(d, 0, 1.6, R), 1.5); s.rate('Feet-first entry', smooth(0.4, 0.95, straight), 1.5); s.bonus('Fall: ' + ftOf(H) + ' ft', 260); s.msg('SPLASH!', 'huge good');
-      s.after(1.3, () => { f.c.root.visible = true; f.c.spinAng.set(0, 0, 0); f.pos.y = -1.25; f.c.setCycle('cheer', 1); s.fx.splash(f.pos, 20, 1); }); s.wrap(2.4, 'Who ARE those guys?');
+      if (onRock) { s.audio.impact(1.2); return s.fail('Came down on a boulder in the shallows', { injury: 1, advice: 'Keep the red landing ring off the grey boulders — aim for the dark water inside the orange buoys.' }); }
+      if (miss > 3) return s.fail(`Missed the deep channel by ${ftOf(miss)} ft — one foot of water over rock`, { injury: 0.9, advice: 'The canyon wind pushes you left all the way down — hold D early and keep OFF TARGET green before you straighten up (SPACE kills your steering).' });
+      if (miss > 0) s.flub(`Clipped the edge of the deep channel (${ftOf(miss)} ft out)`, { penalty: 0.3, advice: 'Get the red ring inside the orange buoys before 200 ft — once you hold SPACE to straighten up you can barely steer.' });
+      if (straight < 0.4) s.flub('Hit the water flat', { penalty: 0.25, advice: 'Hold SPACE from about 200 ft (HEIGHT readout) so the FEET FIRST meter is full and green before you hit the water.' });
+      s.rate('On the mark', near(d, 0, 1.6, R + 3), 1.5); s.rate('Feet-first entry', smooth(0.15, 0.95, straight), 1.5); s.bonus('Fall: ' + ftOf(H) + ' ft', 260); s.msg(miss > 0 || straight < 0.4 ? 'SPLASH… OUCH' : 'SPLASH!', 'huge good');
+      s.after(1.3, () => { f.c.root.visible = true; f.c.spinAng.set(0, 0, 0); f.pos.y = -1.25; f.c.setCycle('cheer', 1); s.fx.splash(f.pos, 20, 1); s.audio.cheer?.(); }); s.wrap(2.4, 'Who ARE those guys?');
     };
   },
   bot(s, inp) { const f = s.fall, ph = s.phase(); if (ph === 'run') { inp.y = 1; if (f.pos.z < 1.4) inp.press('a'); } else if (ph === 'air') { botSteer(f, inp, 9, -30, 0.5); if (f.pos.y < 62) inp.a = true; } },
@@ -102,29 +106,38 @@ const lethal = {
     srand(5); for (let i = 0; i < 7; i++) s.char(i % 2 ? 'ch_goon' : 'ch_stunt', { x: -9 + sr(-3, 3) + (i > 3 ? 26 : 0), z: -26 + sr(-2, 1.5), heading: Math.PI + sr(-0.5, 0.5) }).setCycle(i % 3 ? 'idle' : 'cheer', 1);
     const f = s.fall = new Fall(s, { char: 'ch_cop', x: -5, y: H + 0.9, z: 1.3, frozen: true, pose: 'ready', spread: 40, steer: 9, canTuck: false, aim: { r: 0.9, ref: 30, max: 3 }, cam: { dist: 5.5, height: 3.4, up: -1.6, ahead: 5, fov: 64 } });
     const wind = t => 4.2 * Math.sin(t * 0.8 + 1) + 2.8 * Math.sin(t * 2.1);
-    let phase = 'ledge', rot = null, t1 = 0, sq = 0; s.phase = () => phase; s.bag = { x: BX, z: BZ, top };
+    let phase = 'ledge', rot = null, sq = 0, onBag = false, dropM = null, warned = false, cut = false; s.phase = () => phase; s.bag = { x: BX, z: BZ, top };
     s.objective('Line up over the bag (A/D), then SPACE to step off');
+    const step = pulled => {
+      phase = 'air'; f.launch(0, pulled ? 1.2 : 2.6, -5.2); f.poseLock = true; f.c.setPose('fall', 0.3); f.view('top', { dist: 4, height: 12, ahead: 3, up: -5 }); s.audio.whoosh(); s.objective('Stay over the X — E to roll onto your back');
+      dropM = s.moment('the drop', { t0: s.t - 1.4, dur: 5.5, w: 3 }); s.slowmo(0.55, 0.6);
+      if (pulled) { s.msg('HE PULLED YOU OFF!', 'bad'); s.audio.say('He\'s taking you with him!', { rate: 1.15 }); } else s.audio.say('You really wanna jump? Fine with me!', { rate: 1.15, pitch: 0.95 });
+    };
     s.onUpdate((dt, t) => {
-      if (sq > 0) { sq = Math.max(0, sq - dt); const k = 1 - sq / 1.4; bag.scale.y = 1 - 0.55 * Math.exp(-k * 4) * Math.cos(k * 9); f.pos.y = top * bag.scale.y - 0.15; }
+      if (sq > 0) { sq = Math.max(0, sq - dt); const k = 1 - sq / 1.4; bag.scale.y = 1 - 0.55 * Math.exp(-k * 4) * Math.cos(k * 9); if (onBag) f.pos.y = top * bag.scale.y - 0.15; }
       if (!s.started || s.ended) return; const w = wind(t - s.t0), alt = f.pos.y - top;
       s.hud.readout('wind', 'Wind (mph)', (w < -0.5 ? '◀ ' : '') + Math.round(Math.abs(w) * 2.24) + (w > 0.5 ? ' ▶' : ''), Math.abs(w) > 4.5 ? 'warn' : 'ok');
       if (phase === 'ledge') {
         f.pos.x = clamp(f.pos.x + inp.x * 3.2 * dt, -14, 14); if (Math.abs(inp.x) > 0.1) f.c.setCycle('walk', 7); else f.c.setPose('ready', 0.2);
         s.hud.readout('line', 'Off line (ft)', ftOf(Math.abs(f.pos.x - BX)), Math.abs(f.pos.x - BX) < 1.2 ? 'ok' : '');
-        if (t - s.t0 > 25) return s.fail('Froze on the ledge — the director called cut', { injury: 0 });
-        if (inp.hit('a')) { phase = 'air'; f.launch(0, 2.6, -5.2); f.poseLock = true; f.c.setPose('fall', 0.3); f.view('top', { dist: 4, height: 12, ahead: 3, up: -5 }); s.audio.whoosh(); s.objective('Stay over the X — E to roll onto your back'); }
+        const lt = t - s.t0; if (lt > 14 && !warned) { warned = true; s.flub('Hesitated on the ledge', { penalty: 0.1, advice: 'Shuffle with A/D until OFF LINE reads 0 ft, then SPACE straight away — after 25 s the jumper drags you off wherever you stand.' }); }
+        if (inp.hit('a')) step(false); else if (lt > 25) step(true);
       } else if (phase === 'air') {
         f.windX = w; s.hud.readout('alt', 'Height (ft)', ftOf(Math.max(0, alt)), alt < 34 && rot == null ? 'warn' : ''); s.hud.bar(clamp(1 - alt / H), [1 - 34 / H, 1 - 9 / H], [1 - 24 / H, 1 - 14 / H]);
-        if (rot == null && inp.hit('x')) { rot = alt; f.c.setPose(BACK, 0.32); s.audio.whoosh(1.2); if (alt > 36) { f.c.tumble(-2.2, 0, 0); s.msg('TOO EARLY!', 'bad'); } else s.msg('ON YOUR BACK', 'small'); }
+        if (rot == null && inp.hit('x')) { rot = alt; f.c.setPose(BACK, 0.32); s.audio.whoosh(1.2); if (alt > 36) { f.c.tumble(-2.2, 0, 0); s.msg('TOO EARLY!', 'bad'); s.flub('Rolled over too early', { penalty: 0.1, advice: 'Wait for the green zone of the timing bar (about 60 ft up) before pressing E — go early and you over-rotate.' }); } else s.msg('ON YOUR BACK', 'small'); }
+        if (!cut && alt < 9) { cut = true; f.cine('low', 3, { fov: 64 }); } // the impact, from the street
       }
     });
     f.onLand = i => {
-      phase = 'done'; s.hud.hideBar(); const dx = i.x - BX, dz = i.z - BZ, on = Math.abs(dx) < hw * 0.92 && Math.abs(dz) < hd * 0.92; f.c.tumble(0, 0, 0); f.c.spinAng.set(0, 0, 0);
-      if (!on) { f.c.setPose('lie', 0.05); s.audio.impact(1.4); s.engine.addShake(1.8); s.fx.dust(f.pos, 14, { color: [0.6, 0.6, 0.6] }); return s.fail(`Missed the airbag by ${ftOf(Math.max(Math.abs(dx) - hw, Math.abs(dz) - hd, 0.3))} ft`, { injury: 1 }); }
-      sq = 1.4; s.audio.thud(); s.audio.whoosh(0.5); s.engine.addShake(0.7); s.fx.dust(f.pos, 16, { color: [0.85, 0.85, 0.8], size: 2.2, spread: 3 }); f.c.setPose('lie', 0.1);
-      const att = rot == null ? 0 : rot > 36 ? 0.15 : near(rot, 19, 6, 19);
-      if (rot == null) { s.msg('FEET FIRST!', 'bad'); return s.fail('Hit the bag feet first — it folded you in half', { injury: 0.55 }); }
-      s.rate('Centre of the bag', near(Math.hypot(dx / hw, dz / hd), 0, 0.22, 1.05), 1.5); s.rate('On your back', att, 1.5); s.bonus('Drop: ' + ftOf(H) + ' ft', 300); s.msg(att > 0.8 ? 'TEXTBOOK!' : 'ON THE BAG', 'good'); s.wrap(2.2);
+      phase = 'done'; s.hud.hideBar(); if (dropM) dropM.t1 = s.t + 1.8; const dx = i.x - BX, dz = i.z - BZ, ex = Math.max(Math.abs(dx) - hw * 0.92, Math.abs(dz) - hd * 0.92); f.c.tumble(0, 0, 0); f.c.spinAng.set(0, 0, 0);
+      if (ex > 1.4) { f.c.setPose('lie', 0.05); s.audio.impact(1.4); s.engine.addShake(1.8); s.fx.dust(f.pos, 14, { color: [0.6, 0.6, 0.6] }); return s.fail(`Missed the airbag by ${ftOf(ex)} ft`, { injury: 1, advice: 'Keep the red ring under you on the white X all the way down — steer back against every gust as soon as the WIND arrow flips.' }); }
+      sq = 1.4; onBag = ex <= 0; s.audio.thud(); s.audio.whoosh(0.5); s.engine.addShake(0.7); s.fx.dust(f.pos, 16, { color: [0.85, 0.85, 0.8], size: 2.2, spread: 3 }); f.c.setPose('lie', 0.1); s.slowmo(0.4, 0.8);
+      const att = rot == null ? 0 : rot > 36 ? 0.3 : near(rot, 19, 6, 22);
+      if (!onBag) { s.audio.impact(0.9); s.engine.hurt(0.4); s.msg('CLIPPED THE EDGE', 'bad'); s.flub('Clipped the edge of the bag and rolled off', { penalty: 0.35, advice: 'Get the red ring onto the X before 100 ft — the last gusts near the bag push you a full metre sideways.' }); }
+      if (rot == null) { s.msg('FEET FIRST!', 'bad'); s.flub('Hit the bag feet first', { penalty: 0.3, advice: 'Press E when the timing bar reaches the green (about 60 ft up) — feet first, the bag folds you in half.' }); }
+      s.rate('Centre of the bag', onBag ? near(Math.hypot(dx / hw, dz / hd), 0, 0.22, 1.05) : 0, 1.5); s.rate('On your back', att, 1.5); s.bonus('Drop: ' + ftOf(H) + ' ft', 300);
+      if (onBag && rot != null) { s.msg(att > 0.8 ? 'TEXTBOOK!' : 'ON THE BAG', 'good'); s.after(0.6, () => s.audio.cheer?.()); }
+      s.wrap(2.4, 'I\'m getting too old for this.');
     };
   },
   bot(s, inp, B) { const f = s.fall, ph = s.phase(), b = s.bag; if (ph === 'ledge') { const dx = b.x - f.pos.x; inp.x = clamp(dx * 2, -1, 1); if (Math.abs(dx) < 0.2) inp.press('a'); } else if (ph === 'air') { botSteer(f, inp, b.x, b.z, 0.9); if (f.pos.y - b.top < 20.5) inp.press('x'); } },
@@ -155,27 +168,48 @@ const dam = {
     s.put('ww2_truck', { x: -14, y: H, z: 14, ry: Math.PI / 2 }); s.crew({ x: 7, y: H, z: 9, ry: 0.7 }); s.crew({ x: 14, y: 0.5, z: -30, ry: 3.3, people: false });
     const f = s.fall = new Fall(s, { char: 'ch_agent', x: 0, y: H + 1.1, z: 0.6, heading: 0, yaw: -Math.PI / 2, frozen: true, pose: 'ready', spread: 60, steer: 8, canTuck: false, cam: { dist: 11.5, height: 2.5, side: -5, up: -2.5, ahead: 0, fov: 62 } });
     f.poseLock = true; const anchor = V3(0, H + 1.1, 1.0), cord = rope(s, 0x202020, 0.045), pit = rope(s, 0xdddddd, 0.02); pit.m.visible = false; const hip = V3(), gp = V3();
-    let phase = 'ledge', wdSum = 0, wdN = 0, vy = 0, yStop = 0, ht = 0, clr = 0; s.phase = () => phase; s.wallDist = () => zf(f.pos.y) - f.pos.z;
+    let phase = 'ledge', wdSum = 0, wdN = 0, vy = 0, yStop = 0, ht = 0, clr = 0, Ab = A, dropM = null, warned = false; s.phase = () => phase; s.wallDist = () => zf(f.pos.y) - f.pos.z;
     s.objective('SPACE — swan dive off the parapet');
-    const splat = why => { phase = 'dead'; f.die(); f.frozen = true; s.audio.impact(1.4); s.engine.addShake(1.8); s.fx.dust(f.pos, 12, { color: [0.7, 0.7, 0.68] }); s.fail(why, { injury: 1 }); };
+    const splat = (why, advice) => { phase = 'dead'; f.die(); f.frozen = true; s.audio.impact(1.4); s.engine.addShake(1.8); s.fx.dust(f.pos, 12, { color: [0.7, 0.7, 0.68] }); s.fail(why, { injury: 1, advice }); };
+    const WALL_ADV = 'Keep WALL between 2 and 7 m — tap A the moment it turns orange; the updraught shoves you toward the concrete every couple of seconds.';
+    const dive = pushed => {
+      phase = 'fall'; f.launch(0, 3.4, -4.8); f.c.setPose(SWAN_DOWN, 1.25); s.audio.whoosh(); s.slowmo(0.5, 0.7); s.objective('Hug the wall — fire the piton (E) when STOP HEIGHT goes green');
+      dropM = s.moment('the long drop', { t0: s.t - 1.2, dur: 9, w: 3 }); if (pushed) s.msg('GO GO GO!', 'bad');
+    };
+    // brake path for the live cut: decelerating at Ab from (y, vy) to the stop, then the rebound
+    const brakePts = () => { const pts = []; let y = f.pos.y, v = vy; for (let t = 0; t <= 4; t += 0.1) { pts.push({ t: s.t + t, p: V3(f.pos.x, y, f.pos.z) }); if (v < 0) { v = Math.min(0, v + Ab * 0.1); y += v * 0.1; } } return pts; };
     s.onUpdate((dt, t) => {
       hip.set(f.pos.x, f.pos.y + 0.95, f.pos.z); cord.set(anchor, hip); if (!s.started || s.ended) return; const y = f.pos.y, v = phase === 'fall' ? f.speed : -vy, wd = zf(y) - f.pos.z, stop = y - Math.max(0, v) * Math.max(0, v) / (2 * A);
       s.hud.readout('alt', 'Altitude (m)', Math.max(0, y).toFixed(0), y < 70 && phase === 'fall' ? 'warn' : '');
-      if (phase === 'ledge') { if (t - s.t0 > 20) return s.fail('Froze on the parapet — we lost the light', { injury: 0 }); if (inp.hit('a')) { phase = 'fall'; f.launch(0, 3.4, -4.8); f.c.setPose(SWAN_DOWN, 1.25); s.audio.whoosh(); s.slowmo(0.5, 0.7); s.objective('Hug the wall — fire the piton (E) when STOP HEIGHT goes green'); } }
+      if (phase === 'ledge') {
+        const lt = t - s.t0; if (lt > 12 && !warned) { warned = true; s.flub('Hesitated on the parapet', { penalty: 0.1, advice: 'Press SPACE as soon as ACTION is called — the light on the dam face is going.' }); }
+        if (inp.hit('a')) dive(false); else if (lt > 20) dive(true);
+      }
       else if (phase === 'fall') {
         f.windZ = 1.6 + 4.5 * Math.pow(Math.max(0, Math.sin((t - s.t0) * 1.5 + 0.6)), 2); wdSum += clamp(wd, 0, 30) * dt; wdN += dt;
         s.hud.readout('wall', 'Wall (m)', Math.max(0, wd).toFixed(1), wd < 2 ? 'warn' : wd < 7 ? 'ok' : ''); if (y < 170) s.hud.readout('stop', 'Stop height (m)', stop.toFixed(0), stop < 0 ? 'warn' : stop < 14 ? 'ok' : ''); s.hud.bar(clamp(1 - y / H), [1 - 62 / H, 1 - 46 / H], [1 - 54 / H, 1 - 47 / H]);
-        if (wd < 0.45 && y < H - 2) return splat('Brushed the dam face at ' + Math.round(v * 3.6) + ' km/h');
-        if (inp.hit('x') && y < 190) { phase = 'brake'; f.frozen = true; vy = f.vel.y; clr = stop; pit.m.visible = true; gp.set(f.pos.x, 0, f.pos.z - 1.5); s.audio.gun?.(); s.fx.sparks(gp, 24); s.engine.addShake(0.5); s.hud.hideBar(); s.msg('PITON AWAY', 'small'); f.c.setPose({ ...SWAN_DOWN, aR: [0.12, 1, 0.1, 0.04, 1, 0.1] }, 0.2); s.audio.set('wind', 'wind', 0.4, 0.15); }
+        if (wd < 0.45 && y < H - 2) return splat('Brushed the dam face at ' + Math.round(v * 3.6) + ' km/h', WALL_ADV);
+        const fire = inp.hit('x'); if (fire && y >= 190) s.msg('TOO HIGH — WAIT FOR GREEN', 'small bad');
+        if (fire && y < 190) {
+          phase = 'brake'; f.frozen = true; vy = f.vel.y; clr = stop; pit.m.visible = true; gp.set(f.pos.x, 0, f.pos.z - 1.5); s.audio.gun?.(); s.fx.sparks(gp, 24); s.engine.addShake(0.5); s.hud.hideBar(); s.msg('PITON AWAY', 'small'); f.c.setPose({ ...SWAN_DOWN, aR: [0.12, 1, 0.1, 0.04, 1, 0.1] }, 0.2); s.audio.set('wind', 'wind', 0.4, 0.15);
+          // leeway: a slightly late shot over-stretches the cord and stops you just off the ground (a hard flub, not a death)
+          Ab = A; if (clr < 1.5 && clr > -16) { Ab = vy * vy / (2 * Math.max(0.5, y - 1.5)); s.flub('Late piton — the cord bottomed out', { penalty: 0.3, advice: 'Fire the piton (E) the instant STOP HEIGHT turns green (under 14 m) — at 200 km/h you need about 45 m of cord to stop.' }); }
+          s.cut(brakePts(), 'low', { fov: 70, at: 0.9 }); // ground camera looking up the dam face
+        }
       } else if (phase === 'brake') {
-        vy += A * dt; f.pos.y += vy * dt; s.engine.addShake(0.05); pit.set(hip, gp);
-        if (f.pos.y <= 0.2) { f.pos.y = 0.2; return splat('Fired the piton too late — the cord ran out of room'); }
-        if (vy >= 0) { phase = 'hang'; yStop = f.pos.y; vy = 0; s.audio.thud(); s.rate('Piton shot (' + yStop.toFixed(0) + ' m to spare)', near(yStop, 6, 7, 85), 2); s.rate('Close to the concrete', near(wdSum / Math.max(0.1, wdN), 4.5, 2.5, 15), 1.2); s.bonus('Record drop: ' + Math.round(H - yStop) + ' m', Math.round((H - yStop) * 3)); s.msg(yStop < 14 ? 'INCH PERFECT' : yStop < 40 ? 'GOT IT' : 'FIRED EARLY', yStop < 40 ? 'good' : ''); s.wrap(2.4); }
+        vy += Ab * dt; f.pos.y += vy * dt; s.engine.addShake(0.05); pit.set(hip, gp);
+        if (f.pos.y <= 0.2) { f.pos.y = 0.2; return splat('Fired the piton too late — the cord ran out of room', 'Fire the piton (E) the instant STOP HEIGHT turns green (under 14 m) — at 200 km/h you need about 45 m of cord to stop.'); }
+        if (vy >= 0) {
+          phase = 'hang'; yStop = f.pos.y; vy = 0; s.audio.thud(); s.slowmo(0.4, 1.1); if (dropM) dropM.t1 = s.t + 2.4;
+          s.rate('Piton shot (' + yStop.toFixed(0) + ' m to spare)', near(yStop, 6, 10, 110), 2); s.rate('Close to the concrete', near(wdSum / Math.max(0.1, wdN), 4.5, 2.5, 18), 1.2); s.bonus('Record drop: ' + Math.round(H - yStop) + ' m', Math.round((H - yStop) * 3));
+          if (yStop > 80) s.flub('Fired the piton far too early', { penalty: 0.1, advice: 'Hold your nerve: wait until STOP HEIGHT drops into the green (0–14 m) before pressing E — every metre lower pays more.' });
+          s.msg(yStop < 14 ? 'INCH PERFECT' : yStop < 40 ? 'GOT IT' : 'FIRED EARLY', yStop < 40 ? 'good' : ''); s.after(0.7, () => s.audio.cheer?.()); s.wrap(2.6);
+        }
       }
       if (phase === 'hang') { ht += dt; f.pos.y = yStop + 2.2 * (1 - Math.exp(-ht * 1.6) * Math.cos(ht * 4.2)); pit.set(hip, gp); }
     });
     s.onUpdate(dt => { if (phase === 'hang' && s.ended) { ht += dt; f.pos.y = yStop + 2.2 * (1 - Math.exp(-ht * 1.6) * Math.cos(ht * 4.2)); hip.set(f.pos.x, f.pos.y + 0.95, f.pos.z); pit.set(hip, gp); } });
-    f.onLand = () => { if (phase !== 'fall') return; if (f.pos.y > 3) splat('Flew into the dam face'); else splat('Never fired the piton — 220 metres, no brakes'); };
+    f.onLand = () => { if (phase !== 'fall') return; if (f.pos.y > 3) splat('Flew into the dam face', WALL_ADV); else splat('Never fired the piton — 220 metres, no brakes', 'Press E to fire the piton gun when STOP HEIGHT turns green — around 50 m above the ground.'); };
   },
   bot(s, inp) { const f = s.fall, ph = s.phase(); if (ph === 'ledge') { if (s.t - s.t0 > 0.8) inp.press('a'); } else if (ph === 'fall') { const wd = s.wallDist(); inp.x = clamp((wd - 4.6) * 0.7 + (f.windZ || 0) / 8, -1, 1); const v = f.speed; if (f.pos.y - v * v / 48 < 7.5) inp.press('x'); } },
 };
@@ -202,9 +236,9 @@ const pointBreak = {
     const f = s.fall = new Fall(s, { char: 'ch_skydiver', x: 0, y: 2600, z: 0, vy0: 25, view: 'top', clouds: true, cloudBase: 900, spread: 52, tuck: 88, steer: 15, cam: { height: 11, dist: 4.5, up: -5, ahead: 3 } });
     const plane = s.put('a400m', { x: -9, y: 2606, z: -16 });
     const tg = s.target = f.addBody('ch_skydiver', { x: 55, y: 2600 - 250, z: -75, vy: -47 }), ring = beacon(s, 0xff7a20), sm = V3(), sv = V3(0, 6, 0), dock = V3();
-    let phase = 'chase', hold = 0, bounces = 0, slips = 0, cd = 0, grabRv = null, lockAlt = 0, can = null, wob = 0, near1 = false; s.phase = () => phase;
+    let phase = 'chase', hold = 0, bounces = 0, slips = 0, cd = 0, grabRv = null, lockAlt = 0, can = null, wob = 0, near1 = false, tGrip = 0; s.phase = () => phase;
     tg.ai = (b, dt, F) => {
-      if (phase === 'open') return; const dy = f.pos.y - b.pos.y, close = Math.hypot(f.pos.x - b.pos.x, f.pos.z - b.pos.z) < 40 && Math.abs(dy) < 60;
+      if (phase === 'open' || phase === 'reserve') return; const dy = f.pos.y - b.pos.y, close = Math.hypot(f.pos.x - b.pos.x, f.pos.z - b.pos.z) < 40 && Math.abs(dy) < 60;
       b.vy = damp(b.vy, -(close ? clamp(f.speed - dy * 0.9, 40, 66) : dy < -20 ? 66 : 47), phase === 'grip' ? 6 : 1.6, dt); wob += dt;
       const k = phase === 'grip' ? 1 : 0.35; b.vx = damp(b.vx, k * (5.2 * Math.sin(wob * 2.1) + 3.2 * Math.sin(wob * 4.7 + 1)) + (b.kx || 0), 5, dt); b.vz = damp(b.vz, k * (4.6 * Math.cos(wob * 1.7 + 0.5) + 2.6 * Math.sin(wob * 3.9)) + (b.kz || 0), 5, dt); b.kx = damp(b.kx || 0, 0, 2, dt); b.kz = damp(b.kz || 0, 0, 2, dt);
       b.c.heading += dt * (phase === 'grip' ? 1.6 * Math.sin(wob * 3) : 0.25); b.c.cur.body[1] = phase === 'grip' ? 0.35 * Math.sin(wob * 5) : 0;
@@ -212,29 +246,36 @@ const pointBreak = {
     s.objective('Dive after him — hold SPACE');
     s.onUpdate((dt, t) => {
       if (s.started) { plane.position.z -= 72 * dt; plane.position.y += 4 * dt; } if (can) can.scale.setScalar(damp(can.scale.x, 1, 4, dt));
+      if (phase === 'reserve') { tg.vy = damp(tg.vy, -7, 1.7, dt); tg.vx = damp(tg.vx, 3, 2, dt); tg.vz = damp(tg.vz, 0, 2, dt); ring.visible = false; return; }
       if (phase === 'open') { tg.vy = damp(tg.vy, -7, 1.7, dt); tg.vx = damp(tg.vx, 0, 2, dt); tg.vz = damp(tg.vz, 0, 2, dt); f.pos.set(tg.pos.x + 0.42, tg.pos.y - 0.75, tg.pos.z - 0.28); ring.visible = false; return; }
       if (!s.started || s.ended) return; cd -= dt;
       const dy = f.pos.y - tg.pos.y, side = f.pos.x >= tg.pos.x ? 1 : -1; dock.set(tg.pos.x + side * 0.95, tg.pos.y, tg.pos.z);
       const dh = Math.hypot(f.pos.x - dock.x, f.pos.z - dock.z), d3 = Math.hypot(dh, dy), rv = f.speed + tg.vy, alt = f.pos.y;
       ring.position.set(tg.pos.x, tg.pos.y + 1, tg.pos.z); ring.scale.setScalar(clamp(d3 / 16, 1.6, 30)); ring.visible = d3 > 12; s.fx.streak(sm.set(tg.pos.x, tg.pos.y + 1, tg.pos.z), sv, [1, 0.45, 0.1], 1.8, 1.3, 0.55);
       s.hud.readout('alt', 'Altitude (m)', Math.round(alt), alt < DECK + 500 ? 'warn' : ''); s.hud.readout('sep', dy >= 0 ? 'Below you (m)' : 'Above you (m)', Math.abs(dy).toFixed(0), Math.abs(dy) < 3 ? 'ok' : ''); s.hud.readout('rv', 'Closing (m/s)', rv.toFixed(0), Math.abs(rv) < 9 ? 'ok' : d3 < 90 ? 'warn' : '');
-      if (alt < DECK) { phase = 'dead'; s.msg('HARD DECK', 'bad'); return s.fail('Still not hooked up at 600 m — one canopy cannot open in time for two', { injury: 1 }); }
+      if (alt < DECK) { // leeway: the hidden reserve under your jumpsuit — the take is blown, but you are both alive
+        phase = 'reserve'; s.msg('HARD DECK — PULL THE RESERVE', 'bad'); s.hud.prompt(''); s.hud.meter('grip', 'GRIP', 0); f.termK = 1; f.o.canTuck = false; f.deploy('parachute'); f.view('chase', { dist: 9, height: 2, up: 3, fov: 60 });
+        can = model('parachute', { height: 7 }); can.position.y = 1.5; can.scale.setScalar(0.05); tg.c.root.add(can); tg.c.setPose('hang', 0.3); tg.c.cur.body[1] = 0;
+        s.flub('Missed the hook-up — pulled the hidden reserve', { penalty: 0.35, advice: 'Dive (hold SPACE) until he is about 30 m below you, then let go so CLOSING drops under 9 m/s, and hold E beside him — aim to be hooked up by 1,500 m.' });
+        s.rate('Hook-up height (missed)', 0, 1.4); s.rate('Docking speed', grabRv == null ? 0 : near(grabRv, 0, 5.5, 9.5), 1); s.rate('Clean catch', 0, 1.2); s.wrap(3.4, 'He got away. This time.'); return;
+      }
       if (d3 < 30 !== near1) { near1 = d3 < 30; if (near1) f.view('chase', { dist: 5.5, height: 4.2, up: -0.8, ahead: 0.5, fov: 64 }); else f.view('top', { height: 11, dist: 4.5, up: -5, ahead: 3 }); }
       if (phase === 'chase') {
         s.hud.prompt(d3 < 3.2 && Math.abs(rv) < 9 ? `Hold ${K('E')} — grab him!` : ''); s.hud.meter('grip', 'GRIP', 0);
         if (d3 < 1.7 && Math.abs(rv) > 9 && cd < 0) { bounces++; cd = 1.6; const a = Math.atan2(f.pos.z - tg.pos.z, f.pos.x - tg.pos.x) + (dh < 0.2 ? rnd(6) : 0); f.carry.set(Math.cos(a) * 17, 0, Math.sin(a) * 17); tg.kx = -Math.cos(a) * 8; tg.kz = -Math.sin(a) * 8; f.c.tumble(5, 0, 3); s.after(0.9, () => { f.c.tumble(0, 0, 0); f.c.spinAng.set(0, 0, 0); }); s.audio.punch?.(); s.audio.impact(0.7); s.engine.addShake(1); s.engine.hurt(0.3); s.msg('TOO FAST — BOUNCED OFF', 'bad'); s.objective('Flare out (release SPACE) before you reach him'); }
-        else if (inp.xk && d3 < 3.2 && Math.abs(rv) < 9 && cd < 0) { phase = 'grip'; hold = 0; if (grabRv == null) grabRv = Math.abs(rv); f.o.canTuck = false; s.audio.thud(); s.msg('GOT HIM — HANG ON!', 'small'); s.objective('Hold E and stay with him'); }
+        else if (inp.xk && d3 < 3.2 && Math.abs(rv) < 9 && cd < 0) { phase = 'grip'; hold = 0; if (grabRv == null) { grabRv = Math.abs(rv); s.audio.say('Pull the cord, Bodhi!', { rate: 1.2, pitch: 0.95 }); } tGrip = t; f.o.canTuck = false; s.audio.thud(); s.msg('GOT HIM — HANG ON!', 'small'); s.objective('Hold E and stay with him'); }
       } else if (phase === 'grip') {
         f.termK = clamp(-tg.vy / f.o.spread, 0.8, 1.3); f.pos.y = damp(f.pos.y, tg.pos.y, 5, dt); hold += dt; s.hud.meter('grip', 'GRIP', hold / T, { color: '#4f8' }); s.hud.prompt(`Hold ${K('E')}`); s.engine.addShake(0.03);
         if (!inp.xk || dh > 2.3) { phase = 'chase'; slips++; cd = 0.5; f.termK = 1; f.o.canTuck = true; s.msg(inp.xk ? 'SHAKEN OFF!' : 'LET GO!', 'bad'); s.audio.whoosh(); s.objective('Get back on him — hold E'); }
         else if (hold >= T) {
-          phase = 'open'; lockAlt = alt; f.frozen = true; f.poseLock = true; f.c.setPose('cling', 0.3); f.c.heading = 0; tg.c.setPose('hang', 0.3); tg.c.cur.body[1] = 0; tg.c.heading = 0; s.hud.prompt(''); f.view('chase', { dist: 9, height: 2, up: 3, fov: 60 });
+          phase = 'open'; lockAlt = alt; f.frozen = true; s.moment('one canopy, two passengers', { t0: Math.max(tGrip, t - 3) - 0.8, dur: 6.5, w: 3 }); s.slowmo(0.45, 1.3);
+          { const pts = []; let y = tg.pos.y, v = -tg.vy; for (let k = 0; k <= 40; k++) { pts.push({ t: t + k * 0.1, p: V3(tg.pos.x + 0.42, y - 0.75, tg.pos.z - 0.28) }); v = 7 + (v - 7) * Math.exp(-1.7 * 0.1); y -= v * 0.1; } s.cut(pts, 'orbit', { fov: 46 }); } f.poseLock = true; f.c.setPose('cling', 0.3); f.c.heading = 0; tg.c.setPose('hang', 0.3); tg.c.cur.body[1] = 0; tg.c.heading = 0; s.hud.prompt(''); f.view('chase', { dist: 9, height: 2, up: 3, fov: 60 });
           can = model('parachute', { height: 7 }); can.position.y = 1.5; can.scale.setScalar(0.05); tg.c.root.add(can); s.audio.whoosh(1.4); s.audio.thud(); s.engine.addShake(0.8); s.audio.set('wind', 'wind', 0.3, 0.1); s.engine.fx.uBlur.value = 0; s.cam.fovKick = 0;
           s.rate('Hook-up height (' + Math.round(alt) + ' m)', near(alt, 2600, 1100, 2000), 1.4); s.rate('Docking speed', near(grabRv, 0, 5.5, 9.5), 1); s.rate('Clean catch', 1 - bounces * 0.3 - slips * 0.22, 1.2); s.bonus('Seconds without a parachute', Math.round((t - s.t0) * 60)); s.msg('CANOPY!', 'huge good'); s.wrap(2.8, 'Vaya con Dios.');
         }
       }
     });
-    f.onLand = i => { f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); s.fail('Hit the ground at ' + Math.round(i.speed * 3.6) + ' km/h without a parachute', { injury: 1 }); };
+    f.onLand = i => { if (phase === 'reserve') return; f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); s.fail('Hit the ground at ' + Math.round(i.speed * 3.6) + ' km/h without a parachute', { injury: 1, advice: 'Hook up with him (hold E beside him) well above 600 m — that is where his canopy has to open.' }); };
   },
   bot(s, inp) {
     const f = s.fall, tg = s.target, ph = s.phase(), dy = f.pos.y - tg.pos.y, side = f.pos.x >= tg.pos.x ? 1 : -1, tx = tg.pos.x + side * 0.95, st = f.o.steer;
@@ -248,12 +289,12 @@ const halo = {
   id: 'mi_halo', title: 'Through the Storm', film: 'Mission: Impossible – Fallout', year: 2018, tier: 6, pay: 48000, mode: 'fall', art: 'bd_storm', music: 'epic',
   role: 'Doubling the agent — HALO jump into a thunderstorm at dusk',
   brief: 'Out the ramp at dusk, straight into the storm. Your partner gets hit and goes limp. You dodge the lightning, catch him, clip on, and you do not pull until the last possible second. Then put both of you on the glass roof.',
-  tips: ['A <b>blue column</b> means lightning in one second. Get out of it — you move faster when you are <b>not</b> diving.', 'Dive (<b>SPACE</b>) to the red strobe, then <b>hold E</b> beside him to clip on.', 'Pull (<b>E</b>) between <b>1500 and 1100 ft</b> — lower pays more, below 1000 ft is fatal. Steer the canopy to the lit ring.'],
+  tips: ['A <b>blue column</b> means lightning in one second. Get out of it — you move faster when you are <b>not</b> diving.', 'Dive (<b>SPACE</b>) to the red strobe, then <b>hold E</b> beside him to clip on.', 'Pull (<b>E</b>) between <b>1500 and 1100 ft</b> — lower pays more, below 1000 ft costs you, below 400 ft is fatal. Steer the canopy to the lit ring.'],
   controls: `${K('W')}${K('A')}${K('S')}${K('D')} steer &nbsp; hold ${K('SPACE')} dive &nbsp; hold ${K('E')} clip on &nbsp; ${K('E')} pull`, intro: { r: 9, h: 2.5, up: 0.5 },
   assets: { models: ['ch_agent', 'ch_skydiver', 'a400m', 'parachute'], tex: ['bd_storm', 'tx_asphalt', 'tx_fac_paris', 'tx_roof', 'tx_concrete', 'tx_cobble'] },
   build(s) {
     s.env('storm', { backdrop: 'bd_storm', look: 'cold', fog: 0.00045, amb: 1.6, sunI: 3.2, hz: 0.5, shadows: false, lookOver: { bloom: 0.8, lift: [0.02, 0.035, 0.07], vignette: 0.3 } });
-    const M = 3.281, LX = 130, LZ = -240, RY = 34, HARD = 305, inp = s.input;
+    const M = 3.281, LX = 130, LZ = -240, RY = 34, HARD = 305, FATAL = 122, MISS = 560, inp = s.input;
     s.ground({ tex: 'tx_asphalt', tile: 60, size: 9000, color: 0x5d6878 }); s.water({ y: 0.4, color: 0x18303c, w: 9000, d: 110, z: LZ + 190, size: 9000 });
     // Paris: lit blocks around a big glass-roofed hall
     const glass = s.mat({ color: 0x9fd8d0, emissive: 0x4fa89a, emI: 0.9, rough: 0.3, metal: 0.4 });
@@ -263,14 +304,15 @@ const halo = {
     const f = s.fall = new Fall(s, { char: 'ch_agent', x: 0, y: 2300, z: 0, vy0: 30, view: 'top', clouds: true, cloudBase: 700, spread: 52, tuck: 88, steer: 15, chuteV: 15, chuteSteer: 17, openRate: 1.5, aim: { r: 2.2, ref: 40, max: 7, color: 0xffffff }, cam: { height: 9, dist: 4, up: -5, ahead: 3 } }); f.aimOff = true; s.light({ parent: f.c.root, x: 0, y: 4, z: 3, color: 0xbfd0ff, i: 320, dist: 26, bulb: false });
     const plane = s.put('a400m', { x: 10, y: 2308, z: -18 });
     const mate = s.target = f.addBody('ch_skydiver', { x: -40, y: 2300 - 210, z: -45, vy: -50, pose: 'fall' }); mate.c.tumble(1.7, 0.8, 0.5); const ring = beacon(s, 0xff2a2a), strobe = s.light({ color: 0xff3030, i: 0, dist: 60, r: 0.25, glow: 6 });
-    mate.ai = (b, dt) => { const dy = f.pos.y - b.pos.y, close = Math.hypot(f.pos.x - b.pos.x, f.pos.z - b.pos.z) < 30 && Math.abs(dy) < 50; b.vy = damp(b.vy, -(close ? clamp(f.speed - dy * 0.8, 42, 70) : dy < -20 ? 70 : 50), 1.5, dt); b.vx = 2.5; b.vz = -1; };
+    mate.ai = (b, dt) => { if (solo) { b.vy = damp(b.vy, -8, 1.4, dt); b.vx = damp(b.vx, 3, 1, dt); b.vz = damp(b.vz, -2, 1, dt); if (mcan) mcan.scale.setScalar(damp(mcan.scale.x, 1, 4, dt)); return; } const dy = f.pos.y - b.pos.y, close = Math.hypot(f.pos.x - b.pos.x, f.pos.z - b.pos.z) < 30 && Math.abs(dy) < 50; b.vy = damp(b.vy, -(close ? clamp(f.speed - dy * 0.8, 42, 70) : dy < -20 ? 70 : 50), 1.5, dt); b.vx = 2.5; b.vz = -1; };
     const R = 10, col = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 28, 1, true), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.7, 1.6), transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending })); col.visible = false; col.frustumCulled = false; s.scene.add(col);
-    let phase = 'chase', clip = 0, stk = null, nextStk = 2.6, boltT = 0, dodged = 0, pullAlt = 0, amb = 2, cd = 0, bounces = 0, tAtt = 0, near1 = false; s.phase = () => phase; s.stk = () => stk; s.lz = [LX, LZ];
+    let phase = 'chase', clip = 0, stk = null, nextStk = 2.6, boltT = 0, dodged = 0, pullAlt = 0, amb = 2, cd = 0, bounces = 0, tAtt = 0, near1 = false, solo = false, mcan = null; s.phase = () => phase; s.stk = () => stk; s.lz = [LX, LZ];
+    const STRIKE_ADV = 'When the blue column appears, steer straight out of it with WASD and let go of SPACE — you have 1.4 s, and you move faster flat than diving.';
     s.objective('Dodge the lightning — dive to the red strobe');
     s.onUpdate((dt, t) => {
       strobe.position.set(mate.pos.x, mate.pos.y + 1, mate.pos.z); strobe.userData.bulb.position.copy(strobe.position); const blink = (t * 2.2) % 1 < 0.18; strobe.intensity = blink ? 300 : 0; strobe.userData.bulb.visible = blink;
       if (boltT > 0) { boltT -= dt; if (boltT <= 0) col.visible = false; }
-      if (phase === 'carry' || phase === 'canopy') { mate.pos.set(f.pos.x + 0.3, f.pos.y - (phase === 'canopy' ? 0.5 : 0.12), f.pos.z - 0.55); }
+      if ((phase === 'carry' || phase === 'canopy') && !solo) { mate.pos.set(f.pos.x + 0.3, f.pos.y - (phase === 'canopy' ? 0.5 : 0.12), f.pos.z - 0.55); }
       if (!s.started || s.ended) return; const tt = t - s.t0, alt = f.pos.y; plane.position.z -= 80 * dt; cd -= dt;
       // ambient storm
       amb -= dt; if (amb < 0) { amb = rnd(2.2, 5); s.engine.flash(0.22); s.after(rnd(0.5, 1.4), () => s.audio.thunder()); }
@@ -280,8 +322,9 @@ const halo = {
         stk.t -= dt; col.visible = true; col.position.set(stk.x, alt - 250, stk.z); col.scale.set(R, 900, R); col.material.opacity = 0.1 + 0.3 * (1 - stk.t / 1.4) + (Math.random() < 0.2 ? 0.2 : 0);
         if (stk.t <= 0) {
           const d = Math.hypot(f.pos.x - stk.x, f.pos.z - stk.z); col.scale.set(1.4, 1400, 1.4); col.material.opacity = 1; boltT = 0.22; s.engine.flash(1); s.audio.thunder(); s.audio.explosion?.(0.5); s.engine.addShake(1.2); nextStk = tt + 4.6; stk = null;
-          if (d < R + 0.4) { phase = 'dead'; f.die(); s.fx.sparks(f.pos, 40, { color: [0.6, 0.8, 1] }); return s.fail('Struck by lightning at ' + Math.round(alt * M).toLocaleString('en-US') + ' ft', { injury: 1 }); }
-          dodged++; s.bonus('Lightning dodged', 600); if (d < R + 6) s.msg('CLOSE!', 'small');
+          if (d < R * 0.55) { phase = 'dead'; f.die(); s.fx.sparks(f.pos, 40, { color: [0.6, 0.8, 1] }); return s.fail('Struck by lightning at ' + Math.round(alt * M).toLocaleString('en-US') + ' ft', { injury: 1, advice: STRIKE_ADV }); }
+          if (d < R + 0.4) { s.fx.sparks(f.pos, 24, { color: [0.6, 0.8, 1] }); s.engine.hurt(0.45); f.c.tumble(3, 1, 2); s.after(0.8, () => { if (!f.chute && !f.dead) { f.c.tumble(0, 0, 0); f.c.spinAng.set(0, 0, 0); } }); s.flub('Singed by the lightning', { penalty: 0.2, advice: STRIKE_ADV }); }
+          else { dodged++; s.bonus('Lightning dodged', 600); if (d < R + 6) { s.msg('CLOSE!', 'small'); s.moment('lightning', { t0: s.t - 2, dur: 3, w: 1.5 }); } }
         }
       }
       s.hud.readout('alt', 'Altitude (ft)', Math.round(alt * M / 10) * 10, phase === 'carry' ? (alt < HARD + 30 ? 'warn' : alt < 460 ? 'ok' : '') : alt < 900 && phase !== 'canopy' ? 'warn' : '');
@@ -291,16 +334,23 @@ const halo = {
         s.hud.readout('sep', dy >= 0 ? 'Partner below (ft)' : 'Partner above (ft)', Math.round(Math.abs(dy) * M), Math.abs(dy) < 3 ? 'ok' : ''); s.hud.readout('rv', 'Closing (kt)', Math.round(rv * 1.94), Math.abs(rv) < 10 ? 'ok' : d3 < 90 ? 'warn' : '');
         if (d3 < 30 !== near1) { near1 = d3 < 30; if (near1) f.view('chase', { dist: 5.5, height: 4.2, up: -0.8, ahead: 0.5, fov: 64 }); else f.view('top', { height: 11, dist: 4.5, up: -5, ahead: 3 }); }
         const inR = d3 < 3 && Math.abs(rv) < 10; s.hud.prompt(inR ? `Hold ${K('E')} — clip on` : ''); s.hud.meter('clip', 'HARNESS', clip / 1.6, { color: '#4f8' });
-        if (alt < HARD + 60) { phase = 'dead'; return s.fail('Ran out of sky before you reached your partner', { injury: 1 }); }
+        if (alt < MISS) { // leeway: his automatic opener fires; you carry on alone to your own pull and landing
+          phase = 'carry'; solo = true; tAtt = tt; clip = 0; f.termK = 1; ring.visible = false; s.hud.prompt(''); s.hud.meter('clip', 'HARNESS', 0);
+          mate.c.tumble(0, 0, 0); mate.c.spinAng.set(0, 0, 0); mate.c.setPose('hang', 0.4); mcan = model('parachute', { height: 7 }); mcan.position.y = 1.5; mcan.scale.setScalar(0.05); mate.c.root.add(mcan); s.audio.whoosh(1.2);
+          s.flub('Missed the catch — his auto-opener fired', { penalty: 0.35, advice: 'Dive (hold SPACE) straight at the red strobe, let go when he is 30 ft below, and hold E beside him — clip on well before 1,800 ft, when his auto-opener fires.' });
+          s.rate('Catch', 0, 1); s.objective('On your own now — pull (E) between 1500 and 1100 ft'); f.view('top', { height: 11, dist: 4.5, up: -5, ahead: 3 }); return;
+        }
         if (d3 < 1.6 && Math.abs(rv) > 12 && cd < 0) { cd = 1.5; bounces++; const a = Math.atan2(f.pos.z - mate.pos.z, f.pos.x - mate.pos.x); f.carry.set(Math.cos(a) * 15, 0, Math.sin(a) * 15); s.audio.impact(0.7); s.engine.addShake(1); s.engine.hurt(0.3); s.msg('TOO FAST!', 'bad'); }
         if (inR && inp.xk && cd < 0) { clip += dt; f.termK = clamp(-mate.vy / f.o.spread, 0.8, 1.4); f.pos.y = damp(f.pos.y, mate.pos.y, 4, dt); } else { clip = Math.max(0, clip - dt * 0.5); f.termK = 1; }
-        if (clip >= 1.6) { phase = 'carry'; tAtt = tt; f.termK = 1; mate.frozen = true; mate.c.tumble(0, 0, 0); mate.c.spinAng.set(0, 0, 0); mate.c.setPose('freefall', 0.4); mate.c.heading = 0; ring.visible = false; s.hud.prompt(''); s.audio.thud(); s.msg('CLIPPED ON', 'good'); s.rate('Catch', 1 - bounces * 0.3, 1); s.objective('Hold your nerve — pull (E) between 1500 and 1100 ft'); f.view('top', { height: 11, dist: 4.5, up: -5, ahead: 3 }); }
+        if (clip >= 1.6) { phase = 'carry'; tAtt = tt; s.moment('clipped on in the storm', { t0: s.t - 2.6, dur: 4.4, w: 2 }); s.audio.say('Got you. Hold on.', { rate: 1.1 }); f.termK = 1; mate.frozen = true; mate.c.tumble(0, 0, 0); mate.c.spinAng.set(0, 0, 0); mate.c.setPose('freefall', 0.4); mate.c.heading = 0; ring.visible = false; s.hud.prompt(''); s.audio.thud(); s.msg('CLIPPED ON', 'good'); s.rate('Catch', 1 - bounces * 0.3, 1); s.objective('Hold your nerve — pull (E) between 1500 and 1100 ft'); f.view('top', { height: 11, dist: 4.5, up: -5, ahead: 3 }); }
       } else if (phase === 'carry') {
         s.hud.bar(clamp(1 - (alt - 200) / 900), [1 - (460 - 200) / 900, 1 - (HARD - 200) / 900], [1 - (370 - 200) / 900, 1 - (HARD - 200) / 900]); if (alt < 520) s.hud.prompt(`${K('E')} PULL!`);
         if (inp.hit('x') && tt - tAtt > 0.6) {
           pullAlt = alt; s.hud.hideBar(); s.hud.prompt('');
-          if (alt < HARD) { phase = 'dead'; f.o.openRate = 0.12; f.deploy('parachute'); s.msg('TOO LOW!', 'bad'); return s.fail('Pulled at ' + Math.round(alt * M) + ' ft — below the hard deck, the canopy never opened', { injury: 1, delay: 2.6 }); }
-          phase = 'canopy'; f.deploy('parachute'); f.aimOff = false; mate.c.setPose('hang', 0.4); s.rate('Low pull (' + Math.round(alt * M) + ' ft)', near(alt, HARD + 30, 40, 700), 1.6); s.bonus('Seconds of freefall', Math.round(tt * 150)); s.msg(alt < HARD + 75 ? 'LAST SECOND!' : 'CANOPY', 'good'); s.objective('Steer for the lit ring on the glass roof'); f.view('chase', { dist: 8, height: 19, up: -10, ahead: 3, fov: 64 });
+          if (alt < FATAL) { phase = 'dead'; f.o.openRate = 0.12; f.deploy('parachute'); s.msg('TOO LOW!', 'bad'); return s.fail('Pulled at ' + Math.round(alt * M) + ' ft — far too low, the canopy never opened', { injury: 1, delay: 2.6, advice: 'Pull (E) as the altitude passes 1,300 ft — the PULL prompt appears at 1,700 ft; below 400 ft there is no time for it to open.' }); }
+          if (alt < HARD) s.flub('Pulled below 1,000 ft', { penalty: 0.3, advice: 'Pull (E) between 1,300 and 1,000 ft — lower than that and the canopy only just opens in time.' });
+          phase = 'canopy'; f.deploy('parachute'); f.aimOff = false; if (!solo) mate.c.setPose('hang', 0.4); s.rate('Low pull (' + Math.round(alt * M) + ' ft)', alt < HARD ? 0.5 : near(alt, HARD + 45, 45, 700), 1.6); s.slowmo(0.5, 1); f.cine('orbit', 1.6, { fov: 50 });
+          s.moment('the last-second pull', { t0: s.t - 3, dur: 6, w: 3, shots: [{ type: 'orbit', fov: 24, a: -0.1, b: 0.5, speed: 0.6 }, { type: 'low', fov: 58, a: 0.35, b: 0.85, speed: 0.5 }, { type: 'track', fov: 38, a: 0.6, b: 1.05, speed: 0.8 }] }); s.bonus('Seconds of freefall', Math.round(tt * 150)); s.msg(alt < HARD + 75 ? 'LAST SECOND!' : 'CANOPY', 'good'); s.objective('Steer for the lit ring on the glass roof'); f.view('chase', { dist: 8, height: 19, up: -10, ahead: 3, fov: 64 });
         }
       } else if (phase === 'canopy') {
         const d = Math.hypot(f.pos.x - LX, f.pos.z - LZ); s.hud.readout('sep', 'Landing zone (ft)', Math.round(d * M), d < 13 ? 'ok' : ''); s.hud.readout('rv', 'Sink (ft/s)', Math.round(f.speed * M));
@@ -308,10 +358,11 @@ const halo = {
       }
     });
     f.onLand = i => {
-      if (phase !== 'canopy') { phase = 'dead'; f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); return s.fail('Never pulled — hit Paris at ' + Math.round(i.speed * 3.6) + ' km/h', { injury: 1 }); }
-      const d = Math.hypot(i.x - LX, i.z - LZ), onRoof = Math.abs(i.x - LX) < 42 && Math.abs(i.z - LZ) < 23 && f.pos.y > RY - 1; f.c.setPose('land', 0.15); mate.c.setPose('lie', 0.3); mate.pos.y = f.pos.y; s.audio.thud(); s.engine.addShake(0.5);
-      if (!onRoof) return s.fail(f.pos.y < 1 ? 'Missed the roof and put your partner down in the street' : 'Landed on the wrong rooftop — ' + Math.round(d * M) + ' ft from the mark', { injury: 0.35 });
-      s.rate('Landing (' + Math.round(d * M) + ' ft off)', near(d, 0, 3.5, 30), 1.4); s.msg(d < 6 ? 'ON THE RING' : 'DOWN SAFE', 'good'); s.wrap(2.2);
+      if (phase !== 'canopy') { phase = 'dead'; f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); return s.fail('Never pulled — hit Paris at ' + Math.round(i.speed * 3.6) + ' km/h', { injury: 1, advice: 'Press E to pull as the altitude passes 1,300 ft — the PULL prompt flashes up at 1,700 ft.' }); }
+      phase = 'down'; const d = Math.hypot(i.x - LX, i.z - LZ), onRoof = Math.abs(i.x - LX) < 42 && Math.abs(i.z - LZ) < 23 && f.pos.y > RY - 1; f.c.setPose('land', 0.15); if (!solo) { mate.c.setPose('lie', 0.3); mate.pos.y = f.pos.y; } s.audio.thud(); s.engine.addShake(0.5);
+      if (!onRoof) { s.flub(f.pos.y < 1 ? (solo ? 'Landed in the street' : 'Put your partner down in the street') : 'Landed on the wrong rooftop', { penalty: 0.25, advice: 'Under the canopy, steer (WASD) so the white ring under you sits on the green ring on the glass roof — start turning as soon as it opens.' }); s.rate('Landing (' + Math.round(d * M) + ' ft off)', 0, 1.4); s.msg('DOWN… WRONG SPOT', 'bad'); }
+      else { s.rate('Landing (' + Math.round(d * M) + ' ft off)', near(d, 0, 3.5, 30), 1.4); s.msg(d < 6 ? 'ON THE RING' : 'DOWN SAFE', 'good'); }
+      s.wrap(2.2);
     };
   },
   bot(s, inp, B) {
@@ -336,12 +387,12 @@ const spySki = {
   id: 'spy_ski', title: 'Off the Edge of the World', film: 'The Spy Who Loved Me', year: 1977, tier: 4, pay: 14000, mode: 'drive', art: 'bd_snow', music: 'spy',
   role: 'Doubling 007 — yellow ski suit, one take, three thousand feet of nothing',
   brief: 'Down the slope with the heavies on your tail, straight off the edge of the mountain. Then you fall. And you keep falling. Kick the skis away, and only when the audience has given up on you does that parachute open.',
-  tips: ['Dodge the rocks and the gunmen on skis. <b>S</b> scrubs speed, but a fast exit off the lip looks best.', 'In the air press <b>SPACE</b> to <b>kick off the skis</b> — open with them on and the lines tangle.', 'Open the chute (<b>E</b>) as <b>late</b> as you dare: best between 850 and 650 ft. Below 650 ft it will not open in time.'],
+  tips: ['Dodge the rocks and the gunmen on skis. <b>S</b> scrubs speed, but a fast exit off the lip looks best.', 'In the air press <b>SPACE</b> to <b>kick off the skis</b> — open with them on and the lines tangle.', 'Open the chute (<b>E</b>) as <b>late</b> as you dare: best between 850 and 650 ft. Below 650 ft it barely opens; below 300 ft it will not.'],
   controls: `${K('A')}${K('D')} carve &nbsp; ${K('S')} brake &nbsp; then: ${K('SPACE')} kick off skis &nbsp; ${K('E')} open parachute`, intro: { r: 8, h: 2.4 },
   assets: { models: ['ch_skier', 'ch_goon', 'rock_grey', 'parachute_uj', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt', 'helicopter'], tex: ['bd_snow', 'tx_snow', 'tx_rock'] },
   build(s) {
     s.env('snow', { backdrop: 'bd_snow', look: 'warm60s', fog: 0.00035, hz: 0.5, sun: [38, 215] });
-    const LIP = SKI_LIP, H = SKI_H, HARD = 198, inp = s.input, snow = s.mat({ tex: 'tx_snow' }), rock = s.mat({ tex: 'tx_rock', color: 0x9aa0a8 });
+    const LIP = SKI_LIP, H = SKI_H, HARD = 198, FATAL = 90, inp = s.input, snow = s.mat({ tex: 'tx_snow' }), rock = s.mat({ tex: 'tx_rock', color: 0x9aa0a8 });
     s.ground({ tex: 'tx_snow', tile: 60, y: -6, size: 12000 });
     s.terrain({ x0: -1500, x1: 1500, z0: LIP - 2600, z1: LIP - 0.01, res: 100, fn: (x, z) => 14 * Math.sin(x * 0.004 + 1) * Math.cos(z * 0.003) + 10, tex: 'tx_snow', tile: 60 });
     s.terrain({ x0: -96, x1: 96, z0: LIP, z1: 120, res: 4, fn: skiFn, tex: 'tx_snow', tile: 14 });
@@ -350,34 +401,40 @@ const spySki = {
     s.forest('tree:snowpine', 300, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (40 + Math.pow(r(), 1.4) * 52), 110 - r() * (110 - LIP - 30)]; }, { h: [6, 11], solid: true, seedv: 6, msg: 'Wrapped yourself round a pine' });
     s.forest('tree:snowpine', 420, r => [r() * 2600 - 1300, LIP - 150 - r() * 2200], { h: [16, 30], seedv: 9 });
     const rocks = [[-9, -60], [12, -110], [-3, -165], [20, -205], [-18, -250], [5, -300], [-12, -345], [16, -385], [-2, -430], [-22, -470], [10, -505], [26, -330], [-27, -140], [0, -560]];
-    for (const [x, z] of rocks) s.put('rock_grey', { x, y: skiFn(x, z) - 0.5, z, height: 3.2, ry: x, solid: true, hitScale: 0.7, sol: { msg: 'Hit a rock at full tilt', hardK: 0.3 } });
+    for (const [x, z] of rocks) s.put('rock_grey', { x, y: skiFn(x, z) - 0.5, z, height: 3.2, ry: x, solid: true, hitScale: 0.7, sol: { msg: 'Hit a rock at full tilt', hardK: 0.3, advice: 'Look 50 m down the slope and carve early round the grey rocks (A/D) — tap S if you are not lined up in time.' } });
     s.crew({ x: 9, y: skiFn(9, 52), z: 52, ry: 1.0 }); s.put('helicopter', { x: -60, y: H + 60, z: LIP - 120, ry: 2.2 });
-    const car = s.car = new Drive(s, { kind: 'ski', driver: 'ch_skier', driverPose: 'ski', driverPos: [0, -0.9, 0], x: 0, z: 44, cam: { dist: 6.5, height: 2.7, ahead: 6 }, airDrag: 0.0024, steer: 1.7, crashV: 9, hard: 30, pitchTol: 3, rollTol: 3 }); car.dustColor = [1, 1, 1]; car.k.dusty = true; car.frozen = true; s.onAction = () => { car.frozen = false; car.vel.set(0, 0, -7); car.v = 7; };
+    const car = s.car = new Drive(s, { kind: 'ski', driver: 'ch_skier', driverPose: 'ski', driverPos: [0, -0.9, 0], x: 0, z: 44, cam: { dist: 6.5, height: 2.7, ahead: 6 }, airDrag: 0.0024, steer: 1.7, crashV: 9, hard: 30, pitchTol: 3, rollTol: 3 }); car.dustColor = [1, 1, 1]; car.k.dusty = true; car.frozen = true; car.cineOff = true; s.onAction = () => { car.frozen = false; car.vel.set(0, 0, -7); car.v = 7; };
     const red = s.mat({ color: 0xd01c1c, rough: 0.4 }), mkSkis = parent => [-0.14, 0.14].map(x => s.box({ parent, x, y: 0, z: -0.25, w: 0.09, h: 0.03, d: 1.85, mat: red })); const skis = mkSkis(car.body); skis.forEach(k => k.position.y -= 0.9);
     // the heavies
     const mv = new Movers(s, car); mv.nearPay = 250; srand(4);
     for (const [x, z, v, ph] of [[-8, -40, 21, 0], [9, -120, 23, 2], [-3, -230, 22, 4], [12, -330, 24, 1]]) { const g = new THREE.Group(); g.userData.size = V3(0.9, 1.8, 1.4); s.char('ch_goon', { parent: g, pose: 'ski' }); s.scene.add(g); mv.add({ obj: g, z, v: 0, path: zz => x + Math.sin(zz * 0.03 + ph) * 7, msg: 'Tangled with one of the gunmen', hardK: 0.2, ai: e => { if (!s.started) return; e.v = e.z < LIP + 46 ? Math.max(0, e.v - 0.5) : v; } }); }
-    let f = null, phase = 'ski', kicked = false, free = [], hits = 0; s.phase = () => phase; s.rate('Clean run', 1, 0.8); car.onHit = () => { hits++; s.rate('Clean run', 1 - hits * 0.3, 0.8); };
+    // replay subject: follows the skier down the slope, then the falling body (the Drive and the Fall are different objects)
+    const subj = new THREE.Object3D(); s.scene.add(subj); s.subject = subj; s.onUpdate(() => subj.position.copy(f ? f.pos : car.pos));
+    let f = null, phase = 'ski', kicked = false, free = [], hits = 0; s.phase = () => phase; s.rate('Clean run', 1, 0.8);
+    car.onHit = sol => { hits++; s.rate('Clean run', 1 - hits * 0.3, 0.8); if (sol?.mover) { mv.fling(sol.mover, 4); car.v *= 0.6; s.audio.thud(); s.engine.addShake(0.8); s.flub('Tangled with a gunman', { penalty: 0.15, advice: 'Watch the skiers ahead and carve (A/D) wide of them early — they weave side to side across the run.' }); return true; } };
     s.objective('Ski for the edge — dodge the rocks and the gunmen');
     s.onUpdate((dt, t) => {
       for (const k of free) { k.vel.y -= G * 0.6 * dt; k.m.position.addScaledVector(k.vel, dt); k.m.rotation.x += k.sp * dt; k.m.rotation.z += k.sp * 0.7 * dt; }
       if (!s.started || s.ended) return;
       if (phase === 'ski') {
         s.hud.readout('spd', 'MPH', Math.round(car.mph)); s.hud.readout('edge', 'Edge (ft)', ftOf(Math.max(0, car.pos.z - LIP)));
-        if (Math.abs(car.pos.x) > 90 && !car.dead) return car.crash('Skied off the side of the mountain', { injury: 0.8 });
+        if (Math.abs(car.pos.x) > 90 && !car.dead) return car.crash('Skied off the side of the mountain', { injury: 0.8, advice: 'Stay between the tree lines and point your skis down the fall line — the edge you jump from is dead ahead, not off to the side.' });
         if (car.pos.z < LIP - 0.4 && !car.dead) {
           phase = 'fall'; s.rate('Exit speed (' + Math.round(car.mph) + ' mph)', near(car.mph, 80, 14, 50), 1); const yaw = car.heading; car.obj.visible = false;
           f = s.fall = driveToFall(s, car, { char: 'ch_skier', spread: 54, steer: 8, canTuck: false, carryDrag: 0.22, pose: 'ski', heading: 0, yaw: Math.PI, cam: { dist: 13, height: 4.5, side: 7, up: -1.5, ahead: 0, fov: 60, stiff: 7 } }); f.poseLock = true;
-          mkSkis(f.c.root).forEach((k, i) => { free.push({ m: k, vel: V3(), sp: 0, on: true }); }); s.slowmo(0.4, 1.4); s.msg('OFF THE EDGE!', 'huge'); s.objective('Kick off the skis (SPACE)… then open late (E)'); s.hud.readout('edge', 'Skis', 'ON', 'warn');
-          f.onLand = i => { phase = 'dead'; f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); s.fx.dust(f.pos, 20, { color: [1, 1, 1], size: 3 }); s.fail(f.pos.y > 200 ? 'Drifted back into the cliff face' : f.chute ? 'Opened too late — still doing ' + Math.round(i.speed * 3.6) + ' km/h at the valley floor' : 'Never opened the parachute', { injury: 1 }); };
+          mkSkis(f.c.root).forEach((k, i) => { free.push({ m: k, vel: V3(), sp: 0, on: true }); }); s.slowmo(0.4, 1.4); s.msg('OFF THE EDGE!', 'huge'); s.moment('off the edge', { t0: s.t - 2.2, dur: 4.5, w: 2, shots: [{ type: 'wide', dist: 1.3 }, { type: 'low', fov: 56 }, { type: 'track', fov: 38 }] }); s.objective('Kick off the skis (SPACE)… then open late (E)'); s.hud.readout('edge', 'Skis', 'ON', 'warn');
+          f.onLand = i => { phase = 'dead'; f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); s.fx.dust(f.pos, 20, { color: [1, 1, 1], size: 3 }); const cliffHit = f.pos.y > 200; s.fail(cliffHit ? 'Drifted back into the cliff face' : f.chute ? 'Opened too late — still doing ' + Math.round(i.speed * 3.6) + ' km/h at the valley floor' : 'Never opened the parachute', { injury: 1, advice: cliffHit ? 'Leave the lip with speed (60+ mph) and push W/S away from the rock face as you fall — do not drift back toward the mountain.' : 'Press E to open the chute between 850 and 650 ft on the ALTITUDE readout — below 300 ft it cannot open in time.' }); };
         }
       } else if (phase === 'fall') {
         const alt = f.alt; s.hud.readout('spd', 'Altitude (ft)', ftOf(alt), alt < HARD + 70 ? 'warn' : alt < 290 ? 'ok' : ''); s.hud.bar(clamp(1 - alt / 800), [1 - 290 / 800, 1 - HARD / 800], [1 - 255 / 800, 1 - HARD / 800]);
         if (!kicked && inp.hit('a')) { kicked = true; f.c.setPose('freefall', 0.5); s.audio.thud(); s.msg('SKIS AWAY', 'small'); s.hud.readout('edge', 'Skis', 'OFF', 'ok'); free.forEach((k, i) => { s.scene.attach(k.m); k.vel.set((i ? 1 : -1) * 3 + f.carry.x, f.vel.y + 5, f.carry.z - 2); k.sp = i ? 5 : -4; }); s.objective('Hold it… open (E) between 850 and 650 ft'); }
         if (inp.hit('x')) {
           s.hud.hideBar();
-          if (alt < HARD) { phase = 'late'; f.o.openRate = 0.1; f.deploy('parachute_uj'); s.msg('TOO LATE!', 'bad'); return; }
-          phase = 'open'; f.deploy('parachute_uj'); s.rate('Late opening (' + ftOf(alt) + ' ft)', near(alt, HARD + 25, 35, 520), 2); s.rate('Ski release', kicked ? 1 : 0.15, 0.8); s.bonus('Freefall: ' + ftOf(H - alt) + ' ft', Math.round((H - alt) * 2.2)); s.msg(kicked ? 'RULE BRITANNIA!' : 'SKIS TANGLED IN THE LINES', kicked ? 'huge good' : 'bad'); f.view('', { dist: 17, height: 2, side: 5, up: 4.5, ahead: 0, fov: 58 }); s.wrap(3.2, 'Nobody does it better.');
+          if (alt < FATAL) { phase = 'late'; f.o.openRate = 0.1; f.deploy('parachute_uj'); s.msg('TOO LATE!', 'bad'); return; }
+          if (alt < HARD) s.flub('Opened below 650 ft', { penalty: 0.3, advice: 'Open (E) while the ALTITUDE readout is between 850 and 650 ft — any lower and the canopy only just snaps open before the valley floor.' });
+          if (!kicked) s.flub('Opened with the skis on — tangled lines', { penalty: 0.15, advice: 'Press SPACE as soon as you leave the lip to kick the skis away, then wait for the chute.' });
+          phase = 'open'; f.deploy('parachute_uj'); s.rate('Late opening (' + ftOf(alt) + ' ft)', alt < HARD ? 0.5 : near(alt, HARD + 25, 35, 520), 2); s.rate('Ski release', kicked ? 1 : 0.3, 0.8); s.bonus('Freefall: ' + ftOf(H - alt) + ' ft', Math.round((H - alt) * 2.2)); s.msg(kicked ? 'RULE BRITANNIA!' : 'SKIS TANGLED IN THE LINES', kicked ? 'huge good' : 'bad');
+          s.slowmo(0.5, 1.4); s.moment('the Union Jack', { t0: s.t - 2.4, dur: 6, w: 3 }); f.view('', { dist: 17, height: 2, side: 5, up: 4.5, ahead: 0, fov: 58 }); f.cine('wide', 2.6, { dist: 1.6 }); s.wrap(3.4, 'Keeping the British end up, sir.');
         }
       }
     });
@@ -399,7 +456,7 @@ const cliff = {
   assets: { models: ['enduro_bike', 'ch_agent', 'parachute', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt', 'helicopter', 'rock_grey'], tex: ['bd_norway', 'tx_rock', 'tx_grass', 'tx_dirt', 'tx_wood', 'tx_metal'] },
   build(s) {
     s.env('overcast', { backdrop: 'bd_norway', look: 'teal_orange', fog: 0.00028, hz: 0.5, amb: 1.25, sunI: 2.4 });
-    const H = 800, EDGE = -250, R0 = -140, R1 = -264, RH = 15, LX = 70, LZ = EDGE - 470, HARD = 150, inp = s.input, rock = s.mat({ tex: 'tx_rock', color: 0x8f9490 }), grass = s.mat({ tex: 'tx_grass', color: 0xb8c8a0 });
+    const H = 800, EDGE = -250, R0 = -140, R1 = -264, RH = 15, LX = 70, LZ = EDGE - 470, HARD = 150, FATAL = 70, inp = s.input, rock = s.mat({ tex: 'tx_rock', color: 0x8f9490 }), grass = s.mat({ tex: 'tx_grass', color: 0xb8c8a0 });
     s.ground({ tex: 'tx_grass', tile: 50, y: -5, size: 12000, color: 0xa9bf8f });
     const vfn = (x, z) => 8 * Math.sin(x * 0.005) * Math.cos(z * 0.004) + 6 - 14 * smooth(-420, -620, x);
     s.terrain({ x0: -1600, x1: 1600, z0: EDGE - 2800, z1: EDGE - 0.01, res: 100, fn: vfn, tex: 'tx_grass', tile: 50, mat: s.mat({ tex: 'tx_grass', rep: 1, color: 0xa9bf8f }) });
@@ -415,9 +472,11 @@ const cliff = {
     disc(s, LX, vfn(LX, LZ) + 0.3, LZ, 16, 0xff7a20, 0.5); s.mark({ x: LX, z: LZ, y: vfn(LX, LZ) + 0.3, r: 16, color: 0xffa040 }); s.mark({ x: LX, z: LZ, y: vfn(LX, LZ) + 0.3, r: 4, color: 0xffffff }); s.crew({ x: LX + 22, y: vfn(LX + 22, LZ), z: LZ - 8, ry: 1.2 });
     s.crew({ x: 6, y: H, z: 96, ry: 0.9 }); s.put('helicopter', { x: 55, y: H + 30, z: EDGE - 90, ry: -0.9 }); s.line({ x: 0, z: R0 + 1, w: 3.2, d: 0.4, y: H, color: 0xffe14a });
     const car = s.car = new Drive(s, { kind: 'bike', model: 'enduro_bike', driver: 'ch_agent', driverPos: [0, -0.52, 0.28], x: 0, z: 110, cam: { dist: 5.8, height: 2.2 }, hard: 14 });
-    let f = null, phase = 'ride', tF = 0, minD = 99, pullAlt = 0; const bv = V3(), bp = car.pos; s.phase = () => phase; s.lz = [LX, LZ];
+    car.cineOff = true; const subj = new THREE.Object3D(); s.scene.add(subj); s.subject = subj; s.onUpdate(() => subj.position.copy(f ? f.pos : car.pos)); // replay follows rider, then the body
+    let f = null, phase = 'ride', tF = 0, minD = 99, pullAlt = 0, slowWarn = false; const bv = V3(), bp = car.pos; s.phase = () => phase; s.lz = [LX, LZ];
+    const PULL_ADV = 'Press E to pull while ALTITUDE reads 300–160 m (the green of the timing bar) — below 70 m the canopy cannot open in time.';
     s.objective('Hit the ramp at 58–68 mph');
-    car.onLand = i => { if (phase === 'ride' && i.airTime > 0.3 && car.pos.y < H + 1 && car.pos.z < R0 - 10) { car.crash('Came off the side of the ramp', { injury: 0.6 }); return true; } };
+    car.onLand = i => { if (phase === 'ride' && i.airTime > 0.3 && car.pos.y < H + 1 && car.pos.z < R0 - 10) { car.crash('Came off the side of the ramp', { injury: 0.6, advice: 'Line up on the yellow line before the ramp and keep A/D light — the ramp is one plank (3 m) wide.' }); return true; } };
     s.onUpdate((dt, t) => {
       if (phase !== 'ride' && !car.landed) { // the bike is now just falling scrap
         const v = -bv.y; bv.y -= G * (1 - (v > 0 ? v * v / 5600 : 0)) * dt; bv.x *= Math.exp(-0.3 * dt); bv.z *= Math.exp(-0.3 * dt);
@@ -427,16 +486,18 @@ const cliff = {
       if (!s.started || s.ended) return;
       if (phase === 'ride') {
         s.hud.readout('spd', 'MPH', Math.round(car.mph), car.pos.z < 0 ? (car.mph > 57 && car.mph < 69 ? 'ok' : 'warn') : '');
-        if (Math.abs(car.pos.x) > 150 && !car.dead) return car.crash('Rode off the side of the mountain', { injury: 0.9 });
-        if (t - s.t0 > 30 && car.pos.z > R0) return s.fail('Never made it to the ramp — the weather closed in', { injury: 0 });
+        if (Math.abs(car.pos.x) > 150 && !car.dead) return car.crash('Rode off the side of the mountain', { injury: 0.9, advice: 'Follow the dirt track straight to the ramp — it is dead ahead.' });
+        if (t - s.t0 > 20 && car.pos.z > R0 && !slowWarn) { slowWarn = true; s.flub('Dawdled to the ramp', { penalty: 0.1, advice: 'Hold W from ACTION — the ramp is 250 m ahead and the weather window is short.' }); }
+        if (t - s.t0 > 40 && car.pos.z > R0) return s.fail('Never made it to the ramp — the weather closed in', { injury: 0, advice: 'Hold W from ACTION and ride straight for the ramp; ease off to 58–68 mph only on the last stretch.' });
         if (car.pos.z < R1 - 0.3 && car.pos.y > H + RH - 4 && !car.dead) {
           const mph = car.mph; bv.set(car.vel.x, car.vy, car.vel.z); car.driver.root.visible = false; phase = 'sep'; tF = 0;
           f = s.fall = driveToFall(s, car, { char: 'ch_agent', spread: 52, tuck: 78, steer: 13, carryDrag: 0.3, chuteV: 9, chuteSteer: 9.5, openRate: 1.6, pose: 'fall', tuckPose: 'track', aim: { r: 2.2, ref: 40, max: 7, color: 0xffffff }, cam: { dist: 8.5, height: 5.5, up: -1.5, ahead: 2, fov: 66 } }); f.aimOff = true; f.pos.y += 0.9; f.vel.y += 1.4; f.o.canTuck = false;
           s.rate('Ramp speed (' + Math.round(mph) + ' mph)', near(mph, 63, 5, 24), 1); s.slowmo(0.35, 1.6); s.msg(Math.round(mph) + ' MPH', 'huge'); s.objective('Get away from the bike! Steer clear');
-          if (mph < 40) { f.die(); phase = 'dead'; return s.fail('Too slow off the ramp — tumbled down the cliff face with the bike', { injury: 1 }); }
+          s.moment('off the mountain', { t0: s.t - 1.8, dur: 5, w: 3 }); s.audio.roar?.(); f.cine('wide', 0.9, { dist: 1.5 });
+          if (mph < 40) s.flub('Slow off the ramp (' + Math.round(mph) + ' mph)', { penalty: 0.2, advice: 'Hold W up the ramp — you want 58–68 mph at the lip to fly clear of the cliff and the bike.' });
           f.onLand = i => {
-            if (phase === 'canopy' && f.pos.y < 200) { const d = Math.hypot(i.x - LX, i.z - LZ); f.c.setPose('land', 0.15); s.audio.thud(); s.rate('Landing (' + Math.round(d) + ' m off)', near(d, 0, 6, 150), 1.2); s.msg(d < 16 ? 'IN THE RING' : 'DOWN SAFE', 'good'); return s.wrap(2.2); }
-            f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); s.fx.dust(f.pos, 16, { size: 3 }); s.fail(f.pos.y > 200 ? 'Did not track far enough — flew back into the cliff' : phase === 'late' ? 'Pulled below the hard deck — the canopy never opened' : 'Never pulled', { injury: 1 }); phase = 'dead';
+            if (phase === 'canopy' && f.pos.y < 200) { const d = Math.hypot(i.x - LX, i.z - LZ); f.c.setPose('land', 0.15); s.audio.thud(); s.rate('Landing (' + Math.round(d) + ' m off)', near(d, 0, 6, 150), 1.2); s.msg(d < 16 ? 'IN THE RING' : 'DOWN SAFE', 'good'); if (d < 40) s.after(0.5, () => s.audio.cheer?.()); return s.wrap(2.2); }
+            f.c.setPose('lie', 0.05); s.audio.impact(1.5); s.engine.addShake(2); s.fx.dust(f.pos, 16, { size: 3 }); const cliffHit = f.pos.y > 200; s.fail(cliffHit ? 'Did not track far enough — flew back into the cliff' : phase === 'late' ? 'Pulled far too low — the canopy never opened' : 'Never pulled', { injury: 1, advice: cliffHit ? 'Hold SPACE to track away as soon as you are clear of the bike, and keep A/D away from the rock buttresses either side.' : PULL_ADV }); phase = 'dead';
           };
         }
       } else if (f && phase !== 'dead') {
@@ -444,14 +505,15 @@ const cliff = {
         s.hud.readout('spd', 'Altitude (m)', Math.round(alt), phase !== 'canopy' && alt < HARD + 60 ? 'warn' : phase !== 'canopy' && alt < 215 ? 'ok' : '');
         if (phase === 'sep') {
           f.poseLock = tF < 0.5; s.hud.readout('bike', 'Bike (m)', dB.toFixed(1), dB < 4 ? 'warn' : 'ok'); if (tF > 0.6) minD = Math.min(minD, dB);
-          if (tF > 0.9 && dB < 1.3 && Math.abs(f.pos.y - bp.y) < 3.2) { phase = 'dead'; f.die(); s.audio.impact(1.2); s.engine.addShake(1.5); s.fx.sparks(f.pos, 30); return s.fail('The bike came down on top of you', { injury: 0.9 }); }
+          if (tF > 0.9 && dB < 1.3 && Math.abs(f.pos.y - bp.y) < 3.2) { phase = 'dead'; f.die(); s.audio.impact(1.2); s.engine.addShake(1.5); s.fx.sparks(f.pos, 30); return s.fail('The bike came down on top of you', { injury: 0.9, advice: 'The moment you leave the lip, hold D (or A) and W to steer away from the bike — get the BIKE readout over 4 m within 2 seconds.' }); }
           if (tF > 3.2) { phase = 'track'; f.o.canTuck = true; s.rate('Clear of the bike', clamp((dB - 3) / 9), 0.8); s.objective('Hold SPACE to track away from the cliff — pull (E) at 300–160 m'); }
         } else if (phase === 'track') {
           f.windZ = f.tucked ? -24 : 0; s.hud.readout('bike', 'From the cliff (m)', Math.round(out), out > 230 ? 'ok' : ''); s.hud.bar(clamp(1 - alt / H), [1 - 300 / H, 1 - HARD / H], [1 - 200 / H, 1 - HARD / H]);
           if (inp.hit('x')) {
             s.hud.hideBar(); f.windZ = 0; pullAlt = alt;
-            if (alt < HARD) { phase = 'late'; f.o.openRate = 0.1; f.deploy('parachute'); s.msg('TOO LOW!', 'bad'); return; }
-            phase = 'canopy'; f.deploy('parachute'); f.aimOff = false; s.rate('Low pull (' + Math.round(alt) + ' m)', near(alt, HARD + 25, 30, 500), 1.6); s.bonus('Freefall: ' + Math.round(H - alt) + ' m', Math.round((H - alt) * 4)); s.msg(alt < 205 ? 'LOW AND LATE!' : 'CANOPY', 'good'); s.objective('Steer the canopy to the orange ring'); f.view('chase', { dist: 8, height: 19, up: -10, ahead: 3, fov: 64 });
+            if (alt < FATAL) { phase = 'late'; f.o.openRate = 0.1; f.deploy('parachute'); s.msg('TOO LOW!', 'bad'); return; }
+            if (alt < HARD) s.flub('Pulled below 150 m', { penalty: 0.3, advice: 'Pull (E) inside the green of the timing bar (200–150 m) — lower than that and the canopy barely opens before the trees.' });
+            phase = 'canopy'; f.deploy('parachute'); f.aimOff = false; s.rate('Low pull (' + Math.round(alt) + ' m)', alt < HARD ? 0.5 : near(alt, HARD + 30, 30, 500), 1.6); s.slowmo(0.5, 0.9); s.moment('low pull over the valley', { t0: s.t - 2.5, dur: 5, w: 2, shots: [{ type: 'orbit' }, { type: 'low', fov: 56 }, { type: 'wide', dist: 1.4 }] }); s.bonus('Freefall: ' + Math.round(H - alt) + ' m', Math.round((H - alt) * 4)); s.msg(alt < 205 ? 'LOW AND LATE!' : 'CANOPY', 'good'); s.objective('Steer the canopy to the orange ring'); f.view('chase', { dist: 8, height: 19, up: -10, ahead: 3, fov: 64 });
           }
         } else if (phase === 'canopy') { const d = Math.hypot(f.pos.x - LX, f.pos.z - LZ); s.hud.readout('bike', 'Landing zone (m)', Math.round(d), d < 16 ? 'ok' : ''); f.o.chuteV = alt < 18 ? 4 : 9; }
       }
@@ -466,4 +528,37 @@ const cliff = {
   },
 };
 
-export default [butch, lethal, dam, pointBreak, halo, spySki, cliff];
+// v2: goals (briefing + ACTION card), replay edits (cine), freeze-frames and live-cut angles
+const EXTRA = {
+  butch_cliff: {
+    goals: { shot: ['Hold W to sprint for the rim and press SPACE in the last 3 m (EDGE readout green, under 10 ft)', 'In the air, steer (WASD) the red ring into the yellow ring inside the orange buoys — the wind drags you left, so lean on D', 'From about 200 ft (HEIGHT readout), hold SPACE to straighten up feet first until the FEET FIRST meter is green'], cut: ['Landing on the rocks, a boulder, or more than 10 ft outside the deep channel'], stars: ['Take-off at the lip', 'Distance from the centre of the deep channel', 'Feet-first entry'] },
+    cine: [{ type: 'front', fov: 15, a: -0.1, b: 0.6, speed: 1 }, { type: 'track', fov: 58, a: 0.3, b: 0.85, speed: 0.55 }, { type: 'low', fov: 42, a: 0.65, b: 1.05, speed: 0.5 }],
+    freeze: { line: 'You crazy? The fall\'ll probably kill ya!', shot: 1, at: 0.45 },
+  },
+  lethal_weapon: {
+    goals: { shot: ['On the ledge, A/D until OFF LINE reads 0 ft, then SPACE to step off (wait 25 s and the jumper drags you off)', 'Steer (WASD) to keep the red ring on the X — gusts shove you sideways, watch the WIND arrow', 'Press E inside the green of the timing bar (about 60 ft up) to roll onto your back'], cut: ['Missing the airbag by more than about 4 ft and hitting the street'], stars: ['Landing in the centre of the bag', 'Back-first landing (timing of E)'] },
+    cine: [{ type: 'top', fov: 20, a: -0.1, b: 0.55, speed: 1 }, { type: 'low', fov: 64, a: 0.35, b: 1.0, speed: 0.45 }, { type: 'wide', dist: 1.3, a: 0.7, b: 1.1, speed: 0.7 }],
+  },
+  goldeneye_dam: {
+    goals: { shot: ['Press SPACE to swan-dive off the parapet', 'All the way down keep WALL between 2 and 7 m: A eases away, D closes in — the updraught keeps pushing you in', 'Press E to fire the piton when STOP HEIGHT reads 0–14 m (green); it shows up below 170 m'], cut: ['Touching the dam face', 'Firing the piton so late that the cord runs out (STOP HEIGHT under −16 m), or never firing it'], stars: ['How low the cord stops you', 'How close to the concrete you stayed'] },
+    cine: [{ type: 'top', fov: 44, a: -0.05, b: 0.5, speed: 1 }, { type: 'low', fov: 55, at: 0.9, a: 0.35, b: 1.0, speed: 0.5 }, { type: 'wide', dist: 1.5, a: 0.65, b: 1.05, speed: 0.7 }],
+  },
+  point_break: {
+    goals: { shot: ['Hold SPACE to dive after the orange smoke trail', 'Let go of SPACE before you reach him — CLOSING must be under 9 m/s or you bounce off', 'Beside him, hold E and stay glued to him (WASD) for 2 s until GRIP is full', 'Hook up before 600 m altitude — the higher, the better'], cut: ['He opens the canopy with you hanging on', 'Reaching 600 m without him: you pull the hidden reserve and the take is blown (almost no stars)'], stars: ['Hook-up height', 'Docking speed', 'Clean catch (each bounce or slip costs)'] },
+    cine: ['orbit', { type: 'track', fov: 58 }, { type: 'wide', dist: 1.2 }],
+  },
+  mi_halo: {
+    goals: { shot: ['Lightning: when a blue column appears around you, steer out of it within 1.4 s (let go of SPACE — you move faster flat)', 'Hold SPACE to dive to the red strobe, let go when close, then hold E beside him until HARNESS is full', 'Press E to pull between 1,300 and 1,000 ft — lower pays more', 'Steer the canopy onto the green ring on the glass roof'], cut: ['A direct lightning strike', 'Pulling below 400 ft, or never pulling'], stars: ['Catch', 'Low pull', 'Landing on the ring', 'Bonus: every bolt dodged'] },
+    cine: [{ type: 'track', fov: 38 }, { type: 'orbit', fov: 30 }, { type: 'wide', dist: 1.2 }],
+  },
+  spy_ski: {
+    goals: { shot: ['Ski down with A/D, carving round the rocks and the 4 gunmen (S brakes; about 80 mph off the lip scores best)', 'Ski straight off the edge of the mountain', 'In the air press SPACE to kick off the skis', 'Then wait — press E to open the Union Jack between 850 and 650 ft (ALTITUDE readout)'], cut: ['Hitting a rock or skiing off the side of the run', 'Opening below 300 ft, or never opening'], stars: ['Clean run', 'Exit speed', 'Late opening', 'Ski release'] },
+    cine: [{ type: 'wide', dist: 1.6, a: -0.1, b: 0.55, speed: 0.8 }, { type: 'low', fov: 52, a: 0.3, b: 0.9, speed: 0.5 }, { type: 'wide', dist: 2.6, side: 1, a: 0.5, b: 1.05, speed: 0.6 }],
+    freeze: { line: 'Nobody does it better.', shot: 2, at: 0.55 },
+  },
+  mi_cliff: {
+    goals: { shot: ['Ride the dirt track and up the one-plank ramp dead centre at 58–68 mph (W gas, S brake)', 'Off the lip, steer hard away from the bike (A or D) until BIKE reads over 4 m', 'Hold SPACE to track away from the cliff, then press E to pull at 300–160 m (green of the bar)', 'Steer the canopy to the orange ring in the valley'], cut: ['Falling off the side of the ramp', 'The bike landing on you', 'Pulling below 70 m, or never pulling'], stars: ['Ramp speed', 'Clear of the bike', 'Low pull', 'Landing in the ring'] },
+    cine: [{ type: 'wide', dist: 1.4, a: -0.1, b: 0.6, speed: 0.7 }, { type: 'track', fov: 56, a: 0.3, b: 0.85, speed: 0.45 }, { type: 'orbit', a: 0.55, b: 1.05, speed: 0.6 }],
+  },
+};
+export default [butch, lethal, dam, pointBreak, halo, spySki, cliff].map(d => Object.assign(d, EXTRA[d.id]));

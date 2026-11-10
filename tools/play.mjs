@@ -6,7 +6,7 @@ const b = await puppeteer.launch({ executablePath: '/usr/local/bin/chromium', he
 for (const id of ids) {
   const p = await b.newPage(); await p.setViewport({ width: 1280, height: 720 }); const errs = [];
   p.on('console', m => { const t = m.text(); if ((m.type() === 'error' || t.startsWith('[ss]')) && !t.includes('404')) errs.push(t.slice(0, 260)); if (m.type() === 'warn' && t.includes('missing')) errs.push(t); }); p.on('pageerror', e => errs.push('PAGEERROR ' + String(e.stack || e.message).slice(0, 500)));
-  await p.goto(`http://localhost:5173/?stunt=${id}&auto=1&${mode}=1&speed=${speed}`, { waitUntil: 'domcontentloaded' });
+  await p.goto(`${process.env.BASE || 'http://localhost:5173/'}?stunt=${id}&auto=1&${mode}=1&speed=${speed}${process.env.QS || ""}`, { waitUntil: 'domcontentloaded' });
   let st = null, si = 0; const rs = new Set(); const t0 = Date.now();
   while (Date.now() - t0 < 90000) {
     await new Promise(r => setTimeout(r, 120)); try { st = await p.evaluate(() => window.__state?.()); } catch { continue; }

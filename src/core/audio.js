@@ -73,6 +73,8 @@ export class Audio {
   gun() { this._noise(0.18, { f: 3000, f2: 300, g: 0.7 }); this._tone(0.1, { f: 200, f2: 50, g: 0.5 }); this._noise(0.6, { f: 800, f2: 200, g: 0.15, when: 0.05 }); }
   tick() { this._tone(0.03, { f: 1500, type: 'square', g: 0.12 }); }
   horn(f = 300) { this._tone(0.7, { f, type: 'sawtooth', g: 0.18 }); this._tone(0.7, { f: f * 1.26, type: 'sawtooth', g: 0.14 }); }
+  // a musical car horn (e.g. the opening bars of 'Dixie', 1859, public domain): semitone offsets from root
+  tune(notes = [7, 4, 0, 0, 0, 2, 4, 5, 7, 7, 7, 4], root = 392, step = 0.16) { notes.forEach((n, i) => { const f = root * Math.pow(2, n / 12); this._tone(step * 0.9, { f, type: 'sawtooth', g: 0.13, when: i * step }); this._tone(step * 0.9, { f: f * 1.5, type: 'square', g: 0.05, when: i * step }); }); }
   bell() { this._tone(1.5, { f: 620, type: 'sine', g: 0.3 }); this._tone(1.2, { f: 1243, type: 'sine', g: 0.12 }); }
   megaphone() { this._noise(0.08, { f: 2200, type: 'bandpass', q: 6, g: 0.25 }); this._tone(0.2, { f: 1760, f2: 1500, type: 'square', g: 0.04, when: 0.02 }); }
   // the crew applauds a wrap

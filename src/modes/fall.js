@@ -8,6 +8,8 @@ import { model } from '../core/assets.js';
 //   camSnap:false (blend from the previous camera, e.g. Drive -> Fall hand-over), aim {r,color,ref,max} (drop-shadow ring on the ground directly below), waterY (water surface counts as ground), groundY (fallback), frozen (start held; call launch()), bounds(p), wind (streaks).
 // State: pos vel(steer+vertical) carry alt speed tucked chute done dead frozen control poseLock termK steerK windX windZ.
 // Hooks: onLand(info{speed,x,z,chute,water}) onHit(sol) onDeploy().
+// v2: path(dur) predicts the fall for s.cut(); cine(type, dur, o) = timed live cut; launch()/deploy() auto-mark low-weight replay moments
+//   ('the drop' w0.9, 'canopy' w1.1; autoMoments:false disables, deployShots sets the canopy edit); hitAdvice / groundAdvice for the default fails.
 export const FALL_VIEWS = {
   chase: { dist: 7.5, height: 5.5, side: 0, yaw: 0, ahead: 0, up: -1.5, stiff: 9, fov: 68, ground: false },
   top: { dist: 3.2, height: 12, side: 0, yaw: 0, ahead: 2.5, up: -4, stiff: 9, fov: 70, ground: false },
@@ -29,12 +31,29 @@ export class Fall {
   ground() { let g = this.s.course.height(this.pos.x, this.pos.z, this.pos.y + 1); if (!(g > -1e5)) g = this.o.groundY; if (this.o.waterY != null && g < this.o.waterY) g = this.o.waterY; return g; }
   // switch camera view smoothly (name from FALL_VIEWS and/or overrides)
   view(name, over = {}) { this.s.cam.set({ ...(FALL_VIEWS[name] || {}), ...over }); return this; }
+  // v2: predicted path [{t,p}] (no steering input) for live cinematic cuts — s.cut(f.path(2), 'wide')
+  path(dur = 3, dt = 0.1) {
+    const s = this.s, o = this.o, p = this.pos, pts = [{ t: s.t, p: p.clone() }]; if (this.frozen || this.done) { pts.push({ t: s.t + dur, p: p.clone() }); return pts; }
+    const term = this.chute ? o.chuteV : (this.tucked ? o.tuck : o.spread) * (this.termK ?? 1), g = this.ground(), cd = this.chute ? 1.5 : o.carryDrag;
+    let x = p.x, y = p.y, z = p.z, vy = -this.vel.y, cx = this.carry.x, cz = this.carry.z; const vx = this.vel.x, vz = this.vel.z;
+    for (let t = dt; t <= dur + 1e-6; t += dt) {
+      if (vy > term && this.chute) vy = term + (vy - term) * Math.exp(-o.openRate * dt); else vy += o.grav * (1 - (vy > 0 ? vy * vy / (term * term) : 0)) * (vy > term ? 2.2 : 1) * dt;
+      const k = Math.exp(-cd * dt); cx *= k; cz *= k; x += (vx + cx) * dt; z += (vz + cz) * dt; y = Math.max(g, y - vy * dt); pts.push({ t: s.t + t, p: V3(x, y, z) });
+    }
+    return pts;
+  }
+  // live cut to a cinematic angle for `dur` sim-seconds (the player keeps control), then back to the game camera
+  cine(type = 'wide', dur = 1.5, o = {}) { const s = this.s, done = s.cut(this.path(dur + 1), type, { subject: this.c.root, ...o }); s.after(dur, done); return done; }
   // release a frozen performer with an initial velocity (vyUp = upward m/s)
-  launch(vx = 0, vyUp = 0, vz = 0) { this.frozen = false; this.carry.set(vx, 0, vz); this.vel.set(0, vyUp, 0); return this; }
+  launch(vx = 0, vyUp = 0, vz = 0) { this.frozen = false; this.carry.set(vx, 0, vz); this.vel.set(0, vyUp, 0); this._dropMoment(); return this; }
+  // v2: the drop and the canopy are marked as (low-weight) replay moments; stunts mark their own signature beat with w >= 2
+  _dropMoment() { const s = this.s; if (this._dropM || !s.started || this.o.autoMoments === false) return; this._dropM = s.moment('the drop', { t0: s.t - 0.5, dur: 3.4, w: 0.9 }); }
   deploy(modelId = 'parachute') {
     if (this.chute || this.dead || this.done) return false; this.chute = true; this.chuteT = 0; this.tucked = false; this.s.audio.whoosh(1.4); this.s.audio.thud(); this.s.engine.addShake(0.7);
     const m = this.canopy = model(modelId, { height: this.o.canopyH ?? 7 }); m.position.y = this.o.canopyY ?? 1.5; m.scale.multiplyScalar(0.05); this.c.root.add(m);
-    this.c.setPose('hang', 0.3); this.c.tumble(0, 0, 0); this.c.spinAng.set(0, 0, 0); this.poseLock = true; this.onDeploy?.(); return true;
+    this.c.setPose('hang', 0.3); this.c.tumble(0, 0, 0); this.c.spinAng.set(0, 0, 0); this.poseLock = true;
+    if (this.o.autoMoments !== false && this.s.started) this.s.moment('canopy', { t0: this.s.t - 1.8, dur: 4, w: 1.1, shots: this.o.deployShots });
+    this.onDeploy?.(); return true;
   }
   addBody(char, o = {}) {
     const c = this.s.char(char, { x: o.x || 0, y: o.y ?? this.pos.y, z: o.z || 0, heading: o.heading ?? 0 }); c.setPose(o.pose || 'freefall', 0);
@@ -46,6 +65,7 @@ export class Fall {
     if (!s.started && o.holdUntilAction !== false) return;
     this._bodies(dt);
     if (this.frozen || this.done) { if (this.done) s.audio.set('wind', 'wind', 0.3, 0.05); return; }
+    this._dropMoment();
     const live = s.started && !this.dead && this.control && !s.ended;
     this.tucked = live && inp.a && !this.chute && o.canTuck !== false;
     const term = this.chute ? o.chuteV : (this.tucked ? o.tuck : o.spread) * (this.termK ?? 1);
@@ -63,7 +83,7 @@ export class Fall {
     if (!this.dead && !this.chute && !this.poseLock) { const want = this.tucked ? (o.tuckPose || 'track') : (o.pose || 'freefall'); if (this._pose !== want) { this._pose = want; ch.setPose(want, 0.3); } ch.heading = damp(ch.heading, this.yaw, 6, dt); ch.cur.body[1] += (clamp(-(this.vel.x * cs - this.vel.z * sn) / 30, -0.5, 0.5) - ch.cur.body[1]) * 0.1; }
     if (this.chute && !this.dead) { ch.heading = damp(ch.heading, this.yaw, 4, dt); if (this.canopy) { this.canopy.rotation.z = damp(this.canopy.rotation.z, clamp(-(this.vel.x * cs - this.vel.z * sn) / 40, -0.3, 0.3), 3, dt); this.canopy.rotation.x = damp(this.canopy.rotation.x, clamp((this.vel.x * sn + this.vel.z * cs) / 40, -0.3, 0.3), 3, dt); } }
     // solids (cliff ledges, antenna...)
-    s.course.hit(p.x, p.y + 0.9, p.z, 0.45, 0.8, 0.45, sol => { if (sol.dead) return; if (sol.type === 'trigger') { if (!sol.fired) { sol.fired = true; sol.on?.(this, sol); } return; } if (this.onHit?.(sol) === true) return true; if (!this.dead) { this.die(); s.audio.impact(1); s.engine.addShake(1); s.fail(sol.msg || 'Clipped the scenery on the way down', { injury: 0.85 }); } return true; });
+    s.course.hit(p.x, p.y + 0.9, p.z, 0.45, 0.8, 0.45, sol => { if (sol.dead) return; if (sol.type === 'trigger') { if (!sol.fired) { sol.fired = true; sol.on?.(this, sol); } return; } if (this.onHit?.(sol) === true) return true; if (!this.dead) { this.die(); s.audio.impact(1); s.engine.addShake(1); s.fail(sol.msg || 'Clipped the scenery on the way down', { injury: 0.85, advice: sol.advice || o.hitAdvice || 'Steer away from the walls early with WASD — they are closer than they look from above.' }); } return true; });
     // ground
     const g = this.ground();
     if (this.aim) { const a = p.y - g; this.aim.visible = a > 1.5 && !this.dead && !this.aimOff; this.aim.position.set(p.x, g + 0.12, p.z); this.aim.scale.setScalar(clamp(a / (o.aim.ref ?? 45), 1, o.aim.max ?? 5)); }
@@ -71,7 +91,7 @@ export class Fall {
       p.y = g; const speed = -this.vel.y, water = o.waterY != null && g <= o.waterY + 1e-6; this.done = true; this.vel.set(0, 0, 0); this.carry.set(0, 0, 0); this.tucked = false;
       if (this.canopy) this.canopy.visible = false; if (this.aim) this.aim.visible = false; ch.tumble(0, 0, 0); s.cam.fovKick = 0;
       if (this.onLand) this.onLand({ speed, x: p.x, z: p.z, chute: this.chute, water });
-      else if (speed > 11 && !this.dead) { this.dead = true; ch.setPose('lie', 0.1); ch.spinAng.set(0, 0, 0); s.audio.impact(1.2); s.engine.addShake(1.5); s.fail('Hit the ground at ' + Math.round(speed * 3.6) + ' km/h', { injury: 1 }); }
+      else if (speed > 11 && !this.dead) { this.dead = true; ch.setPose('lie', 0.1); ch.spinAng.set(0, 0, 0); s.audio.impact(1.2); s.engine.addShake(1.5); s.fail('Hit the ground at ' + Math.round(speed * 3.6) + ' km/h', { injury: 1, advice: o.groundAdvice || 'You hit the ground at freefall speed — open the parachute (E) inside the green zone of the timing bar.' }); }
       else { ch.spinAng.set(0, 0, 0); ch.setPose('land', 0.12); }
       return;
     }

@@ -99,7 +99,11 @@ export class Drive {
     while (t < 6) { t += dt; x += vx * dt; z += vz * dt; vy -= G * dt * (this.gravK ?? 1); y += vy * dt; pts.push({ t: s.t + t, p: V3(x, y, z) }); const g = s.course.height(x, z, y + 0.9); if (t > 0.15 && g > -1e5 && y <= g) break; if (y < s.course.kill) break; }
     if (t < (this.cineMin ?? 1.0)) return;
     this._mom = s.moment('jump', { t0: s.t - 0.7, dur: t + 1.3, w: t });
-    if (this.liveCine !== false) this._uncut = s.cut(pts, s.def.liveShot || (t > 1.9 ? 'low' : 'wide'));
+    if (this.liveCine === false) return;
+    // two angles for a big jump: ground camera on the way up, then a tracking/wide shot for the landing
+    const L = s.def.liveShots || [s.def.liveShot || (t > 1.9 ? 'low' : 'wide'), t > 1.4 ? 'track' : null];
+    this._uncut = s.cut(pts, L[0]);
+    if (L[1]) s.after(t * 0.5, () => { if (this._uncut && !this.grounded && !this.dead) { this._uncut(); this._uncut = s.cut(pts, L[1]); } });
   }
   _land(g, px, pz) {
     if (this._mom) { this._mom.t1 = this.s.t + 1.0; this._mom = null; }
@@ -216,7 +220,7 @@ export class Movers {
       const close = dir > 0 ? e.v + (vz || 0) : -e.v - (vz || 0); if (gap > 2 && close <= 0.3) return; // pulling away
       obs.push({ x0: x0 - e.hw - M, x1: x1 + e.hw + M, gap, vAlong: dir > 0 ? -(vz || 0) : (vz || 0) });
     };
-    for (const so of s.course.solids) { if (so.dead || so === e.sol || so.type === 'trigger' || so.soft || so.ghost) continue; if (so.y1 < y0 + 0.3 || so.y0 > y1 - 0.2) continue; consider(so.x0, so.x1, so.z0, so.z1, so.vz); }
+    for (const so of s.course.solids) { if (so.dead || so === e.sol || so.type === 'trigger' || so.type === 'break' || so.soft || so.ghost) continue; if (so.y1 < y0 + 0.3 || so.y0 > y1 - 0.2) continue; consider(so.x0, so.x1, so.z0, so.z1, so.vz); }
     if (e.o.avoidPlayer && pl && !pl.dead) { const w = pl.k.w / 2, l = pl.k.len / 2; consider(pl.pos.x - w, pl.pos.x + w, pl.pos.z - l, pl.pos.z + l, pl.vel.z); }
     if (!obs.length) { e.ox = (e.ox || 0) * Math.exp(-1.2 * dt); return; }
     const reach = e.o.swerve ?? 4.5, lo = e.o.xmin ?? -1e9, hi = e.o.xmax ?? 1e9, cur = e.x; let best = null, bc = 1e9;

@@ -3,13 +3,16 @@ import { clamp, damp, V3, rnd } from '../world/stage.js';
 
 // Hang on / climb. The performer clings to an anchor (wall, aircraft, truck, rope).
 // Move with WASD (optional), hold SPACE to BRACE against telegraphed hits. Bracing and moving burn stamina; losing all grip = fall.
+// v2 leeway: an unbraced hit costs grip (x hitK) and logs a small flub, but the first time grip would hit zero you get a
+// LAST CHANCE (grip is saved at ~15% and recovers faster while you rest). Only the next empty grip lets go.
+// Options: braceAdvice / fallAdvice (director notes), hitK, hitPenalty, ease (stamina drain multiplier), autoMoments.
 // Movement is either free inside `range:{u:[a,b],v:[a,b]}` or along `rail:[[u,v,w?],...]` (polyline; input is projected on the current segment,
 // w = offset out of the plane). Planes: 'xy' (u=+X, v=+Y), 'xz' (u=+X, v=-Z), 'zy' (u=-Z i.e. forward, v=+Y).
 // flipU:true mirrors A/D (for cameras that look back at the performer).
 // The mode does NOT set the camera: use s.cam.follow(g.camTarget(heading), {...}).
 export class Grip {
   constructor(s, o = {}) {
-    this.s = s; this.o = o = { speed: 1.6, stamina: 1, drainMove: 0.055, drainBrace: 0.16, drainIdle: 0.0, regen: 0.11, warn: 0.75, range: null, pose: 'cling', movePose: 'climb', bracePose: 'brace', slipPose: 'hang1', plane: 'xy', hud: true, ...o };
+    this.s = s; this.o = o = { speed: 1.6, stamina: 1, drainMove: 0.055, drainBrace: 0.16, drainIdle: 0.0, regen: 0.11, warn: 0.9, range: null, pose: 'cling', movePose: 'climb', bracePose: 'brace', slipPose: 'hang1', plane: 'xy', hud: true, hitK: 0.8, hitPenalty: 0.05, ease: 0.78, gripRegen: 0.05, tiredDrain: 0.09, autoMoments: true, ...o };
     this.anchor = o.anchor || s.scene; this.c = s.char(o.char || 'ch_stunt', { parent: this.anchor }); this.c.heading = o.heading ?? 0; this.c.setPose(o.pose, 0);
     this.u = o.u ?? 0; this.v = o.v ?? 0; this.w = 0; this.off = V3(...(o.offset || [0, 0, 0])); this.grip = 1; this.stam = o.stamina; this.braced = false; this.events = []; this.hazards = []; this.dead = false; this.done = false; this.control = true; this.moving = false; this.t = 0;
     this.kick = V3(); this.tired = false; this.seg = 0;
@@ -30,11 +33,23 @@ export class Grip {
   // seconds until the next hit that has to be braced (Infinity if none) - handy for bots
   incoming() { let m = Infinity; for (const e of this.events) if (!e.fired) m = Math.min(m, e.t - this.t); return m; }
   // schedule a hit that must be braced. Returns event.
-  gust(inSec, o = {}) { const e = { t: this.t + inSec, dur: o.dur ?? 0.5, power: o.power ?? 0.34, label: o.label || 'BRACE!', fired: false, done: false, on: o.on, onHit: o.onHit, onHeld: o.onHeld, shake: o.shake ?? 0.8, sfx: o.sfx || 'whoosh', failLabel: o.failLabel, kick: o.kick }; this.events.push(e); return e; }
+  gust(inSec, o = {}) { const e = { t: this.t + inSec, dur: o.dur ?? 0.5, power: o.power ?? 0.34, label: o.label || 'BRACE!', fired: false, done: false, on: o.on, onHit: o.onHit, onHeld: o.onHeld, shake: o.shake ?? 0.8, sfx: o.sfx || 'whoosh', failLabel: o.failLabel, kick: o.kick, advice: o.advice, flub: o.flub }; this.events.push(e); return e; }
   // moving hazard in (u,v) space. obj (optional, parented to the anchor) is moved with it.
-  hazard(o) { const h = { u: o.u, v: o.v, vu: o.vu || 0, vv: o.vv || 0, r: o.r ?? 0.6, power: o.power ?? 0.3, obj: o.obj, life: o.life ?? 30, on: o.on, msg: o.msg, upd: o.upd, w: o.w ?? 0, spin: o.spin || 0 }; this.hazards.push(h); if (h.obj) this.local(h.u, h.v, h.w, h.obj.position); return h; }
-  lose(power, why) { if (this.dead || this.done) return; this.grip = clamp(this.grip - power); this.stats.hits++; this.s.engine.addShake(0.9); this.s.engine.hurt(0.35); this.s.audio.impact(0.6); this.s.msg(why || 'SLIPPING!', 'bad'); if (this.o.slipPose) this.c.setPose(this.o.slipPose, 0.1); this._slipT = 0.5; this.onSlip?.(power); if (this.grip <= 0) this.fall(); }
-  fall() { if (this.dead) return; this.dead = true; this.s.hud.prompt(''); this.s.audio.whoosh(1.2); if (this.onFall?.() === true) return; this.detach(this.carry); this.s.fail(this.o.fallMsg || 'Lost your grip', { injury: this.o.injury ?? 0.8 }); }
+  hazard(o) { const h = { u: o.u, v: o.v, vu: o.vu || 0, vv: o.vv || 0, r: o.r ?? 0.6, power: o.power ?? 0.3, obj: o.obj, life: o.life ?? 30, on: o.on, msg: o.msg, upd: o.upd, w: o.w ?? 0, spin: o.spin || 0, advice: o.advice }; this.hazards.push(h); if (h.obj) this.local(h.u, h.v, h.w, h.obj.position); return h; }
+  // an unbraced hit / slip. advice = director's note for the flub; opt.flub === false for scripted knocks that are not the player's fault
+  lose(power, why, advice, opt = {}) {
+    if (this.dead || this.done) return; const s = this.s, o = this.o;
+    this.grip = clamp(this.grip - power * (opt.raw ? 1 : o.hitK)); this.stats.hits++; s.engine.addShake(0.9); s.engine.hurt(0.35); s.audio.impact(0.6); s.msg(why || 'SLIPPING!', 'bad'); if (o.slipPose) this.c.setPose(o.slipPose, 0.1); this._slipT = 0.5; this.onSlip?.(power);
+    if (opt.flub !== false) { const r = why ? why.replace(/!+$/, '').toLowerCase().replace(/^./, c => c.toUpperCase()) : 'Took a hit unbraced'; s.flub(r, { penalty: opt.penalty ?? o.hitPenalty, advice: advice || o.braceAdvice || 'Hold SPACE as soon as the yellow warning is called and keep it held until the hit lands — then let go and rest.', quiet: this.stats.hits > 1 }); }
+    if (this.grip <= 0) this._empty();
+  }
+  // grip ran out: first time is a last-chance save, second time you let go
+  _empty() {
+    const s = this.s; if (this.lastChance || this.o.lastChance === false) return this.fall();
+    this.lastChance = true; this.grip = 0.16; this._lastT = 3; s.msg('LAST CHANCE — HANG ON!', 'huge'); s.audio.say?.('Hang on! Hang on!'); s.hud.director?.('Hang on!'); s.engine.flash?.(0.25);
+    s.flub('Nearly lost your grip', { penalty: 0.1, quiet: true, advice: this.o.braceAdvice || 'Your grip bar was empty. Brace every call with SPACE, and rest (no keys) whenever nothing is coming so grip and stamina recover.' });
+  }
+  fall() { if (this.dead) return; this.dead = true; this.s.hud.prompt(''); this.s.audio.whoosh(1.2); if (this.onFall?.() === true) return; this.detach(this.carry); this.s.fail(this.o.fallMsg || 'Lost your grip', { injury: this.o.injury ?? 0.8, advice: this.o.fallAdvice || 'Brace (hold SPACE) only when a warning is called, let go straight after, and rest with no keys pressed when your stamina bar turns low.' }); }
   // release the performer into the world as a tumbling body (vel = world velocity to inherit)
   detach(vel) { const r = this.c.root; r.getWorldPosition(this._w); this.s.scene.attach(r); this.free = { v: vel ? vel.clone() : V3() }; this.c.setCycle('flail', 1); this.c.tumble(4, 1, 2); }
   update(dt) {
@@ -55,9 +70,10 @@ export class Grip {
     } else if (o.range && (mx || my)) { const R = o.range, u0 = this.u, v0 = this.v; this.u = clamp(this.u + mx * sp * dt, R.u[0], R.u[1]); this.v = clamp(this.v + my * sp * (o.vK ?? 1) * dt, R.v[0], R.v[1]); this.moving = this.u !== u0 || this.v !== v0; }
     // stamina
     const drain = this.braced ? o.drainBrace : this.moving ? o.drainMove : -o.regen + o.drainIdle;
-    this.stam = clamp(this.stam - drain * dt * (drain > 0 ? (this.drainK ?? 1) : 1), 0, o.stamina);
-    if (this.stam <= 0.001 && !this.braced) { this.grip = clamp(this.grip - (o.tiredDrain ?? 0.12) * dt); if (this.grip <= 0) return this.fall(); }
-    if (this.grip < 1 && !this.braced && !this.moving && this.stam > 0.3) this.grip = clamp(this.grip + (o.gripRegen ?? 0.035) * dt);
+    this.stam = clamp(this.stam - drain * dt * (drain > 0 ? (this.drainK ?? 1) * o.ease : 1), 0, o.stamina);
+    if (this._lastT > 0) this._lastT -= dt;
+    if (this.stam <= 0.001 && !this.braced) { this.grip = clamp(this.grip - o.tiredDrain * dt); if (this.grip <= 0) { this._empty(); if (this.dead) return; } }
+    if (this.grip < 1 && !this.braced && !this.moving && (this.stam > 0.3 || this._lastT > 0)) this.grip = clamp(this.grip + o.gripRegen * (this._lastT > 0 ? 2.5 : 1) * dt);
     // scheduled hits
     let warn = null;
     for (const e of this.events) {
@@ -65,20 +81,22 @@ export class Grip {
       if (tt < o.warn && tt > 0 && (!warn || e.t < warn.t)) warn = e;
       if (tt <= 0 && !e.fired) {
         e.fired = true; this.stats.events++; s.audio[e.sfx]?.(1.3); s.engine.addShake(e.shake); if (e.kick) this.kick.set(e.kick[0] || 0, e.kick[1] || 0, e.kick[2] || 0); e.on?.(e); e.ok = this.braced;
-        if (this.braced) { this.stats.braced++; s.msg('HELD ON', 'small'); e.onHeld?.(e); } else { e.onHit?.(e); this.lose(e.power, e.failLabel); if (this.dead) return; }
+        if (this.braced) { this.stats.braced++; s.msg('HELD ON', 'small'); e.onHeld?.(e); if (o.autoMoments && e.power >= 0.3) s.moment(e.label.replace(/!+$/, ''), { t0: s.t - 1.4, dur: 2.8, w: 0.5 + e.power }); }
+        else { e.onHit?.(e); this.lose(e.power, e.failLabel, e.advice, { flub: e.flub }); if (this.dead) return; }
       }
       if (tt < -e.dur) e.done = true;
     }
     if (this.events.length > 24) this.events = this.events.filter(e => !e.done);
     if (warn && this._warned !== warn) { s.audio.tick(); this._warned = warn; } if (!warn) this._warned = null;
     this.warning = warn;
-    s.hud.prompt(warn ? `<span style="color:#ffcf40">${warn.label}</span> &nbsp;hold <kbd>SPACE</kbd>` : this.tired ? '<span style="color:#ff6a5a">EXHAUSTED</span> — let go of SPACE and rest' : (this.promptText || ''));
+    const lastWarn = this.grip < 0.3 && !this.done;
+    s.hud.prompt(warn ? `<span style="color:#ffcf40">${warn.label}</span> &nbsp;hold <kbd>SPACE</kbd> now` : this.tired ? '<span style="color:#ff6a5a">EXHAUSTED</span> — let go of every key and rest' : lastWarn ? '<span style="color:#ff6a5a">LAST CHANCE</span> — grip almost gone: stop, release every key and let it recover' : (this.promptText || ''));
     if (this.braced && !warn && !this.events.some(e => e.fired && !e.done)) this.stats.wasted += dt;
     // hazards
     for (let i = this.hazards.length - 1; i >= 0; i--) {
       const h = this.hazards[i]; h.u += h.vu * dt; h.v += h.vv * dt; h.life -= dt; h.upd?.(h, dt);
       if (h.obj) { this.local(h.u, h.v, h.w, h.obj.position); if (h.spin) h.obj.rotation.z += h.spin * dt; }
-      if (!h.hit && Math.hypot(h.u - this.u, h.v - (this.v + (o.hazY ?? 0.9))) < h.r) { h.hit = true; h.on?.(h); if (h.power) this.lose(h.power, h.msg); if (this.dead) return; }
+      if (!h.hit && Math.hypot(h.u - this.u, h.v - (this.v + (o.hazY ?? 0.9))) < h.r) { h.hit = true; h.on?.(h); if (h.power) this.lose(h.power, h.msg, h.advice); if (this.dead) return; }
       if (h.life <= 0) { h.obj && (h.obj.visible = false); this.hazards.splice(i, 1); }
     }
     // pose

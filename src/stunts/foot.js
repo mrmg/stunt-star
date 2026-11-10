@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Run } from '../modes/run.js';
 import { clamp, near, smooth, V3, rnd, sr, srand, lerp, damp } from '../world/stage.js';
-import { K, CTL, sign } from './common.js';
+import { K, CTL, sign, pursuer } from './common.js';
 
 // ---------------------------------------------------------------------------------------------
 // shared helpers
@@ -20,13 +20,22 @@ function rope(s, { r = 0.04, color = 0xd8d0b8 } = {}) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 1, 6), s.mat({ color, rough: 0.8 })); m.castShadow = true; s.scene.add(m); const up = V3(0, 1, 0), d = V3();
   m.set = (a, b) => { d.subVectors(b, a); const L = Math.max(0.01, d.length()); m.position.copy(a).addScaledVector(d, 0.5); m.scale.set(1, L, 1); m.quaternion.setFromUnitVectors(up, d.multiplyScalar(1 / L)); }; return m;
 }
-// scripted second runner that follows the course (target ahead or pursuer behind). x: z => x
-function runner(s, id, { x = () => 0, z = 0, cadence = 2.1 } = {}) {
-  const c = s.char(id, { x: x(z), z }), p = c.root.position; p.y = s.course.height(p.x, p.z); const st = { c, p, v: 0, air: false, hop: 0 };
+// scripted runner AHEAD of the player (a target). x: z => x. It leaps every gap in the course, and acts = [{z, act:'jump'|'slide'}]
+// are performed visibly as it reaches them, so it goes over / under every obstacle on its line instead of through it.
+// (For people chasing the player use pursuer() from common.js — it replays the player's own route.)
+function runner(s, id, { x = () => 0, z = 0, cadence = 2.1, acts = [] } = {}) {
+  const c = s.char(id, { x: x(z), z }), p = c.root.position; p.y = s.course.height(p.x, p.z); const st = { c, p, v: 0, air: false, hop: 0, off: 0, hv: 0, sl: 0, acts: acts.map(a => ({ ...a })) };
+  st.next = (ahead = 14) => st.acts.find(a => !a.done && a.z < p.z && a.z > p.z - ahead);
   st.update = dt => {
-    p.z -= st.v * dt; p.x = x(p.z); const g = s.course.height(p.x, p.z), base = s.course.base(p.x, p.z);
-    if (g > base + 0.3) { if (st.air) { st.air = false; } p.y = g > p.y ? g : damp(p.y, g, 9, dt); st.hop = 0; if (st.v > 0.5) c.setCycle('run', st.v * cadence, clamp(st.v / 8.5, 0.5, 1.1)); else if (c.cycle) c.setPose('ready', 0.2); }
-    else { if (!st.air) { st.air = true; c.setPose('leap', 0.12); } st.hop += dt; p.y += (2.4 - st.hop * 13) * dt; }
+    p.z -= st.v * dt; p.x = x(p.z); const g = s.course.height(p.x, p.z, p.y + 1.5), base = s.course.base(p.x, p.z);
+    for (const a of st.acts) if (!a.done && st.v > 1 && p.z < a.z + (a.act === 'slide' ? 2.4 : 1.6)) { a.done = true; if (a.act === 'slide') { st.sl = 0.7; c.setPose('slide', 0.08); s.audio.whoosh(0.25); } else { st.hv = a.v ?? 5.4; st.off = 0.01; c.setPose('leap', 0.1); } }
+    if (g > base + 0.3) {
+      if (st.air) st.air = false; st.hop = 0;
+      if (st.off > 0) { st.hv -= 21 * dt; st.off = Math.max(0, st.off + st.hv * dt); if (!st.off) st.hv = 0; p.y = g + st.off; } else p.y = g > p.y ? g : damp(p.y, g, 9, dt);
+      if (st.sl > 0) { st.sl -= dt; if (st.sl <= 0) c.setCycle('run', 0); }
+      if (st.off <= 0 && st.sl <= 0) { if (st.v > 0.5) c.setCycle('run', st.v * cadence, clamp(st.v / 8.5, 0.5, 1.1)); else if (c.cycle) c.setPose('ready', 0.2); }
+    }
+    else { if (!st.air) { st.air = true; st.off = 0; st.hv = 0; c.setPose('leap', 0.12); } st.hop += dt; p.y += (2.4 - st.hop * 13) * dt; }
   };
   return st;
 }
@@ -82,10 +91,11 @@ const raiders = {
     // the boulder
     const R = 2.45, ball = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 18), s.mat({ tex: 'tx_rock', rep: 2, color: 0xb0a898 })); ball.castShadow = true; ball.position.set(0, H + R + 1, 14.5); s.scene.add(ball);
     let bz = 14.5, bv = 0, by = H + R + 1, rolling = false, swapQ = 0, t0 = 0, minGap = 99, out = false, jam = false, shakeT = 0, done = false; const E0 = { sun: s.sun.intensity, hemi: s.hemi.intensity, fog: s.scene.fog.color.clone(), dens: s.scene.fog.density, env: s.scene.environmentIntensity }, dayFog = new THREE.Color(0xa8c0a0);
-    const grab = q => { swapQ = q; rolling = true; t0 = s.t; run.speedK = 1; s.hud.hideBar(); s.hud.prompt(''); idol.position.set(0.34, 1.05, -0.28); idol.rotation.y = 0; idol.scale.multiplyScalar(0.6); run.c.root.add(idol); s.rate('Idol swap', q, 1); s.msg(q > 0.8 ? 'PERFECT SWAP' : q > 0.35 ? 'GOT IT' : 'CLUMSY!', q > 0.35 ? 'good' : 'bad'); s.audio.thud(); s.engine.addShake(0.8); s.objective('RUN! Sprint for daylight'); s.audio.set('rumble', 'rumble', 0.7, 0.5); };
-    s.rate('Footwork', 1, 1.5); run.onStumble = () => { s.rate('Footwork', 1 - run.stats.stumbles * 0.34, 1.5); s.msg('STUMBLE!', 'bad'); s.sz = Math.round(run.pos.z); };
+    const grab = q => { swapQ = q; rolling = true; t0 = s.t; run.speedK = 1; s.hud.hideBar(); s.hud.prompt(''); idol.position.set(0.34, 1.05, -0.28); idol.rotation.y = 0; idol.scale.multiplyScalar(0.6); run.c.root.add(idol); s.rate('Idol swap', q, 1); if (q < 0.35) s.flub(q > 0 ? 'Fumbled the idol swap' : 'Never swapped the idol', { penalty: 0.08, advice: 'Press E when the swinging needle is dead centre of the bar — wait for it, it comes round every two seconds.' }); s.msg(q > 0.8 ? 'PERFECT SWAP' : q > 0.35 ? 'GOT IT' : 'CLUMSY!', q > 0.35 ? 'good' : 'bad'); s.audio.thud(); s.engine.addShake(0.8); s.objective('RUN! Sprint for daylight'); s.audio.set('rumble', 'rumble', 0.7, 0.5); };
+    s.rate('Footwork', 1, 1.5); run.onStumble = () => { s.rate('Footwork', 1 - run.stats.stumbles * 0.25, 1.5); s.msg('STUMBLE!', 'bad'); s.sz = Math.round(run.pos.z); const w = warn.find(([wz]) => Math.abs(run.pos.z - wz) < 3), beam = w && w[1] === 'BEAM';
+      s.flub(beam ? 'Clipped a beam' : 'Tripped on the rubble', { penalty: 0.05, advice: beam ? 'Slide (S) the moment the BEAM warning shows — about 4 m before the beam.' : 'Cross early (A/D) when the ROCKS warning shows — it tells you which side is clear.' }); };
     run.onGrab = () => { s.rate('Footwork', (s.scores.get('Footwork')?.v ?? 1) - 0.3, 1.5); };
-    run.onLand = i => { if (run.pos.y < -2) { run.die('Fell into the spike pit', 0.8, false); run.c.setPose('lie', 0.1); return true; } };
+    run.onLand = i => { if (run.pos.y < -2) { run.die('Fell into the spike pit', 0.8, false, 'Jump (SPACE) about a metre before each PIT and hold SPACE for the full distance — the warning counts you in.'); run.c.setPose('lie', 0.1); return true; } };
     s.onAction = () => s.objective('Swap the idol — press E on the centre mark'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), gap: +(bz - R - run.pos.z).toFixed(1), st: run.stats.stumbles, sz: s.sz });
     s.onUpdate((dt, t) => {
       for (const p of torches) if (Math.abs(p.z - run.pos.z) < 45) s.fx.flame(p, 0.45);
@@ -95,16 +105,16 @@ const raiders = {
       // boulder drops then rolls, rubber-banded so it always fills the frame
       const gap = bz - R - run.pos.z;
       if (by > R) { by = Math.max(R, by - (4 + (t - t0) * 22) * dt); if (by === R) { s.audio.impact(1); s.engine.addShake(1.2); s.fx.dust(V3(0, 0.2, bz), 30, { spread: 4, size: 3 }); } }
-      else if (!jam) { const want = 8.55 + clamp((gap - (6.5 + swapQ * 3.5)) * 0.3, 0, 2.2) - (t - t0 < 2.4 ? 3.2 : 0); bv = damp(bv, want, 2.5, dt); bz -= bv * dt; ball.rotation.x -= bv * dt / R; if (Math.random() < 0.5) s.fx.dust(V3(rnd(-2, 2), 0.1, bz - 1), 1, { size: 2.2, a: 0.25, color: [0.5, 0.45, 0.38] }); }
+      else if (!jam) { const want = 8.55 + clamp((gap - (6.5 + swapQ * 3.5)) * 0.3, 0, 2.2) - (t - t0 < 2.4 ? 3.2 : 0) - (gap < 3 ? 0.7 : 0); bv = damp(bv, want, 2.5, dt); bz -= bv * dt; ball.rotation.x -= bv * dt / R; if (Math.random() < 0.5) s.fx.dust(V3(rnd(-2, 2), 0.1, bz - 1), 1, { size: 2.2, a: 0.25, color: [0.5, 0.45, 0.38] }); }
       ball.position.set(Math.sin(bz * 0.11) * 0.45, by, bz);
       const close = clamp(1 - gap / 16); s.audio.set('rumble', 'rumble', 0.6 + close * 0.5, jam ? 0 : 0.25 + close * 0.6); shakeT -= dt; if (shakeT < 0 && !jam) { shakeT = 0.16; s.engine.addShake(0.08 + close * 0.3); }
       if (!s.ended) { minGap = Math.min(minGap, gap); s.hud.readout('gap', 'Boulder (m)', Math.max(0, gap).toFixed(1), gap < 5 ? 'warn' : gap > 9 ? 'ok' : ''); let w = ''; for (const [wz, txt, k] of warn) { const d = run.pos.z - wz; if (d > 1.5 && d < 17) { w = `${K(k)} ${txt}`; break; } } s.hud.prompt(w); }
-      if (gap < 0.25 && !s.ended && !run.dead) { run.c.setPose('prone', 0.08); run.dead = true; run.v = 0; s.engine.addShake(1.5); s.audio.impact(1); s.fail('Flattened by the boulder', { injury: 0.9 }); }
+      if (gap < 0.25 && !s.ended && !run.dead) { run.c.setPose('prone', 0.08); run.dead = true; run.v = 0; s.engine.addShake(1.5); s.audio.impact(1); s.fail('Flattened by the boulder', { injury: 0.9, advice: 'Hold W (sprint) the whole way and read the warnings early — every stumble lets the boulder gain four metres. Keep the BOULDER readout above 5 m.' }); }
       if (bz < END + R + 1.2 && !jam) { jam = true; bv = 0; s.audio.impact(1); s.audio.explosion(0.5); s.engine.addShake(1.6); s.fx.dust(V3(0, 2, END - 3), 50, { spread: 5, size: 4, up: 4 }); s.fx.debris(V3(0, 2, END - 4), 26, { color: 0x8a8070, speed: 9, dir: V3(0, 0, -1), floor: 0 }); }
       // daylight
       const k = smooth(END + 26, END - 4, run.pos.z); s.sun.intensity = lerp(E0.sun, 3.2, k); s.hemi.intensity = lerp(E0.hemi, 0.75, k); s.scene.fog.color.copy(E0.fog).lerp(dayFog, k); s.scene.fog.density = lerp(E0.dens, 0.004, k); s.scene.environmentIntensity = lerp(E0.env, 0.8, k); key.intensity = 16 * (1 - k); sunL.intensity = 320 * k;
-      if (run.pos.z < END && !out) { out = true; s.msg('DAYLIGHT!', 'good'); s.slowmo(0.45, 0.9); s.hud.prompt(''); }
-      if (run.pos.z < END - 9 && !done && !run.dead) { done = true; s.rate('Lead over the boulder', clamp(gap / 9), 1); s.bonus('Closest shave ' + minGap.toFixed(1) + ' m', Math.round(clamp(1 - minGap / 8) * 300)); run.speedK = 0.01; s.wrap(1.6, 'The idol is in the bag'); }
+      if (run.pos.z < END && !out) { out = true; s.moment('out of the cave', { t0: s.t - 2.2, dur: 4.4, w: 3 }); s.msg('DAYLIGHT!', 'good'); s.slowmo(0.45, 0.9); s.hud.prompt(''); }
+      if (run.pos.z < END - 9 && !done && !run.dead) { done = true; s.rate('Lead over the boulder', clamp(gap / 7), 1); s.bonus('Closest shave ' + minGap.toFixed(1) + ' m', Math.round(clamp(1 - minGap / 8) * 300)); run.speedK = 0.01; s.wrap(1.6, 'The idol is in the bag'); }
     });
   },
   bot(s, inp) { botRun(s, inp); if (s.run.speedK === 0 && Math.abs(s.bar - 0.5) < 0.035) inp.press('x'); },
@@ -128,9 +138,9 @@ const temple = {
     const fire = torches(s, [...Array(9)].map((_, i) => [(i % 2 ? 1 : -1) * (W / 2 - 0.75), 3, 4 - i * 20.5, i % 2 ? 1 : -1]), { color: 0xff6a30, i: 30, dist: 20 });
     // hazards
     s.plan = []; const warn = [], walls = [], ceils = [];
-    for (const [z, sd] of [[-18, -1], [-31, 1], [-70, 1], [-82, -1], [-114, -1], [-136, 1]]) { const g = spikes(s, { x: sd * W / 2, y: 1.25, z, len: 3.7, across: 2.2, d: 1.6, dir: [-sd, 0], n: 5, rows: 3 }); g.position.x = sd * (W / 2 + 3.8); const sol = s.course.addSolid({ x0: sd > 0 ? -0.2 : -W / 2, x1: sd > 0 ? W / 2 : 0.2, y0: 0.1, y1: 2.4, z0: z - 0.8, z1: z + 0.8, dead: true, msg: 'Impaled on the wall spikes', injury: 0.85 }); walls.push({ g, sol, z, sd, k: 0 }); s.plan.push({ z0: z + 10.5, z1: z - 1, x: -sd * 2 }); warn.push([z, sd > 0 ? 'SPIKES — GO LEFT' : 'SPIKES — GO RIGHT', sd > 0 ? 'A' : 'D']); s.box({ x: sd * (W / 2 - 0.02), y: 0.1, z, w: 0.06, h: 2.4, d: 1.8, mat: s.mat({ color: 0x1a0c08 }), cast: false }); }
-    for (const z of [-45, -94, -125]) { spikes(s, { x: 0, y: 0, z, len: 0.75, across: W - 1, d: 1.7, dir: [0, 1], n: 11, rows: 4 }); s.box({ x: 0, y: 0, z, w: W - 0.8, h: 0.06, d: 2, mat: s.mat({ color: 0x1a0c08 }), cast: false }); s.course.addSolid({ x0: -W / 2, x1: W / 2, y0: 0, y1: 0.62, z0: z - 0.8, z1: z + 0.8, msg: 'Ran onto the floor spikes', injury: 0.8 }); s.plan.push({ z: z + 2.6, act: 'jump' }); warn.push([z, 'FLOOR SPIKES', 'SPACE']); }
-    for (const z of [-58, -104]) { const g = new THREE.Group(); s.scene.add(g); s.box({ parent: g, x: 0, y: 0.75, z, w: W - 0.9, h: 3, d: 1.6, mat: stone, tile: 2.5 }); g.add(spikes(s, { x: 0, y: 0.75, z, len: 0.7, across: W - 1.2, d: 1.4, dir: [0, -1], n: 10, rows: 3 })); g.position.y = H - 0.9; const sol = s.course.addSolid({ x0: -W / 2, x1: W / 2, y0: 0.95, y1: H, z0: z - 0.8, z1: z + 0.8, dead: true, msg: 'Skewered by the ceiling block', injury: 0.85 }); ceils.push({ g, sol, z, k: 0 }); s.plan.push({ z: z + 4.4, act: 'slide' }); warn.push([z, 'CEILING — SLIDE', 'S']); }
+    for (const [z, sd] of [[-18, -1], [-31, 1], [-70, 1], [-82, -1], [-114, -1], [-136, 1]]) { const g = spikes(s, { x: sd * W / 2, y: 1.25, z, len: 3.7, across: 2.2, d: 1.6, dir: [-sd, 0], n: 5, rows: 3 }); g.position.x = sd * (W / 2 + 3.8); const sol = s.course.addSolid({ x0: sd > 0 ? -0.2 : -W / 2, x1: sd > 0 ? W / 2 : 0.2, y0: 0.1, y1: 2.4, z0: z - 0.8, z1: z + 0.8, dead: true, on: r => { r.pass(sol, 1.1); r.stumble(0.6, 0.5); r.sideTo = -sd * 1.9; s.audio.punch(); s.engine.hurt?.(0.25); s.flub('Grazed by the wall spikes', { penalty: 0.18, advice: `When the prompt says SPIKES — GO ${sd > 0 ? 'LEFT (A)' : 'RIGHT (D)'}, get across before they fire — they come out about 15 m ahead of you.` }); return true; } }); walls.push({ g, sol, z, sd, k: 0 }); s.plan.push({ z0: z + 10.5, z1: z - 1, x: -sd * 2 }); warn.push([z, sd > 0 ? 'SPIKES — GO LEFT' : 'SPIKES — GO RIGHT', sd > 0 ? 'A' : 'D']); s.box({ x: sd * (W / 2 - 0.02), y: 0.1, z, w: 0.06, h: 2.4, d: 1.8, mat: s.mat({ color: 0x1a0c08 }), cast: false }); }
+    for (const z of [-45, -94, -125]) { spikes(s, { x: 0, y: 0, z, len: 0.75, across: W - 1, d: 1.7, dir: [0, 1], n: 11, rows: 4 }); s.box({ x: 0, y: 0, z, w: W - 0.8, h: 0.06, d: 2, mat: s.mat({ color: 0x1a0c08 }), cast: false }); s.course.addSolid({ x0: -W / 2, x1: W / 2, y0: 0, y1: 0.62, z0: z - 0.8, z1: z + 0.8, trip: 'Stepped on the floor spikes', penalty: 0.15, advice: 'Jump (SPACE) two to three metres before each FLOOR SPIKES plate — hold SPACE for the full height.' }); s.plan.push({ z: z + 2.6, act: 'jump' }); warn.push([z, 'FLOOR SPIKES', 'SPACE']); }
+    for (const z of [-58, -104]) { const g = new THREE.Group(); s.scene.add(g); s.box({ parent: g, x: 0, y: 0.75, z, w: W - 0.9, h: 3, d: 1.6, mat: stone, tile: 2.5 }); g.add(spikes(s, { x: 0, y: 0.75, z, len: 0.7, across: W - 1.2, d: 1.4, dir: [0, -1], n: 10, rows: 3 })); g.position.y = H - 0.9; const sol = s.course.addSolid({ x0: -W / 2, x1: W / 2, y0: 0.95, y1: H, z0: z - 0.8, z1: z + 0.8, dead: true, on: r => { r.pass(sol, 1.1); r.stumble(0.7, 0.5); s.audio.punch(); s.engine.hurt?.(0.25); s.flub('Clipped by the ceiling spikes', { penalty: 0.18, advice: 'Slide (S) about four metres before a ceiling block — as soon as CEILING — SLIDE shows.' }); return true; } }); ceils.push({ g, sol, z, k: 0 }); s.plan.push({ z: z + 4.4, act: 'slide' }); warn.push([z, 'CEILING — SLIDE', 'S']); }
     warn.sort((a, b) => b[0] - a[0]);
     // the door
     s.line({ x: 0, z: TRIG, w: W, d: 0.5, color: 0xff3020, glow: 2 }); for (const sx of [-1, 1]) s.box({ x: sx * (W / 2 - 0.4), y: 0, z: DZ, w: 1.4, h: H, d: 1.6, mat: dark, tile: 3 });
@@ -141,8 +151,14 @@ const temple = {
     const run = s.run = new Run(s, { char: 'ch_adventurer', x: 0, z: 0, xmin: -W / 2 + 0.75, xmax: W / 2 - 0.75, cam: { dist: 5.6, height: 2.4, ahead: 4, fov: 64 } });
     const key = s.light({ x: 0, y: 3, z: 0, color: 0xffd0a0, i: 12, dist: 11, bulb: false });
     const hat = new THREE.Group(); { const m = s.mat({ color: 0x5a3c22, rough: 0.9 }); s.cyl({ parent: hat, r: 0.3, h: 0.025, mat: m }); s.cyl({ parent: hat, r: 0.15, r1: 0.13, h: 0.14, mat: m }); } hat.visible = false; s.scene.add(hat);
-    let passed = false, hatT = 0, hatGot = false, shave = 0, slideZ = null, hv = V3();
-    dsol.on = r => { const under = Math.abs(r.pos.z - DZ) < 0.75; r.die(yb < 0.1 ? 'Too slow — the door sealed shut' : under || r.slide > 0 ? 'Crushed under the stone door' : 'Ran face-first into the door — you have to slide', 0.9, !under); if (under) r.c.setPose('prone', 0.1); return true; };
+    let passed = false, hatT = 0, hatGot = false, shave = 0, slideZ = null, hv = V3(), doorM = null;
+    let bumped = false, sealed = false;
+    dsol.on = r => {
+      const under = Math.abs(r.pos.z - DZ) < 0.75; if (yb < 0.05) return true;
+      if (under || r.slide > 0) { r.die('Crushed under the stone door', 0.9, false, `The door was down to ${Math.round(yb * 100)} cm. Watch DOOR AT ARRIVAL: keep it above 0.85 m — let go of W early, not at the door.`); r.c.setPose('prone', 0.1); return true; }
+      r.stumble(0.6, 0); r.v = 0; r.pos.z = Math.max(r.pos.z, DZ + 1.3); s.audio.impact(0.6); s.engine.addShake(0.5);
+      if (!bumped) { bumped = true; s.flub('Ran into the door instead of sliding', { penalty: 0.2, advice: 'You cannot run under it — press S to slide about four metres before the door.' }); } return true;
+    };
     run.onSlide = () => { if (run.pos.z < DZ + 9 && !hat.visible) { hat.visible = true; hat.position.set(run.pos.x, 1.2, run.pos.z); hv.set(0.4, 1.5, -Math.max(0, (run.pos.z - (DZ + 1.6)) * 1.5)); } };
     s.rate('Spike corridor', 1, 1); run.onStumble = () => s.rate('Spike corridor', 1 - run.stats.stumbles * 0.4, 1);
     s.onAction = () => s.objective('Sprint the spike corridor'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), yb: +yb.toFixed(2), shave: +shave.toFixed(2), v: +run.v.toFixed(1) });
@@ -152,19 +168,20 @@ const temple = {
       for (const w of walls) if (z - w.z < 15 && w.k < 1) { if (!w.k) { s.audio.impact(0.5); s.audio.whoosh(1.2); } w.k = Math.min(1, w.k + dt / 0.5); w.g.position.x = w.sd * (W / 2 + 3.8 * (1 - w.k * w.k)); if (w.k > 0.8) w.sol.dead = false; }
       for (const c of ceils) if (z - c.z < 17 && c.k < 1) { if (!c.k) s.audio.impact(0.6); c.k = Math.min(1, c.k + dt / 0.55); c.g.position.y = (H - 0.9) * (1 - c.k * c.k); if (c.k >= 1) { c.sol.dead = false; s.engine.addShake(0.4); s.audio.thud(); } }
       if (!closing && z < TRIG) { closing = true; s.msg('THE DOOR!', 'bad'); s.objective('Slide under the door — cut it fine'); s.audio.set('rumble', 'rumble', 0.5, 0.5); }
+      if (closing && yb === 0 && !passed && !sealed && !s.ended) { sealed = true; run.control = false; run.speedK = 0; s.rate('Close shave', 0, 2); s.rate('The hat', 0, 1); s.flub('The door sealed before you got under it', { penalty: 0.45, advice: 'Too slow to the door. Keep sprinting (W) through the spike room, then use DOOR AT ARRIVAL — under about 0.85 m means slide NOW.' }); s.wrap(1.6, 'No way through. Again, please.'); }
       if (closing && yb > 0) { yb = Math.max(0, yb - RATE * dt); door.position.y = yb + 2.3; dsol.y0 = yb; dsol.y1 = yb + 4.6; if (Math.random() < 0.4) s.fx.dust(V3(rnd(-3, 3), yb, DZ), 1, { size: 1, a: 0.3, up: 0.2 }); if (yb === 0) { s.audio.impact(1); s.engine.addShake(1); s.audio.set('rumble', 'rumble', 0.5, 0); s.fx.dust(V3(0, 0.1, DZ), 24, { spread: 4 }); } }
       if (hat.visible && !hatGot) { if (hat.position.y > 0.03) { hv.y -= 12 * dt; hat.position.addScaledVector(hv, dt); hat.rotation.x += 5 * dt; } else { hat.position.y = 0.02; hat.rotation.x = 0; } hat.position.z = Math.max(hat.position.z, DZ + 0.9); }
       if (!passed && !s.ended) {
         const eta = (z - DZ) / Math.max(3, run.v), pred = closing ? yb - RATE * eta : Y0 - RATE * (z - DZ - (TRIG - DZ) > 0 ? (TRIG - DZ) / 9.6 : eta);
         s.hud.readout('door', 'Door gap (m)', yb.toFixed(2), yb < 1.1 ? 'warn' : ''); if (closing) s.hud.readout('eta', 'Door at arrival', Math.max(0, pred).toFixed(2), pred < 0.84 ? 'warn' : pred < 1.12 ? 'ok' : ''); s.pred = pred;
         let w = ''; for (const [wz, txt, k] of warn) { const d = z - wz; if (d > 1 && d < 15) { w = `${K(k)} ${txt}`; break; } } if (z < DZ + 13) w = `${K('S')} SLIDE!`; s.hud.prompt(w);
-        if (z < DZ - 0.8) { passed = true; shave = yb - 0.8; run.control = false; run.speedK = 0; run.v = Math.min(run.v, 4); s.rate('Close shave (' + Math.round(shave * 100) + ' cm)', near(shave, 0.08, 0.1, 0.75), 2); s.msg(shave < 0.2 ? 'BY A WHISKER!' : shave < 0.4 ? 'CLOSE!' : 'THROUGH', 'good'); s.slowmo(0.5, 0.6); s.objective('The hat! Reach back for it'); if (!hat.visible) { hat.visible = true; hat.position.set(run.pos.x, 0.02, DZ + 1.1); hv.set(0, 0, 0); } }
+        if (z < DZ - 0.8) { passed = true; shave = yb - 0.8; run.control = false; run.speedK = 0; run.v = Math.min(run.v, 4); s.rate('Close shave (' + Math.round(shave * 100) + ' cm)', near(shave, 0.1, 0.15, 1.15), 2); doorM = s.moment('under the door', { t0: s.t - 1.8, dur: 3.6, w: 3 }); s.msg(shave < 0.2 ? 'BY A WHISKER!' : shave < 0.4 ? 'CLOSE!' : 'THROUGH', 'good'); s.slowmo(0.5, 0.6); s.objective('The hat! Reach back for it'); if (!hat.visible) { hat.visible = true; hat.position.set(run.pos.x, 0.02, DZ + 1.1); hv.set(0, 0, 0); } }
       } else if (passed && !s.ended) {
         hatT += dt; s.hud.readout('door', 'Door gap (m)', yb.toFixed(2), 'warn'); s.hud.prompt(hatGot ? '' : `${K('E')} GRAB THE HAT`);
         if (hatT > 0.25 && run.v < 2.5 && !run.c.cycle) run.c.heading = damp(run.c.heading, Math.PI, 8, dt);
         if (run.v < 1) { run.frozen = true; run.c.setPose(hatGot ? 'crouch' : 'duck', 0.2); run.c.heading = damp(run.c.heading, Math.PI, 8, dt); }
-        if (!hatGot && s.input.hit('x') && hatT > 0.15) { if (yb > 0.22) { hatGot = true; s.audio.whoosh(1); s.msg('GOT THE HAT', 'good'); s.rate('The hat', 1, 1); s.bonus('Hat grab with ' + Math.round(yb * 100) + ' cm of door left', Math.round(near(yb, 0.22, 0.1, 0.9) * 400)); run.frozen = true; run.c.setPose({ hip: [-0.5, 0.5, 0, 0], sp: [0.7, 0, 0], aR: [0.1, -0.5, 1, 0.05, -0.4, 1], lR: [0.25, -0.25, 1, 0.05, -1, -0.7], lL: [0.25, -0.25, 1, 0.05, -1, -0.7] }, 0.12); s.after(0.25, () => { hat.position.set(run.pos.x + 0.1, 1.2, run.pos.z + 0.35); hat.rotation.x = 0.3; }); s.wrap(1.5, 'And he kept the hat'); } }
-        if (!hatGot && yb <= 0.2) { s.rate('The hat', 0, 1); s.msg('LOST THE HAT', 'bad'); s.hud.prompt(''); s.wrap(1.4, 'Wardrobe will want a word about the hat'); }
+        if (!hatGot && s.input.hit('x') && hatT > 0.15) { if (yb > 0.12) { if (doorM) doorM.t1 = s.t + 1.4; hatGot = true; s.audio.whoosh(1); s.msg('GOT THE HAT', 'good'); s.rate('The hat', 1, 1); s.bonus('Hat grab with ' + Math.round(yb * 100) + ' cm of door left', Math.round(near(yb, 0.22, 0.1, 0.9) * 400)); run.frozen = true; run.c.setPose({ hip: [-0.5, 0.5, 0, 0], sp: [0.7, 0, 0], aR: [0.1, -0.5, 1, 0.05, -0.4, 1], lR: [0.25, -0.25, 1, 0.05, -1, -0.7], lL: [0.25, -0.25, 1, 0.05, -1, -0.7] }, 0.12); s.after(0.25, () => { hat.position.set(run.pos.x + 0.1, 1.2, run.pos.z + 0.35); hat.rotation.x = 0.3; }); s.wrap(1.5, 'And he kept the hat'); } }
+        if (!hatGot && yb <= 0.1) { s.rate('The hat', 0.2, 1); s.msg('LOST THE HAT', 'bad'); s.hud.prompt(''); s.flub('Left the hat behind', { penalty: 0.12, advice: 'Once you are through, press E straight away to reach back under the door for the hat.' }); s.wrap(1.4, 'Wardrobe will want a word about the hat'); }
       }
     });
   },
@@ -197,9 +214,10 @@ const croc = {
     const state = (c, t) => { const ph = ((t - s.t0 - c.i * 0 - lag[c.i]) % P + P) % P; return ph < SNAP ? ['snap', SNAP - ph, 0] : ph > P - WARN ? ['warn', P - ph, P - ph] : ['calm', P - WARN - ph, P - ph]; }; // [state, time left in state, safe time left]
     s.safe = (i, a, b) => { if (i < 0 || i >= crocs.length) return true; const t = s.t, c = crocs[i]; for (let k = a; k <= b + 0.001; k += 0.1) if (state(c, t + k)[0] === 'snap') return false; return true; }; s.crocs = crocs;
     const on = () => crocs.find(c => run.grounded && Math.abs(run.pos.z - c.z) < 1.6 && Math.abs(run.pos.x - c.x) < 0.7);
-    let lands = [], bitten = false, wet = false, done = false, last = null, lastT = 0, heels = 0; const tp = V3();
-    const bite = c => { if (bitten || s.ended) return; bitten = true; run.dead = true; run.c.setCycle('flail', 1); s.fx.splash(run.pos, 60, 0.8); s.audio.splash(); s.audio.punch(); s.engine.addShake(1); s.fail(run.grounded && run.airT < 0.2 && s.t - lastT < 0.25 ? 'Landed on a snapping crocodile' : 'Stood on a crocodile while it snapped', { injury: 0.8 }); };
-    run.onLand = () => { const c = on(); if (c && c !== last) { lands.push(near(Math.abs(run.pos.x - c.x), 0, 0.12, 0.6)); last = c; lastT = s.t; s.fx.splash(tp.set(run.pos.x, 0.05, run.pos.z), 14, 0.35); c.dip = 0.12; if (c.st === 'snap') bite(c); else s.audio.thud(); } };
+    let lands = [], bitten = false, wet = false, dunks = 0, done = false, last = null, lastT = 0, heels = 0, safe = null, idleF = false; const tp = V3();
+    const bite = c => { if (bitten || s.ended) return; bitten = true; run.dead = true; run.c.setCycle('flail', 1); s.fx.splash(run.pos, 60, 0.8); s.audio.splash(); s.audio.punch(); s.engine.addShake(1); s.fail(s.t - lastT < 0.8 ? 'Landed on a snapping crocodile' : 'Stood on a crocodile while it snapped', { injury: 0.8, advice: 'Only hop when NEXT CROC reads CALM, right after it has snapped — and if you land on a RESTLESS one, hop straight off again.' }); };
+    // v2: landing on a snapping croc gives you a beat to get off again; snapping only bites after 0.4 s on its back
+    run.onLand = () => { const c = on(); if (c && c !== last) { lands.push(near(Math.abs(run.pos.x - c.x), 0, 0.2, 0.75)); last = c; lastT = s.t; s.fx.splash(tp.set(run.pos.x, 0.05, run.pos.z), 14, 0.35); c.dip = 0.12; s.audio.thud(); if (c.st === 'snap') s.msg('IT IS SNAPPING — GET OFF!', 'bad'); else s.moment('croc ' + (c.i + 1), { t0: s.t - 1.2, dur: 2, w: 0.6 + c.i * 0.1 }); } };
     s.onAction = () => s.objective('Cross the crocodiles to the far bank'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), y: +run.pos.y.toFixed(1), on: on()?.i });
     s.onUpdate((dt, t) => {
       for (const c of crocs) {
@@ -210,10 +228,17 @@ const croc = {
         if (st === 'warn' && Math.random() < 0.5) s.fx.spray(tp.set(c.x + rnd(-0.4, 0.4), 0.05, c.z - 2.2), V3(0, 2, 0), 1, [0.8, 0.9, 0.8], 0.3); if (st === 'snap' && Math.random() < 0.6) s.fx.spray(tp.set(c.x + rnd(-0.5, 0.5), 0.1, c.z + 2), V3(0, 3, 1), 2, [0.9, 0.95, 1], 0.35);
       }
       if (!s.started || s.ended) return;
-      const c = on(); if (c && c.st === 'snap' && state(c, t)[1] < SNAP - 0.12) bite(c);
-      if (run.pos.y < -0.25 && !wet) { wet = true; run.dead = true; run.grounded = true; run.c.setCycle('swim', 2); s.fx.splash(run.pos, 70, 0.9); s.audio.splash(); s.fail('In the water with the crocodiles', { injury: 0.7 }); }
+      const c = on(); if (c && c.st === 'snap' && state(c, t)[1] < SNAP - 0.4 && t - lastT > 0.4) bite(c);
+      if (run.grounded && !wet) { const k = on(); if (k && k.st !== 'snap') safe = k; else if (run.pos.z > -2) safe = null; }
+      if (!lands.length && !idleF && t - s.t0 > 14) { idleF = true; s.flub('Dithered on the island', { penalty: 0.15, advice: 'Hold W to walk to the edge of the island, then SPACE onto the first croc as soon as it has snapped.' }); }
+      if (!lands.length && t - s.t0 > 34) return s.fail('Never left the island — we lost the light', { injury: 0, advice: 'Hold W to walk to the edge, then SPACE to hop onto a croc that reads CALM. The take only works if you go.' });
+      if (run.pos.y < -0.25 && !wet) {
+        wet = true; dunks++; run.frozen = true; run.c.setCycle('swim', 2); s.fx.splash(run.pos, 70, 0.9); s.audio.splash(); s.engine.addShake(0.6);
+        if (dunks >= 3) { run.dead = true; s.fail('In the water with the crocodiles — third time', { injury: 0.7, advice: 'Stop in the middle of each back (let go of W) and hop only from there — three metres of croc, no more.' }); }
+        else { s.flub('Slipped into the water', { penalty: 0.22, advice: 'A back is only three metres long: let go of W to stop on it, then hop. Do not run off the end.' }); s.after(1.1, () => { if (s.ended) return; const k = safe && safe.st !== 'snap' ? safe : null; run.pos.set(k ? k.x : 0, k ? k.top + 0.02 : 0.3, k ? k.z + 0.5 : 0.6); run.vy = 0; run.v = 0; run.vx = 0; run.grounded = true; run.frozen = false; run.c.setPose('ready', 0.2); last = k; lastT = s.t; wet = false; s.fx.splash(run.pos, 20, 0.5); }); }
+      }
       const nx = crocs.find(k => k.z < run.pos.z - 1.2); if (nx) { const lbl = { calm: 'CALM', warn: 'RESTLESS', snap: 'SNAPPING' }[nx.st]; s.hud.readout('nx', 'Next croc', lbl, nx.st === 'calm' ? 'ok' : 'warn'); } s.hud.readout('n', 'Crocs crossed', Math.max(0, lands.length - 0) + ' / 6');
-      if (run.grounded && run.pos.z < BZ - 0.6 && !done) { done = true; run.control = false; const tt = t - s.t0; s.rate('Footing', lands.reduce((a, b) => a + b, 0) / Math.max(1, lands.length) * (lands.length >= 6 ? 1 : 0.8), 1.5); s.rate('Pace (' + tt.toFixed(1) + ' s)', near(tt, 17, 3.5, 36), 1); if (heels) s.bonus('Snapped at your heels ×' + heels, heels * 90); s.msg('ACROSS!', 'good'); s.wrap(1.5, 'Count your toes'); }
+      if (run.grounded && run.pos.z < BZ - 0.6 && !done) { done = true; run.control = false; const tt = t - s.t0; s.rate('Footing', lands.reduce((a, b) => a + b, 0) / Math.max(1, lands.length) * (lands.length >= 6 ? 1 : 0.85), 1.5); s.rate('Pace (' + tt.toFixed(1) + ' s)', near(tt, 17, 6, 42), 1); if (heels) s.bonus('Snapped at your heels ×' + heels, heels * 90); s.moment('onto the bank', { t0: s.t - 3.4, dur: 4.6, w: 2.2 }); s.msg('ACROSS!', 'good'); s.wrap(1.5, 'Count your toes'); }
     });
   },
   bot(s, inp, B) {
@@ -243,24 +268,25 @@ const rumble = {
     s.box({ x: 0, y: YA, z: 29.8, w: 18, h: 0.9, d: 0.4, mat: conc });
     // parking bays + parked cars (dodge), a low wall to vault
     s.plan = []; const cars = [['sedan_grey', -2.2, 2], ['taxi', 2.4, -14], ['van_white', -1.6, -30], ['wagon_brown', 2.2, -46], ['sedan_grey', 2.6, -80], ['taxi', -2.4, -94], ['van_white', 1.4, -108]];
-    for (const [id, x, z] of cars) { const y = z > E1 ? YA : YB; s.put(id, { x, y, z, ry: x > 0 ? 0.12 : Math.PI - 0.1, solid: true, sol: { msg: 'Ran into a parked car at full sprint', injury: 0.4 } }); s.plan.push({ z0: z + 11, z1: z - 3, x: x > 0 ? x - 3.6 : x + 3.6 }); }
+    for (const [id, x, z] of cars) { const y = z > E1 ? YA : YB; s.put(id, { x, y, z, ry: x > 0 ? 0.12 : Math.PI - 0.1, solid: true, sol: { msg: 'Ran into a parked car', bump: true, penalty: 0.12, advice: 'Pick your side of each parked car early — steer with A/D while it is still ten metres away.' } }); s.plan.push({ z0: z + 11, z1: z - 3, x: x > 0 ? x - 3.6 : x + 3.6 }); }
     for (let z = 20; z > EDGE + 12; z -= 3.2) { if (z < E1 + 4 && z > B0 - 4) continue; for (const sx of [-1, 1]) s.line({ x: sx * 6.1, z, w: 4.6, d: 0.12, y: z > E1 ? YA : YB, color: 0xe8e8e0, glow: 0.8 }); }
     for (const [x, z, id] of [[-6.4, 12, 'wagon_brown'], [6.4, -4, 'sedan_grey'], [-6.4, -36, 'taxi'], [6.4, -86, 'van_white'], [-6.3, -112, 'sedan_grey']]) s.put(id, { x, y: z > E1 ? YA : YB, z, ry: Math.PI / 2 });
-    s.box({ x: 0, y: YA, z: -56, w: 17.2, h: 0.75, d: 0.4, mat: conc, solid: true, sol: { soft: true, once: true } }); s.plan.push({ z: -56 + 2.4, act: 'jump' }); s.plan.push({ z: E1 + 0.9, act: 'jump' });
+    s.box({ x: 0, y: YA, z: -56, w: 17.2, h: 0.75, d: 0.4, mat: conc, solid: true, sol: { soft: true, once: true, msg: 'Clipped the low wall' } }); s.plan.push({ z: -56 + 2.4, act: 'jump' }); s.plan.push({ z: E1 + 0.9, act: 'jump' });
     s.line({ x: 0, z: E1 + 0.5, w: 17, d: 0.5, y: YA, color: 0xffe14a }); s.line({ x: 0, z: EDGE + 0.5, w: 17, d: 1, y: YB, color: 0xffe14a, glow: 1.8 }); s.line({ x: BX, z: EDGE + 6, w: 1.6, d: 9, y: YB, color: 0x30ff70, glow: 0.7 }).material.opacity = 0.3;
     // the building opposite, with its fire escape
-    const wall = s.building({ x: 0, z: BZ1 - 11, w: 30, d: 22, h: 34, fac: 'tx_fac_nyc', sol: { msg: 'Missed the balcony and hit the wall', injury: 0.9, grab: false, on: r => r.grounded ? true : undefined } });
+    // overshooting into the wall above the balcony is a hard flub: you slap the bricks and drop onto the grating
+    const wall = s.building({ x: 0, z: BZ1 - 11, w: 30, d: 22, h: 34, fac: 'tx_fac_nyc', sol: { msg: 'Missed the balcony and hit the wall', injury: 0.9, grab: false, advice: 'Line up with the green marker before the edge (A/D) — the balcony is only two metres wide, and you can only steer a little in the air.', on: r => { if (r.grounded) return true; if (Math.abs(r.pos.x - BX) < 1.25 && r.pos.y > YBAL - 0.6 && r.pos.y < YBAL + 2.6) { r.v = 0; r.pos.z = BZ1 + 0.4; r.pos.x = clamp(r.pos.x, BX - 0.8, BX + 0.8); s.audio.impact(0.7); s.engine.addShake(0.8); s.flub('Slammed into the wall past the balcony', { penalty: 0.15, advice: 'You jumped a touch long — take off right on the yellow line, not before it.' }); return true; } } } });
     for (let k = 0; k < 6; k++) { const y = YBAL - k * 3.3; s.box({ x: BX, y: y - 0.14, z: (BZ0 + BZ1) / 2, w: 2, h: 0.14, d: 2.4, mat: iron, cast: k < 2 }); for (const sx of [-1, 1]) { s.box({ x: BX + sx * 0.97, y, z: (BZ0 + BZ1) / 2, w: 0.05, h: 0.05, d: 2.4, mat: iron, cast: false }).position.y = y + 1; for (let j = 0; j < 4; j++) s.box({ x: BX + sx * 0.97, y, z: BZ0 - 0.05 - j * 0.78, w: 0.04, h: 1, d: 0.04, mat: iron, cast: false }); } s.box({ x: BX + 0.5, y: y - 3.3, z: BZ1 + 0.3, w: 0.5, h: 3.3, d: 0.06, mat: iron, cast: false, rx: 0.2 }); s.box({ x: BX - 0.2, y: y + 0.2, z: BZ1 - 0.02, w: 1.1, h: 1.9, d: 0.06, mat: s.mat({ color: 0x1c2228, rough: 0.3 }), cast: false }); }
     s.course.addPiece({ x0: BX - 1, x1: BX + 1, z0: BZ1, z1: BZ0, fn: () => YBAL, step: 0.7 }); s.course.addSolid({ x0: BX - 1, x1: BX + 1, y0: YBAL - 0.25, y1: YBAL, z0: BZ1, z1: BZ0 });
     for (const [sd, x] of [[-1, -17], [1, 17]]) s.row({ side: sd, x, z0: 60, z1: -220, fac: ['tx_fac_nyc', 'tx_brick'], height: [14, 30], seedv: sd + 4, solid: false });
     s.crew({ x: 5.5, y: YA, z: 18, ry: 0.9 }); s.crew({ x: -6.5, y: YB, z: EDGE + 7, ry: -2.3, people: false });
     const run = s.run = new Run(s, { char: 'ch_hk', x: 0, z: 24, y: YA, xmin: -8.2, xmax: 8.2, fallDeath: 8, cam: { dist: 6.4, height: 2.9, ahead: 4 } });
-    let leapt = false, landed = false, takeV = 0, takeD = 0; s.rate('Run-up', 1, 1);
-    run.onStumble = () => { s.rate('Run-up', 1 - run.stats.stumbles * 0.5, 1); s.msg('CLIPPED IT', 'bad'); };
-    run.onJump = () => { if (run.pos.z < EDGE + 6 && !leapt) { leapt = true; takeV = run.v; takeD = run.pos.z - EDGE; s.rate('Take-off (' + takeD.toFixed(1) + ' m from the edge)', near(takeD, 0.3, 0.35, 1.5), 1.5); s.rate('Speed', near(takeV, 9.6, 0.3, 1.5), 1); s.slowmo(0.4, 1.6); s.cam.set({ dist: 8.5, height: 4.2, side: 4.5 }); s.objective('Hold SPACE — steer for the balcony'); } };
-    const stick = (grabbed) => { if (landed) return; landed = true; const off = Math.abs(run.pos.x - BX); run.control = false; run.speedK = 0; run.v = Math.min(run.v, 2.2); s.rate('Landing', grabbed ? 0.2 : near(off, 0, 0.3, 0.95), 2); s.bonus('Alley cleared: ' + (ALLEY + Math.max(0, takeD)).toFixed(1) + ' m', grabbed ? 0 : 400); s.msg(grabbed ? 'BY YOUR FINGERTIPS' : off < 0.35 ? 'NAILED IT!' : 'ON THE BALCONY', 'good'); s.engine.addShake(0.8); s.wrap(grabbed ? 2.2 : 1.6, grabbed ? 'He made it. Just.' : 'One take. Print it.'); };
+    let leapt = false, landed = false, takeV = 0, takeD = 0, leapM = null; s.rate('Run-up', 1, 1); run.autoMoments = false;
+    run.onStumble = () => { s.rate('Run-up', 1 - run.stats.stumbles * 0.3, 1); s.msg('CLIPPED IT', 'bad'); if (Math.abs(run.pos.z + 56) < 3) s.flub('Clipped the low wall', { penalty: 0.06, advice: 'Hop the low wall with SPACE about two metres before it — it costs you speed for the leap.' }); };
+    run.onJump = () => { if (run.pos.z < EDGE + 6 && !leapt) { leapt = true; takeV = run.v; takeD = run.pos.z - EDGE; s.rate('Take-off (' + takeD.toFixed(1) + ' m from the edge)', near(takeD, 0.3, 0.6, 2.4), 1.5); s.rate('Speed', near(takeV, 9.6, 0.5, 2.6), 1); s.slowmo(0.4, 1.6); leapM = s.moment('the alley leap', { t0: s.t - 1.3, dur: 3.2, w: 3 }); if (takeV < 9) s.flub('Not at full sprint for the leap', { penalty: 0.1, advice: 'Hold W from the second roof all the way to the edge — you want 34 km/h or more on the readout.' }); s.cam.set({ dist: 8.5, height: 4.2, side: 4.5 }); s.objective('Hold SPACE — steer for the balcony'); } };
+    const stick = (grabbed) => { if (landed) return; landed = true; if (leapM) leapM.t1 = s.t + (grabbed ? 2 : 1.3); const off = Math.abs(run.pos.x - BX); run.control = false; run.speedK = 0; run.v = Math.min(run.v, 2.2); s.rate('Landing', grabbed ? 0.35 : near(off, 0, 0.4, 1.3), 2); if (grabbed) s.flub('Caught the balcony by your fingertips', { penalty: 0.12, advice: 'You were a little short: take off on the yellow line at full sprint and hold SPACE all the way across.' }); s.bonus('Alley cleared: ' + (ALLEY + Math.max(0, takeD)).toFixed(1) + ' m', grabbed ? 0 : 400); s.msg(grabbed ? 'BY YOUR FINGERTIPS' : off < 0.35 ? 'NAILED IT!' : 'ON THE BALCONY', 'good'); s.engine.addShake(0.8); s.wrap(grabbed ? 2.2 : 1.6, grabbed ? 'He made it. Just.' : 'One take. Print it.'); };
     run.onGrab = sol => { if (run.pos.z < EDGE - 2) stick(true); };
-    run.onLand = i => { if (run.pos.y < 6) { run.die(run.pos.z < EDGE ? (leapt ? 'Fell short of the balcony — seven floors down' : 'Ran off the roof without jumping') : 'Fell between the buildings', 1, false); run.c.setPose('lie', 0.1); return true; } if (run.pos.z < BZ0 + 0.1 && run.pos.y < YBAL + 0.5) { stick(false); run.stun = 0.5; run.c.setPose('land', 0.06); s.audio.impact(0.7); return true; } };
+    run.onLand = i => { if (run.pos.y < 6) { const z = run.pos.z; run.die(z < EDGE ? (leapt ? 'Fell short of the balcony — seven floors down' : 'Ran off the roof without jumping') : 'Fell between the buildings', 1, false, z < EDGE ? (leapt ? 'Take off ON the yellow line at full sprint (34+ km/h) and hold SPACE — and line up with the green marker first.' : 'Press SPACE at the yellow line at the very edge of the second roof — the prompt flashes LEAP.') : 'Jump the gap between the two roofs (SPACE at the first yellow line), or at least keep sprinting off it.'); run.c.setPose('lie', 0.1); return true; } if (run.pos.z < BZ0 + 0.1 && run.pos.y < YBAL + 0.5) { stick(false); run.stun = 0.5; run.c.setPose('land', 0.06); s.audio.impact(0.7); return true; } };
     s.onAction = () => s.objective('Sprint the car park — leap from the yellow line'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), x: +run.pos.x.toFixed(1), y: +run.pos.y.toFixed(1), v: +run.v.toFixed(1), takeD: +takeD.toFixed(2) });
     s.onUpdate(() => { if (!s.started || s.ended) return; s.hud.readout('spd', 'km/h', Math.round(run.v * 3.6), run.v > 9.2 ? 'ok' : run.pos.z < EDGE + 40 ? 'warn' : ''); if (!leapt && run.pos.z < EDGE + 60) s.hud.readout('edge', 'Edge in (m)', Math.max(0, run.pos.z - EDGE).toFixed(0), run.pos.z < EDGE + 12 ? 'warn' : ''); if (!leapt && run.pos.z < EDGE + 14 && run.pos.z > EDGE) s.hud.prompt(`${K('SPACE')} LEAP at the line`); else s.hud.prompt(''); });
   },
@@ -293,7 +319,7 @@ const dieHard = {
     s.mark({ x: 0, z: -22, y: Y, r: 9, color: 0x7a6a1c }); for (const [dx, dz, w, d] of [[-2.4, 0, 0.8, 7], [2.4, 0, 0.8, 7], [0, 0, 4.8, 0.8]]) s.line({ x: dx, z: -22 + dz, w, d, y: Y, color: 0xffffff, glow: 1 });
     s.put('helicopter', { x: -12, y: Y, z: 22, ry: 0.7, len: 11 }); for (let z = 30; z > EDGE; z -= 19) for (const sx of [-1, 1]) s.light({ x: sx * (HW - 1.2), y: Y + 3.2, z: z + sx * 4, color: sx > 0 ? 0xbfd8ff : 0xffe0b0, i: 46, dist: 34, r: 0.14 });
     s.plan = []; const warnV = [];
-    for (const [x, z, w, d, h] of [[-2.5, -6, 3, 2, 1.5], [3, -40, 3.4, 2.2, 1.7], [-2.6, -54, 3, 2, 1.5], [2.4, -68, 2.6, 2, 1.4]]) { s.box({ x, y: Y, z, w, h, d, mat: steel, tile: 2, solid: true, sol: { soft: true, once: true } }); s.box({ x, y: Y + h, z, w: w * 0.5, h: 0.3, d: d * 0.6, mat: s.mat({ color: 0x22262a }) }); s.plan.push({ z0: z + 11, z1: z - 2, x: x > 0 ? x - 3.4 : x + 3.4 }); }
+    for (const [x, z, w, d, h] of [[-2.5, -6, 3, 2, 1.5], [3, -40, 3.4, 2.2, 1.7], [-2.6, -54, 3, 2, 1.5], [2.4, -68, 2.6, 2, 1.4]]) { s.box({ x, y: Y, z, w, h, d, mat: steel, tile: 2, solid: true, sol: { soft: true, once: true } }); s.box({ x, y: Y + h, z, w: w * 0.5, h: 0.3, d: d * 0.6, mat: s.mat({ color: 0x22262a }) }); warnV.push(z); s.plan.push({ z0: z + 11, z1: z - 2, x: x > 0 ? x - 3.4 : x + 3.4 }); }
     for (let x = -18; x <= 18; x += 6) s.light({ x, y: Y + 0.5, z: EDGE + 0.4, color: 0xff3020, i: 5, dist: 7, r: 0.1 });
     s.line({ x: 0, z: EDGE + 1.2, w: HW * 2 - 1, d: 2.4, y: Y, color: 0xffe14a }).material.opacity = 0.35;
     for (const [sd, x, sv] of [[-1, -44, 2], [1, 44, 6]]) s.row({ side: sd, x, z0: 120, z1: -260, fac: ['tx_fac_night'], height: [40, 100], width: [24, 40], depth: [24, 36], lit: 0.9, seedv: sv, solid: false });
@@ -302,9 +328,9 @@ const dieHard = {
     s.cyl({ x: 2.2, y: Y + 0.5, z: 12.6, r: 0.55, h: 0.35, rz: Math.PI / 2, color: 0xb02018 }); s.box({ x: 2.2, y: Y, z: 12.6, w: 0.5, h: 0.5, d: 0.3, mat: steel }); s.crew({ x: 7, y: Y, z: 16, ry: 0.8, light: 120 });
     const run = s.run = new Run(s, { char: 'ch_cop', x: 0, z: 10, y: Y, xmin: -HW + 1, xmax: HW - 1, fallDeath: 400, cam: { dist: 6.8, height: 3.2, ahead: 4 } });
     const key = s.light({ x: 0, y: Y + 3, z: 12, color: 0xfff0e0, i: 22, dist: 13, bulb: false }); const hose = rope(s, { r: 0.045, color: 0xd8cfb0 }), reel = V3(2.2, Y + 0.5, 12.6), waist = V3(), A = V3(AX, Y + 0.3, EDGE - 0.35);
-    let front = 32, fv = 0, nextB = 30, phase = 'roof', gapJ = 0, th = 0, om = 0, vy = 0, vz = 0, swings = 0, lock = false, shotQ = 0, tIn = 0, flameT = 0; const P = run.pos, tp = V3(), fires = [];
+    let front = 32, fv = 0, nextB = 30, phase = 'roof', gapJ = 0, th = 0, om = 0, vy = 0, vz = 0, swings = 0, lock = false, shotQ = 0, tIn = 0, flameT = 0, blastM = null; const P = run.pos, tp = V3(), fires = []; run.autoMoments = false;
     const blast = (x, z, sc = 1.3) => { s.fx.explosion(tp.set(x, Y + 1, z), sc); s.audio.explosion(0.8); s.engine.addShake(0.5); fires.push(V3(x, Y + 0.2, z)); if (fires.length > 10) fires.shift(); };
-    s.rate('Clean run', 1, 1); run.onStumble = () => { s.rate('Clean run', 1 - run.stats.stumbles * 0.5, 1); s.msg('STUMBLE!', 'bad'); };
+    s.rate('Clean run', 1, 1); run.onStumble = () => { s.rate('Clean run', 1 - run.stats.stumbles * 0.35, 1); s.msg('STUMBLE!', 'bad'); s.flub('Clipped a roof vent', { penalty: 0.06, advice: 'Steer round the vents early with A/D — a stumble lets the fireball jump three metres closer.' }); };
     s.onAction = () => s.objective('Run for the edge — let the blast get close'); s.dbg = () => ({ ph: phase, z: +P.z.toFixed(1), y: +P.y.toFixed(1), gap: +(front - P.z).toFixed(1), th: +th.toFixed(2), sw: swings });
     s.onUpdate((dt, t) => {
       waist.set(P.x, P.y + 1.05, P.z + 0.1); key.position.set(P.x + (phase === 'roof' ? 1 : 4), P.y + (phase === 'roof' ? 3 : 2), P.z + (phase === 'roof' ? 2.5 : -4)); if (phase === 'roof') hose.set(reel, waist); else hose.set(A, waist);
@@ -314,10 +340,11 @@ const dieHard = {
         const gap = front - P.z; if (tt > 0.9) { fv = damp(fv, 8.9 + clamp((gap - 6) * 0.3, 0, 3), 2, dt); front -= fv * dt; }
         if (front < nextB) { nextB -= 6.5; blast(rnd(-9, 9) + P.x * 0.5, front + 2); s.fx.debris(tp.set(P.x + rnd(-3, 3), Y + 2, front), 8, { color: 0x333333, speed: 14, dir: V3(0, 0.3, -1), floor: Y }); if (gap < 14) { s.engine.flash(0.25 * clamp(1 - gap / 14)); s.fx.light(tp.set(P.x, Y + 2, P.z + 3), 0xff8030, 40, 0.4, 20); } }
         if (!s.ended) { s.hud.readout('gap', 'Fireball (m)', Math.max(0, gap).toFixed(1), gap < 4.5 ? 'ok' : gap < 2 ? 'warn' : ''); s.hud.readout('edge', 'Edge in (m)', Math.max(0, P.z - EDGE).toFixed(0), P.z < EDGE + 15 ? 'warn' : ''); s.hud.prompt(P.z < EDGE + 13 ? `${K('SPACE')} JUMP!` : ''); }
-        if (gap < 0.9 && tt > 1.5 && !s.ended) { blast(P.x, P.z, 1.6); run.die('Caught in the blast — you let it get too close', 0.9); return; }
+        if (gap < 0.6 && tt > 1.5 && !s.ended) { blast(P.x, P.z, 1.6); run.die('Caught in the blast — you let it get too close', 0.9, true, 'Keep the FIREBALL readout between 2 and 4 m — the moment it drops under 2, hold W and sprint again. Never let it under 1 m.'); return; }
         if (P.z < EDGE - 0.2 && !run.grounded && !run.dead) { // over the edge: take over
           phase = 'fall'; gapJ = gap; const d = run.takeZ - EDGE, jumped = run.vy > -3 || run.stats.jumps > 0 && d < 4; run.frozen = true; vy = run.vy; vz = -run.v; s.hud.prompt('');
-          s.rate('Heat on your back (' + gap.toFixed(1) + ' m)', near(gap, 2.6, 1.6, 12), 2); s.rate('Leap', jumped ? near(d, 0.5, 0.6, 3) : 0.25, 1);
+          s.rate('Heat on your back (' + gap.toFixed(1) + ' m)', near(gap, 2.6, 1.8, 13), 2); s.rate('Leap', jumped ? near(d, 0.5, 1.0, 4) : 0.3, 1); if (!jumped) s.flub('Ran off the edge without jumping', { penalty: 0.1, advice: 'Press SPACE in the last two metres of roof — the prompt flashes JUMP — for the big leap out.' });
+          blastM = s.moment('the rooftop blast', { t0: s.t - 1.6, dur: 6, w: 3 });
           for (let i = 0; i < 5; i++) s.after(i * 0.12, () => blast(P.x + rnd(-8, 8), EDGE + 2 + rnd(0, 8), 1.8)); s.engine.flash(0.6); s.audio.explosion(1.2); s.engine.addShake(1.4); s.slowmo(0.35, 1.3); s.msg(gap < 4.5 ? 'YIPPEE-KI-YAY!' : 'JUMP!', 'good'); s.objective('Swing in and shoot out the window');
           run.c.setPose('fall', 0.15); s.cam.fixed(V3(P.x + 8.5, Y - 10.5, EDGE - 11), () => ({ pos: P, heading: 0 }), { fov: 55, up: 1.2, lookStiff: 5 }); key.intensity = 70; key.distance = 20;
         }
@@ -329,10 +356,15 @@ const dieHard = {
         om += (-(15 / L) * Math.sin(th) - om * 0.05) * dt; th += om * dt; tIn += dt; // th > 0 = out from the building
         P.set(AX + (P.x - AX) * (1 - dt * 2), A.y - Math.cos(th) * L - 1.05, A.z - Math.sin(th) * L); run.c.cur.body[0] = -th * 0.7; s.audio.set('wind', 'wind', 0.8 + Math.abs(om), 0.3);
         const v = clamp(1 - th / 0.95), inbound = om < 0; if (!s.ended) { s.hud.bar(v, [0.76, 0.97], [0.87, 0.95]); s.hud.prompt(lock ? '' : `${K('E')} SHOOT`); s.bar = v; s.inb = inbound; }
-        if (s.input.hit('x') && !lock && !s.ended) { lock = true; for (let i = 0; i < 3; i++) s.after(i * 0.07, () => s.audio.gun()); s.fx.sparks(tp.set(P.x, P.y + 1.2, P.z + 0.6), 8, { speed: 5 }); if (inbound && v > 0.76 && v < 0.975) { shotQ = near(v, 0.91, 0.04, 0.16); for (const m of panes) if (Math.abs(m.position.x - P.x) < 2.1) m.visible = false; s.fx.glass(tp.set(P.x, FY + 1.6, EDGE), 70, { dir: V3(0, 0, 1), speed: 6 }); s.audio.glass(); s.msg('GLASS OUT!', 'good'); } else s.msg(inbound ? (v <= 0.76 ? 'TOO EARLY' : 'TOO LATE') : 'WRONG WAY — wait for the swing in', 'bad'); }
+        if (s.input.hit('x') && !lock && !s.ended) { lock = true; for (let i = 0; i < 3; i++) s.after(i * 0.07, () => s.audio.gun()); s.fx.sparks(tp.set(P.x, P.y + 1.2, P.z + 0.6), 8, { speed: 5 }); if (inbound && v > 0.76 && v < 0.975) { shotQ = near(v, 0.905, 0.06, 0.2); for (const m of panes) if (Math.abs(m.position.x - P.x) < 2.1) m.visible = false; s.fx.glass(tp.set(P.x, FY + 1.6, EDGE), 70, { dir: V3(0, 0, 1), speed: 6 }); s.audio.glass(); s.msg('GLASS OUT!', 'good'); } else s.msg(inbound ? (v <= 0.76 ? 'TOO EARLY' : 'TOO LATE') : 'WRONG WAY — wait for the swing in', 'bad'); }
         if (th <= 0.02 && om < 0) { // at the glass
-          swings++; if (shotQ > 0) { phase = 'in'; vz = -om * L; vy = 1.5; s.rate('Window timing', shotQ * (swings === 1 ? 1 : swings === 2 ? 0.8 : 0.6), 2); s.hud.hideBar(); s.hud.prompt(''); s.audio.set('wind', 'wind', 1, 0); hose.visible = false; s.slowmo(0.5, 0.7); s.cam.fixed(V3(P.x + 4.2, FY + 1.3, EDGE + 7.5), () => ({ pos: P, heading: 0 }), { fov: 58, up: 1 }); run.c.setPose('kick', 0.1); }
-          else { om = -om * 0.72; th = 0.021; lock = false; s.engine.addShake(0.8); s.audio.impact(0.6); s.msg('BOUNCED OFF THE GLASS', 'bad'); if (swings >= 3 || Math.abs(om) * L < 3) { phase = 'hang'; s.hud.hideBar(); s.hud.prompt(''); s.fail('Bounced off the glass until the swing died — left dangling on the hose', { injury: 0.25 }); run.c.setCycle('hang', 1); } }
+          swings++; if (shotQ > 0) { phase = 'in'; if (blastM) blastM.t1 = s.t + 1.6; vz = -om * L; vy = 1.5; s.rate('Window timing', shotQ * (swings === 1 ? 1 : swings === 2 ? 0.8 : 0.6), 2); s.hud.hideBar(); s.hud.prompt(''); s.audio.set('wind', 'wind', 1, 0); hose.visible = false; s.slowmo(0.5, 0.7); s.cam.fixed(V3(P.x + 4.2, FY + 1.3, EDGE + 7.5), () => ({ pos: P, heading: 0 }), { fov: 58, up: 1 }); run.c.setPose('kick', 0.1); }
+          else if (swings >= 3 || Math.abs(om) * 0.72 * L < 3) { // v2: no more swing in it — he kicks the glass through instead
+            shotQ = 0.15; phase = 'in'; if (blastM) blastM.t1 = s.t + 1.6; vz = Math.max(3.5, -om * L); vy = 1.2; for (const m of panes) if (Math.abs(m.position.x - P.x) < 2.1) m.visible = false; s.fx.glass(tp.set(P.x, FY + 1.6, EDGE), 70, { dir: V3(0, 0, 1), speed: 4 }); s.audio.glass(); s.audio.impact(0.8);
+            s.rate('Window timing', 0.15, 2); s.hud.hideBar(); s.hud.prompt(''); s.audio.set('wind', 'wind', 1, 0); hose.visible = false; s.cam.fixed(V3(P.x + 4.2, FY + 1.3, EDGE + 7.5), () => ({ pos: P, heading: 0 }), { fov: 58, up: 1 }); run.c.setPose('kick', 0.1);
+            s.flub('Kicked through the glass — never shot it out', { penalty: 0.2, advice: 'Press E only while you swing IN toward the building, when the needle is in the green (right-hand end of the bar).' });
+          }
+          else { om = -om * 0.72; th = 0.021; lock = false; s.engine.addShake(0.8); s.audio.impact(0.6); s.msg('BOUNCED OFF THE GLASS', 'bad'); s.flub('Bounced off the glass', { penalty: 0.06, quiet: true, advice: 'Press E only while you swing IN toward the building, when the needle is in the green (right-hand end of the bar).' }); }
         }
       } else if (phase === 'in') {
         vy -= 16 * dt; P.z += vz * dt; P.y = Math.max(FY, P.y + vy * dt); vz = Math.min(vz, 9);
@@ -363,8 +395,9 @@ const crane = {
       for (let d = 0; d < L - 1; d += 2.2) for (const sx of [-1, 1]) { const b = s.box({ parent: g, x: sx * w * 0.24, y: -1.9, z: -d - 1.1, w: 0.09, h: 2.5, d: 0.09, mat: m, cast: false }); b.rotation.set((Math.round(d / 2.2) % 2 ? 1 : -1) * 0.62, 0, sx * 0.2); }
       if (y1 === y) s.course.addPiece({ x0: x - w / 2, x1: x + w / 2, z0: z1, z1: z0, fn: () => y, step: 0.6 }); else s.course.addPiece({ x0: x - w / 2, x1: x + w / 2, z0: z1, z1: z0, fn: (px, pz) => y + (y1 - y) * (z0 - pz) / len, step: 1.0 }); };
     const mast = (x, z, top, m) => { for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) s.box({ x: x + dx * 1.1, y: 0, z: z + dz * 1.1, w: 0.26, h: top, d: 0.26, mat: m, tile: 3 }); for (let y = 3; y < top; y += 4.5) { for (const sd of [-1, 1]) { s.box({ x, y, z: z + sd * 1.1, w: 2.2, h: 0.14, d: 0.14, mat: m, cast: false }); s.box({ x: x + sd * 1.1, y, z, w: 0.14, h: 0.14, d: 2.2, mat: m, cast: false }); const b = s.box({ x, y: y + 1.5, z: z + sd * 1.1, w: 0.1, h: 5, d: 0.1, mat: m, cast: false }); b.rotation.z = sd * 0.45; } } s.box({ x: x + 1.9, y: top - 3.4, z, w: 1.6, h: 2.2, d: 1.8, mat: grey }); };
-    const frame = (x, z, y, w) => { for (const sx of [-1, 1]) s.box({ x: x + sx * (w / 2 + 0.75), y: y - 0.3, z, w: 0.16, h: 2.4, d: 0.16, mat: yel }); s.box({ x, y: y + 1.0, z, w: w + 1.8, h: 0.55, d: 0.3, mat: yel, solid: true, sol: { msg: 'Clotheslined by a tie-frame and knocked off the jib', injury: 0.9 } }); s.box({ x, y: y - 0.34, z, w: w + 1.8, h: 0.12, d: 0.2, mat: yel, cast: false }); s.plan.push({ z: z + 4.2, act: 'slide' }); };
-    const drum = (x, z, y, w) => { s.box({ x, y, z, w: w * 0.9, h: 0.62, d: 0.9, mat: grey, tile: 1, solid: true, sol: { soft: true, once: true } }); s.plan.push({ z: z + 2.6, act: 'jump' }); };
+    // v2: a tie-frame knocks you flat on the steel (flub) instead of off it; the bomb-maker slides / vaults every one of these (acts)
+    const acts = [], frame = (x, z, y, w) => { for (const sx of [-1, 1]) s.box({ x: x + sx * (w / 2 + 0.75), y: y - 0.3, z, w: 0.16, h: 2.4, d: 0.16, mat: yel }); const b = s.box({ x, y: y + 1.0, z, w: w + 1.8, h: 0.55, d: 0.3, mat: yel, solid: true, sol: { on: (r, sol) => { r.pass(sol, 1.1); r.stumble(0.8, 0.35); r.c.setPose('hit', 0.06); s.audio.punch(); s.engine.addShake(0.6); s.flub('Clotheslined by a tie-frame', { penalty: 0.18, advice: 'Slide (S) about four metres before each yellow tie-frame — it is chest height, you cannot jump it.' }); return true; } } }); s.box({ x, y: y - 0.34, z, w: w + 1.8, h: 0.12, d: 0.2, mat: yel, cast: false }); s.plan.push({ z: z + 4.2, act: 'slide' }); acts.push({ z, act: 'slide' }); };
+    const drum = (x, z, y, w) => { s.box({ x, y, z, w: w * 0.9, h: 0.62, d: 0.9, mat: grey, tile: 1, solid: true, sol: { soft: true, once: true } }); s.plan.push({ z: z + 2.6, act: 'jump' }); acts.push({ z, act: 'jump' }); };
     s.plan = [];
     // unfinished building where it starts
     s.box({ x: 0, y: Y1 - 0.5, z: 3, w: 16, h: 0.5, d: 32, mat: conc, tile: 5, top: true }); for (const [x, z] of [[-7, 17], [7, 17], [-7, -11], [7, -11], [-7, 3], [7, 3]]) s.box({ x, y: 0, z, w: 0.8, h: Y1 + 4, d: 0.8, mat: conc, tile: 4 }); for (let y = 12; y < Y1 - 4; y += 12) s.box({ x: 0, y, z: 3, w: 16, h: 0.4, d: 32, mat: conc, tile: 5 });
@@ -381,19 +414,36 @@ const crane = {
     s.crew({ x: 4.5, y: Y1, z: 12, ry: 0.7 });
     const px = z => z > -70 ? 0 : z > -76.5 ? 1.6 * (-70 - z) / 6.5 : z > -150 ? 1.6 : z > -157 ? 1.6 * (1 - (-150 - z) / 7) : 0;
     const run = s.run = new Run(s, { char: 'ch_spy', x: 0, z: 9, y: Y1, strafe: 3.3, fallDeath: 99, cam: { dist: 6.4, height: 3.5, ahead: 4.5, fov: 66 } });
-    const tgt = runner(s, 'ch_thug', { x: px, z: -4 }); let close = 0, tot = 0, done = false, got = false;
+    const tgt = runner(s, 'ch_thug', { x: px, z: -4, acts }); let close = 0, tot = 0, done = false, got = false, lost = false, saves = 0;
+    // a lip under the start of crane 2 and 3: come up a little short on a leap and you catch the steel instead of falling
+    for (const [x, z0, y, w] of [[1.6, -76.5, Y2, 1.3], [0, -157, Y3, 1.1]]) s.course.addSolid({ x0: x - w / 2 - 0.25, x1: x + w / 2 + 0.25, y0: y - 0.6, y1: y, z0: z0 - 0.5, z1: z0 });
+    const jw = z => z > -70 ? 1.4 : z > -76.5 ? 0 : z > -150 ? 1.3 : z > -157 ? 0 : z > -202 ? 1.1 : 0, edges = [-70, -150];
     for (const [z0, z1, x] of [[-62, -69.4, 0.4], [-69.4, -143, 1.6], [-143, -149.4, 1.25], [-149.4, -230, 0]]) s.plan.push({ z0, z1, x }); s.plan.push({ z: -70 + 0.8, act: 'jump' }, { z: -150 + 0.8, act: 'jump' });
     s.rate('Footwork', 1, 1); run.onStumble = () => { s.rate('Footwork', 1 - run.stats.stumbles * 0.34, 1); s.msg('TRIPPED', 'bad'); }; run.onGrab = () => s.rate('Footwork', (s.scores.get('Footwork')?.v ?? 1) - 0.25, 1);
-    run.onLand = i => { if (i.drop > 2 && run.pos.y > 20) { s.msg(i.dist.toFixed(1) + ' m LEAP', 'small'); s.bonus('Crane-to-crane leaps', 250); } };
+    run.autoMoments = false; run.onGrab = () => { s.rate('Footwork', (s.scores.get('Footwork')?.v ?? 1) - 0.2, 1); s.flub('Caught the jib by your fingertips', { penalty: 0.1, advice: 'Jump from the very end of the jib (last metre) and hold SPACE for the whole leap.' }); };
+    run.onLand = i => { if (i.airT > 0.5 && run.pos.y > 20 && (run.pos.z < -76 && run.pos.z > -84 || run.pos.z < -156 && run.pos.z > -164)) { s.msg(i.dist.toFixed(1) + ' m LEAP', 'small'); s.bonus('Crane-to-crane leaps', 250); s.moment('crane-to-crane leap', { t0: s.t - i.airT - 1.0, t1: s.t + 1.1, w: run.pos.z < -150 ? 2.6 : 2.4 }); } };
     s.onAction = () => s.objective('Stay on the bomb-maker — do not fall'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), x: +run.pos.x.toFixed(2), y: +run.pos.y.toFixed(1), gap: +(run.pos.z - tgt.p.z).toFixed(1) });
     s.onUpdate(dt => {
       if (!s.started) return; const gap = run.pos.z - tgt.p.z;
-      if (!got) { const want = tgt.p.z < -207.5 ? 0 : 8.9 + (gap < 7 ? 1.1 : gap > 20 ? -1.1 : 0); tgt.v = tgt.p.z < -207.5 ? damp(tgt.v, 0, 6, dt) : damp(tgt.v, want, 2.2, dt); tgt.update(dt); if (tgt.v < 0.6 && tgt.p.z < -207) { tgt.c.heading = damp(tgt.c.heading, Math.PI, 6, dt); tgt.c.setPose('guard', 0.3); } }
+      if (!got) {
+        // if you fall too far behind he waits at the next obstacle, looking back, then bolts again when you close in
+        if (gap > 24 && !tgt.wait) { tgt.wait = true; if (!lost && !s.ended) { lost = true; s.flub('Lost the bomb-maker', { penalty: 0.15, advice: 'Hold W (sprint) on every open stretch of steel — he only waits so long. Keep the TARGET readout under 15 m.' }); } }
+        if (tgt.wait && gap < 11) tgt.wait = false;
+        const nx = tgt.next(12), edge = edges.find(e => e < tgt.p.z && e > tgt.p.z - 12), stopZ = nx ? nx.z + 2.6 : edge != null ? edge + 1.6 : tgt.p.z + 1;
+        const hold = tgt.wait && !tgt.air && tgt.p.z <= stopZ + 0.4, want = tgt.p.z < -207.5 || hold ? 0 : 8.9 + (gap < 7 ? 1.1 : gap > 20 ? -1.1 : 0);
+        tgt.v = tgt.p.z < -207.5 || hold ? damp(tgt.v, 0, 6, dt) : damp(tgt.v, want, 2.2, dt); tgt.update(dt);
+        if (tgt.v < 0.6 && (tgt.p.z < -207 || hold)) { tgt.c.heading = damp(tgt.c.heading, Math.PI, 6, dt); tgt.c.setPose('guard', 0.3); } else tgt.c.heading = damp(tgt.c.heading, 0, 8, dt);
+      }
       if (s.ended) return;
-      if (run.pos.y < Y2 - 9 && !run.dead) { run.die(run.pos.z < -66 && run.pos.z > -78 || run.pos.z < -147 && run.pos.z > -158 ? 'Missed the jump between the cranes' : 'Stepped off the jib — two hundred feet down', 1); return; }
-      tot += dt; if (gap < 15) close += dt; s.hud.readout('gap', 'Target (m)', Math.max(0, gap).toFixed(0), gap < 15 ? 'ok' : gap > 28 ? 'warn' : ''); s.hud.readout('alt', 'Height (m)', Math.round(run.pos.y));
+      // v2: stepping off the side of a jib (not a gap) — you wobble and catch yourself, once per jib section
+      { const z = run.pos.z, w = jw(z), cx = px(z), dx = run.pos.x - cx, top = s.course.height(cx, z, run.pos.y + 2);
+        if (w && !run.dead && run.grabT <= 0 && !run.grounded && run.vy <= 0 && Math.abs(dx) > w / 2 - 0.05 && Math.abs(dx) < w / 2 + 0.9 && run.pos.y > top - 1.2 && run.pos.y < top + 0.2) {
+          saves++; run.pos.x = cx + Math.sign(dx) * (w / 2 - 0.3); run.pos.y = top; run.vy = 0; run.grounded = true; run.vx = 0; run.stumble(0.7, 0.4); s.engine.addShake(0.5);
+          if (saves > 3) { run.grounded = false; run.vy = -2; run.pos.x = cx + Math.sign(dx) * (w / 2 + 0.6); } else s.flub('Wobbled off the edge of the jib', { penalty: 0.12, advice: 'Small taps on A/D only — the jib is barely wider than you. Let go of the keys and you run straight.' });
+        } }
+      if (run.pos.y < Y2 - 9 && !run.dead) { const gapFall = run.pos.z < -66 && run.pos.z > -78 || run.pos.z < -147 && run.pos.z > -158; run.die(gapFall ? 'Missed the jump between the cranes' : 'Stepped off the jib — two hundred feet down', 1, true, gapFall ? 'Jump (SPACE) from the last metre of the jib at full sprint and hold SPACE — and line up with the next jib before you go.' : 'Keep your corrections tiny (tap A/D) — the jib is barely wider than your shoulders.'); return; }
+      tot += dt; if (gap < 18) close += dt; s.hud.readout('gap', 'Target (m)', Math.max(0, gap).toFixed(0), gap < 15 ? 'ok' : gap > 28 ? 'warn' : ''); s.hud.readout('alt', 'Height (m)', Math.round(run.pos.y));
       const z = run.pos.z; s.hud.prompt((z < -62 && z > -70) || (z < -142 && z > -150) ? `${K('SPACE')} LEAP — hold it` : '');
-      if (gap > 42) return s.fail('Lost the bomb-maker', { injury: 0 });
       if (!done && run.pos.z < -203.5 && run.grounded) { done = got = true; run.control = false; run.speedK = 0; tgt.c.setPose('hit', 0.2); s.rate('On his tail', clamp(close / tot / 0.8), 2); s.msg('CORNERED!', 'good'); s.wrap(1.6, 'Nowhere left to run'); }
     });
   },
@@ -423,32 +473,54 @@ const bourne = {
     s.box({ x: 4.2, y: 12.3 - 0.08, z: -163.75, w: 0.85, h: 0.08, d: 8.2, mat: wood, tile: 1.2, top: true, step: 0.5 }); s.plan.push({ z0: -148, z1: -168, x: 4.2 }); s.plan = s.plan.filter(h => !(h.act === 'jump' && Math.abs(h.z - (-160 + 0.9)) < 0.1));
     // the street and the apartment opposite
     const SZ = -197, WZ = SZ - 7, WX = 1.4, FY = 10.7, WT = 14.3; s.line({ x: WX, z: SZ + 1.1, w: 2.2, d: 2.2, y: 12.3, color: 0xffe14a }).material.opacity = 0.4;
-    const wmsg = { msg: 'Missed the window and hit the wall', injury: 0.9, grab: false };
+    let inside = false; const wadv = 'Line up on the yellow square at the edge, take off at full sprint inside the last two metres and steer for the teal shutters.';
+    // v2: clip the window frame (within ~0.8 m of the opening) and you are bundled through it — a flub, not a fall
+    const wmsg = { msg: 'Missed the window and hit the wall', injury: 0.9, grab: false, advice: wadv, on: r => { if (r.grounded || inside) return; if (Math.abs(r.pos.x - WX) < 1.85 && r.pos.y > FY - 1.1 && r.pos.y < WT - 1.0) { r.pos.x = WX + clamp(r.pos.x - WX, -0.5, 0.5); r.pos.y = Math.max(r.pos.y, FY + 0.05); r.vy = Math.max(r.vy, 0); s.audio.impact(0.7); s.flub('Clipped the window frame', { penalty: 0.15, advice: wadv }); return true; } } };
     s.box({ x: WX - 11, y: 0, z: WZ - 6, w: 20, h: 19, d: 12, mat: cream, tile: 5, solid: true, sol: wmsg }); s.box({ x: WX + 11, y: 0, z: WZ - 6, w: 20, h: 19, d: 12, mat: cream, tile: 5, solid: true, sol: wmsg });
-    s.box({ x: WX, y: 0, z: WZ - 6, w: 2, h: FY, d: 12, mat: cream, tile: 5, solid: true, sol: wmsg, top: true }); s.box({ x: WX, y: WT, z: WZ - 0.4, w: 2, h: 19 - WT, d: 0.8, mat: cream, tile: 5, solid: true, sol: wmsg }); s.box({ x: WX, y: 18.6, z: WZ - 6, w: 2.2, h: 0.4, d: 12, mat: cream });
+    s.box({ x: WX, y: 0, z: WZ - 6, w: 2, h: FY, d: 12, mat: cream, tile: 5, solid: true, sol: { ...wmsg, grab: true }, top: true }); s.box({ x: WX, y: WT, z: WZ - 0.4, w: 2, h: 19 - WT, d: 0.8, mat: cream, tile: 5, solid: true, sol: wmsg }); s.box({ x: WX, y: 18.6, z: WZ - 6, w: 2.2, h: 0.4, d: 12, mat: cream });
     s.box({ x: WX, y: FY, z: WZ - 11.9, w: 2, h: WT - FY, d: 0.1, mat: { tex: 'tx_wallpaper' }, tile: 2, solid: true, sol: { on: () => true } }); s.light({ x: WX, y: FY + 2.6, z: WZ - 5, color: 0xffd8a0, i: 20, dist: 12, r: 0.1 });
     for (const sx of [-1, 1]) { s.box({ x: WX + sx * 1.06, y: FY, z: WZ + 0.06, w: 0.12, h: WT - FY, d: 0.14, mat: wood }); s.box({ x: WX + sx * 1.6, y: FY + 0.2, z: WZ + 0.05, w: 0.9, h: WT - FY - 0.4, d: 0.06, mat: s.mat({ color: 0x2a7a8a, rough: 0.8 }) }); }
-    s.box({ x: WX, y: FY, z: WZ, w: 2, h: WT - FY, d: 0.06, mat: s.mat({ glass: true, color: 0xa8d0e0, opacity: 0.4 }), cast: false, solid: 'break', sol: { glass: true, on: () => { s.through = true; } } }); for (const dy of [1.2, 2.4]) s.box({ x: WX, y: FY + dy, z: WZ + 0.02, w: 2, h: 0.05, d: 0.05, mat: wood, cast: false });
+    const pane = s.box({ x: WX, y: FY, z: WZ, w: 2, h: WT - FY, d: 0.06, mat: s.mat({ glass: true, color: 0xa8d0e0, opacity: 0.4 }), cast: false, solid: 'break', sol: { glass: true, on: () => { s.through = true; } } }); for (const dy of [1.2, 2.4]) s.box({ x: WX, y: FY + dy, z: WZ + 0.02, w: 2, h: 0.05, d: 0.05, mat: wood, cast: false });
     for (const [x, y] of [[-5, 9], [-9, 14], [8, 10], [12, 15], [-14, 10]]) s.box({ x: WX + x, y, z: WZ + 0.03, w: 1.3, h: 2, d: 0.06, mat: s.mat({ color: 0x2a3a48, rough: 0.3 }), cast: false });
     // the medina around
     srand(31); for (let i = 0; i < 70; i++) { const sd = sr() < 0.5 ? -1 : 1, x = sd * sr(9.5, 70) + (sd > 0 ? 3 : 0), z = sr(40, -260), w = sr(7, 14), d = sr(7, 14), h = sr(7, 15); if (z < SZ - 2 && z > WZ - 14 && Math.abs(x) < 24) continue; s.box({ x, y: 0, z, w, h, d, mat: [white, cream, white, blue, cream][i % 5], tile: 5 }); if (i % 3 === 0) s.box({ x: x + 1, y: h, z, w: 2.4, h: 2.2, d: 2.6, mat: white }); }
     s.crew({ x: 3.6, y: 14, z: 9, ry: 0.8 });
     const run = s.run = new Run(s, { char: 'ch_agent', x: 0, z: 6, y: 14, fallDeath: 5, cam: { dist: 5.8, height: 2.7, ahead: 4, fov: 66, stiff: 9 } });
-    const px = z => z > -124 ? 0 : z > -128 ? 3 * (-124 - z) / 4 : z > -148 ? 3 : z > -160 ? 3 + 1.2 * (-148 - z) / 12 : z > -168 ? 4.2 : Math.max(WX, 4.2 - (-168 - z) * 0.14);
-    const foe = runner(s, 'ch_goon', { x: px, z: 19 }); foe.p.y = 14; let inside = false, t0 = 0, minGap = 99; s.through = false;
-    s.rate('Parkour line', 1, 1.5); run.onStumble = () => { s.rate('Parkour line', 1 - run.stats.stumbles * 0.3 - run.stats.grabs * 0.3, 1.5); s.msg('SNAGGED!', 'bad'); }; run.onGrab = () => { s.rate('Parkour line', 1 - run.stats.stumbles * 0.3 - run.stats.grabs * 0.3, 1.5); s.msg('SCRAMBLE UP!', 'bad'); };
-    run.onJump = () => { if (run.pos.z < SZ + 5) { s.rate('Take-off speed', near(run.v, 9.6, 0.3, 1.4), 1); s.slowmo(0.45, 1.2); s.cam.set({ dist: 4.6, height: 2.2 }); } };
-    run.onLand = i => { if (run.pos.y < 6) { run.die(run.pos.z < SZ ? 'Fell into the street short of the window' : 'Fell between the rooftops', 0.95, false); run.c.setPose('lie', 0.1); return true; } if (run.pos.z < WZ && !inside) { inside = true; run.control = false; run.speedK = 0; run.v = Math.min(run.v, 6); run.stun = 0.4; run.c.setPose('land', 0.06); s.audio.impact(0.7); s.engine.addShake(0.9); s.rate('Window', near(Math.abs(run.pos.x - WX), 0, 0.2, 0.7), 1.5); s.rate('Lead on the asset', clamp((run.pos.z - 0, fgap()) / 12), 1); s.bonus('Through the glass', 600); s.msg('THROUGH THE WINDOW!', 'good'); s.wrap(1.6, 'Cut. Somebody check on the camera operator.'); return true; } };
-    const fgap = () => foe.p.z - run.pos.z;
+    // the asset chases on foot along YOUR route (jumps, slides and climbs wherever you did — never through the scenery)
+    const foe = pursuer(s, run.c, 'ch_goon', { delay: 1.35 }); let t0 = 0, minGap = 99, caught = 0, foeStop = false, winM = null; s.through = false; run.autoMoments = true;
+    const line = () => s.rate('Parkour line', 1 - run.stats.stumbles * 0.22 - run.stats.grabs * 0.22, 1.5);
+    s.rate('Parkour line', 1, 1.5); run.onStumble = () => { line(); foe.delay = Math.max(0.5, foe.delay - 0.08); s.msg('SNAGGED!', 'bad'); s.flub('Snagged on the rooftop clutter', { penalty: 0.05, quiet: true, advice: 'Jump the low walls (SPACE), slide the washing lines (S) and go round the dishes (A/D) — each snag lets the asset gain.' }); };
+    run.onGrab = sol => { line(); s.msg('SCRAMBLE UP!', 'bad'); if (sol === pane.userData.solid || Math.abs(run.pos.z - WZ) < 1) { const ps = pane.userData.solid; if (!ps.dead) { ps.dead = true; pane.visible = false; s.fx.glass(V3(WX, FY + 1.6, WZ), 60, { dir: V3(0, 0, -1), speed: 4 }); s.audio.glass(); } s.flub('Caught the windowsill', { penalty: 0.15, advice: wadv }); } else s.flub('Came up short — scrambled up the ledge', { penalty: 0.08, advice: 'Jump from the last metre of each roof at full sprint (W) and hold SPACE for distance.' }); };
+    run.onJump = () => { if (run.pos.z < SZ + 5 && !winM) { s.rate('Take-off speed', near(run.v, 9.6, 0.5, 2.4), 1); s.slowmo(0.45, 1.2); s.cam.set({ dist: 4.6, height: 2.2 }); run.autoMoments = false; winM = s.moment('through the window', { t0: s.t - 1.3, dur: 3.4, w: 3 }); } };
+    const goInside = () => { inside = true; run.control = false; run.speedK = 0; run.v = Math.min(run.v, 6); run.stun = 0.4; run.c.setPose('land', 0.06); s.audio.impact(0.7); s.engine.addShake(0.9); if (winM) winM.t1 = s.t + 1.5; s.rate('Window', near(Math.abs(run.pos.x - WX), 0, 0.35, 1.1), 1.5); s.rate('Lead on the asset', clamp(foe.gap() / 10), 1); s.bonus('Through the glass', 600); s.msg('THROUGH THE WINDOW!', 'good'); s.wrap(1.6, 'Cut. Somebody check on the camera operator.'); };
+    run.onLand = i => { if (run.pos.y < 6) { const st = run.pos.z < SZ; run.die(st ? 'Fell into the street short of the window' : 'Fell between the rooftops', 0.95, false, st ? 'For the window: full sprint (W), jump inside the last two metres of the roof and hold SPACE — line up on the yellow square first.' : 'Jump every gap from the last metre of roof (SPACE) and keep sprinting — a short jump can still catch the far ledge.'); run.c.setPose('lie', 0.1); return true; } if (run.pos.z < WZ && !inside) { goInside(); return true; } };
+    const fgap = () => foe.gap();
     s.onAction = () => s.objective('Run the rooftops — he is right behind you'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), x: +run.pos.x.toFixed(2), y: +run.pos.y.toFixed(1), gap: +fgap().toFixed(1), v: +run.v.toFixed(1) });
     s.onUpdate(dt => {
-      if (!s.started) return; const gap = fgap(); if (!inside && !run.dead) { foe.v = damp(foe.v, (s.t - s.t0 < 0.5 ? 0 : 8.75 + clamp((gap - 12) * 0.25, 0, 2.2)), 3, dt); if (foe.p.z < SZ + 3) foe.v = damp(foe.v, 0, 8, dt); foe.update(dt); } else { foe.v = damp(foe.v, 0, 4, dt); foe.update(dt); }
-      if (s.ended) return; minGap = Math.min(minGap, gap);
+      if (!s.started) return; const gap = fgap();
+      // he pulls up at the last roof edge and watches you go (stop replaying the route there)
+      const fp = foe.c.root.position; if (!foeStop && foe.c.root.visible && fp.z < SZ + 3.5 && fp.y > 11) { foeStop = true; foe.delay = 1e9; foe.c.setPose('ready', 0.3); foe.c.heading = 0; }
+      if (foeStop) { fp.z = Math.min(fp.z, SZ + 3); return; }
+      if (s.ended || inside) return; if (run.grounded && run.pos.z < WZ) return goInside(); minGap = Math.min(minGap, gap);
       s.hud.readout('gap', 'Pursuer (m)', Math.max(0, gap).toFixed(1), gap < 5 ? 'warn' : gap > 9 ? 'ok' : ''); const z = run.pos.z; s.hud.prompt(z < SZ + 12 && z > SZ ? `${K('SPACE')} LEAP FOR THE WINDOW` : '');
-      if (gap < 1.3 && !run.dead && run.pos.z > SZ + 1) { run.dead = true; run.v = 0; run.c.setPose('hit', 0.1); foe.c.setPose('punchR', 0.08); s.audio.punch(); s.engine.addShake(0.8); s.fail('The asset caught you on the rooftops', { injury: 0.5 }); }
+      if (gap < 1.3 && foe.c.root.visible && !run.dead && run.pos.z > SZ + 1 && s.t - s.t0 > 2.5) {
+        caught++; foe.c.setPose('punchR', 0.08); s.audio.punch(); s.engine.addShake(0.8);
+        if (caught >= 2) { run.dead = true; run.v = 0; run.c.setPose('hit', 0.1); s.fail('The asset caught you on the rooftops — again', { injury: 0.5, advice: 'Every stumble and ledge-scramble lets him close in. Jump from the last metre of each roof and read the clutter early.' }); }
+        else { foe.delay += 1.1; run.stumble(0.5, 0.7); s.flub('The asset got a hand on you', { penalty: 0.2, advice: 'Keep the PURSUER readout above 5 m — clean jumps from the last metre, no scrambles, no snags.' }); }
+      }
     });
   },
   bot(s, inp) { const r = s.run; botRun(s, inp, { x: r.pos.z > -126 ? 0 : r.pos.z > -168 ? 3 : 1.4 }); if (r.pos.z < -197 + 1.2 && r.pos.z > -197.1 && r.grounded) inp.press('a'); if (r.pos.z < -186) inp.x = clamp((1.4 - r.pos.x) * 2.5, -1, 1); },
 };
 
-export default [raiders, temple, croc, rumble, dieHard, crane, bourne];
+// What the player is asked to do, in plain numbers, plus the film's signature camera angles for the replay.
+const EXTRA = {
+  raiders_boulder: { goals: { shot: ['Press E when the swinging needle is dead centre to swap the idol', 'Run at the camera, holding W: SPACE over the 3 pits, S under the 3 beams, A/D round the 4 rock piles', 'Keep the BOULDER readout above 5 m', 'Burst out into the daylight at the end of the 176 m tunnel'], cut: ['The boulder flattens you', 'You fall into a spike pit'], stars: ['Idol swap timing', 'Footwork (each stumble costs)', 'Lead over the boulder'] }, cine: ['front', { type: 'low', fov: 52 }, 'wide'] },
+  temple_door: { goals: { shot: ['Sprint the spike corridor: A/D away from the wall spikes, SPACE over the 3 floor plates, S under the 2 ceiling blocks', 'Past the red line the door drops: ease off W so DOOR AT ARRIVAL reads 0.85–1.1 m', 'Press S about 4 m before the door to slide under it', 'Then press E at once to reach back for the hat'], cut: ['The door crushes you (gap under 0.8 m when you slide)'], stars: ['Close shave under the door (closer = more)', 'The hat', 'Spike corridor'] }, cine: ['front', { type: 'low', fov: 56 }, 'track'] },
+  croc_run: { goals: { shot: ['Hold W to walk, let go to stop — each croc back is only 3 m long', 'Look at NEXT CROC: hop (SPACE) onto it only when it reads CALM, just after it snaps', 'Cross all 6 crocodiles, then hop onto the far bank'], cut: ['A croc bites you (still on its back 0.4 s into a snap)', 'Falling in the water a third time'], stars: ['Footing (land in the middle of each back)', 'Pace (about 17 s)'] }, cine: [{ type: 'wide', dist: 1.3 }, 'low', 'track'] },
+  rumble_bronx: { goals: { shot: ['Hold W to sprint the car park — A/D round the 7 parked cars, SPACE over the low wall', 'SPACE at the first yellow line to jump down to the second roof', 'Line up with the green marker, then jump ON the far yellow line at 34+ km/h, holding SPACE', 'Steer onto the 2 m balcony across the alley'], cut: ['Falling short of the balcony (or off the roof)'], stars: ['Take-off point', 'Speed', 'Landing on the balcony', 'Run-up'] }, cine: [{ type: 'wide', dist: 1.5 }, { type: 'low', fov: 46 }, 'track'] },
+  die_hard: { goals: { shot: ['Run 94 m for the roof edge with the fireball behind you — A/D round the 4 vents', 'Ease off W so FIREBALL reads 2–4 m (never under 1 m)', 'SPACE to jump in the last 2 m of roof', 'On the hose, press E as you swing IN toward the glass with the needle in the green'], cut: ['The fireball catches you (under 1 m)'], stars: ['Heat on your back', 'Leap', 'Window timing', 'Clean run'] }, cine: [{ type: 'wide', dist: 1.4 }, 'low', 'front'] },
+  casino_crane: { goals: { shot: ['Chase the bomb-maker along the jib, holding W — keep TARGET under 15 m', 'S to slide under the 3 yellow tie-frames, SPACE over the 3 cable drums', 'Jump from the last metre of each jib and hold SPACE for the 2 leaps between cranes', 'Corner him on the platform at the end of crane 3'], cut: ['You fall off the steel'], stars: ['On his tail', 'Footwork'] }, cine: [{ type: 'wide', dist: 1.6 }, { type: 'low', fov: 50 }, 'track'] },
+  bourne: { goals: { shot: ['Sprint across 6 rooftops: SPACE over the gaps and low walls, S under the washing, A/D round the dishes', 'Line up early (x≈4) for the one-board plank bridge', 'Keep PURSUER above 5 m — every snag lets him gain', 'Last roof: full sprint, jump in the last 2 m and steer through the shuttered window'], cut: ['Falling off the roofs', 'Hitting the wall beside the window', 'The asset catching you twice'], stars: ['Parkour line', 'Take-off speed', 'Window', 'Lead on the asset'] }, cine: ['chase', { type: 'wide', dist: 1.3 }, { type: 'low', fov: 50 }] },
+};
+export default [raiders, temple, croc, rumble, dieHard, crane, bourne].map(d => Object.assign(d, EXTRA[d.id]));

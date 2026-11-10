@@ -8,7 +8,7 @@ const steamboat = {
   id: 'steamboat', title: 'The Falling House', film: 'Steamboat Bill, Jr.', year: 1928, tier: 1, pay: 1800, mode: 'custom', art: 'bd_smalltown', music: 'silent',
   role: 'The great stone face — stand still while two tons of house fall on you',
   brief: 'The whole front of the house comes down on top of you. The attic window is open. Stand on the nail and it passes clean over you with two inches each side. Half the crew won\'t watch. Don\'t flinch.',
-  tips: ['Get onto the <b>chalk mark</b> — that is exactly where the open window lands.', `The cyclone shoves you about: tap ${K('A')}${K('D')} <b>against the wind</b> to hold your spot.`, 'When the wall goes you have under two seconds. <b>Within 8 cm is legend. Outside the window is the hospital.</b>'],
+  tips: ['Get onto the <b>chalk mark</b> — that is exactly where the open window lands.', `The cyclone shoves you about: tap ${K('A')}${K('D')} <b>against the wind</b> to hold your spot.`, 'When the wall goes you have under two seconds. <b>Within 10 cm is legend.</b> Off by a hand and the window frame clips you; off by an arm and it is the hospital.'],
   controls: `${K('A')}${K('D')} shuffle left / right against the wind`, intro: { r: 13, h: 2.6, a0: 0.25, speed: 0.06, up: 2.4 },
   assets: { models: ['ch_keaton', 'camera_crew', 'film_light', 'director_chair'], tex: ['bd_smalltown', 'tx_dirt', 'tx_wood', 'tx_roof'] },
   build(s) {
@@ -29,7 +29,7 @@ const steamboat = {
     for (const [x, z, w, h] of [[-5.5, 3.6, 0.9, 0.9], [-6.3, 3.3, 0.7, 1.3], [6.4, 2.6, 1.3, 0.8]]) s.box({ x, y: 0, z, w, h, d: 0.9, mat: dk, tile: 1.5 });
     s.crew({ x: -6.5, z: 6.2, ry: -0.75 });
     const MZ = HZ + (WB + WT) / 2, ring = s.mark({ x: 0, z: MZ, r: 0.34, color: 0xffffff }); s.line({ x: 0, z: MZ, w: 0.5, d: 0.05, color: 0xffffff }); s.line({ x: 0, z: MZ, w: 0.05, d: 0.5, color: 0xffffff });
-    const ch = s.me = s.char('ch_keaton', { x: 2.1, z: MZ, heading: Math.PI }); ch.setCycle('idle', 1);
+    const ch = s.me = s.char('ch_keaton', { x: 2.1, z: MZ, heading: Math.PI }); ch.setCycle('idle', 1); s.subject = ch.root;
     s.cam.fixed(V3(0.6, 2.2, 8.4), () => ({ pos: s.focus }), { fov: 44, up: 0 }); s.focus.set(0, 2.9, -1.5); s.introFocus = V3(0, 2.4, MZ);
     const st = s.st = { x: 2.1, vx: 0, w: 0, gust: 0, gt: 3, th: 0, fall: -1, done: false }, DROP = 17, FALLT = 1.75, p = V3(), v = V3();
     s.objective('Get on the chalk mark and hold it against the storm');
@@ -42,27 +42,33 @@ const steamboat = {
       if (Math.random() < 0.25) s.fx.dust(p.set(rnd(-8, 8), 0.05, rnd(-3, 4)), 1, { vel: v.set(st.w * 3, 0, 0), size: 1.0, a: 0.14, color: [0.8, 0.78, 0.72] });
       s.audio.set('storm', 'wind', 0.7 + Math.abs(st.w) * 0.08, 0.35 + Math.abs(st.w) * 0.05);
       if (!s.started) return;
-      if (st.fall < 0 && el >= DROP) { st.fall = 0; s.audio.crash?.(0.5); s.engine.addShake(0.4); s.msg('THE WALL IS GOING!', 'bad'); s.objective('HOLD YOUR MARK'); }
+      if (st.fall < 0 && el >= DROP) { st.fall = 0; s.audio.crash?.(0.5); s.engine.addShake(0.4); s.msg('THE WALL IS GOING!', 'bad'); s.objective('HOLD YOUR MARK');
+        const SH = Math.PI; st.mom = s.moment('The falling house', { t0: s.t - 1.0, t1: s.t + FALLT + 1.8, w: 3, shots: [{ type: 'front', a: -0.1, b: 1.0, speed: 1, heading: SH, fov: 36 }, { type: 'low', a: 0.1, b: 0.95, speed: 0.4, heading: SH }, { type: 'top', a: 0.4, b: 1.05, speed: 0.7, heading: SH }] }); }
+      if (st.fall > 1.0 && !st.slow && !st.done) { st.slow = true; s.slowmo(0.3, 1.0); }
       if (st.fall >= 0 && !st.done) {
         st.fall += dt; const k = clamp(st.fall / FALLT); st.th = Math.PI / 2 * Math.pow(k, 2.4); piv.rotation.x = st.th;
         if (k >= 1) {
           st.done = true; const err = Math.abs(st.x), cm = Math.round(err * 100), inWin = err < WW / 2 - 0.24; piv.rotation.x = Math.PI / 2 - 0.004;
           s.audio.crash?.(1.2); s.audio.thud(); s.engine.addShake(1.8); for (let i = 0; i < 26; i++) s.fx.dust(p.set(rnd(-W / 2, W / 2), 0.1, HZ + rnd(0, H)), 2, { size: 2.6, spread: 2.5, up: 2.5, color: [0.85, 0.83, 0.78] });
-          if (!inWin) { ch.setPose('lie', 0.05); ch.root.position.y = -0.2; return s.fail(`${cm} cm off the mark — the wall landed on you, not around you`, { injury: 1 }); }
-          ch.setPose('stand', 0.3); s.rate('On the mark', near(err, 0, 0.08, WW / 2 - 0.24), 2.4); s.rate('Did not flinch', near(Math.abs(st.vx), 0, 0.25, 1.6), 1); if (err < 0.08) s.bonus('Dead centre of the window', 500);
-          s.msg(err < 0.08 ? 'NOT A SCRATCH — LEGEND' : `THROUGH THE WINDOW — ${cm} cm off`, 'huge good'); s.wrap(2.6, 'They only built the wall once.');
+          const side = st.x > 0 ? 'right' : 'left', back = st.x > 0 ? 'A' : 'D';
+          if (err > WW / 2 + 0.12) { ch.setPose('lie', 0.05); ch.root.position.y = -0.2; return s.fail(`${cm} cm off the mark — the wall landed on you, not around you`, { injury: 1, advice: `You finished ${cm} cm ${side} of the chalk. Watch the "Off the mark" readout, keep it under 10 and tap ${back} against each gust; in the last 4 s stop correcting big and just hold.` }); }
+          if (!inWin) { ch.setPose('hit', 0.05); s.engine.hurt(0.35); s.audio.impact?.(0.7); s.after(0.5, () => ch.setPose('stand', 0.3)); s.flub(`The window frame clipped you (${cm} cm off)`, { penalty: 0.25, advice: `Close — ${cm} cm ${side} of the chalk. Anything under 28 cm passes clean; tap ${back} early against the gusts so you are settled before the wall goes.` }); }
+          else ch.setPose('stand', 0.3);
+          s.rate('On the mark', near(err, 0, 0.1, 0.7), 2.4); s.rate('Did not flinch', near(Math.abs(st.vx), 0, 0.3, 1.8), 1); if (err < 0.1) s.bonus('Dead centre of the window', 500);
+          if (err < 0.15) st.mom.freeze = { line: 'Two tons of house. Two inches to spare. And not so much as a blink.', shot: 1, at: 0.64 };
+          s.after(0.8, () => s.audio.cheer()); s.msg(err < 0.1 ? 'NOT A SCRATCH — LEGEND' : inWin ? `THROUGH THE WINDOW — ${cm} cm off` : `CLIPPED BY THE FRAME — ${cm} cm off`, inWin ? 'huge good' : 'huge'); s.wrap(2.6, 'They only built the wall once.');
         }
       }
       if (st.done) return;
       st.vx += (st.w * 0.95 + s.input.x * 7.5 - st.vx * 3.2) * dt; st.x = clamp(st.x + st.vx * dt, -3.3, 3.3); ch.root.position.x = st.x;
       const sp = Math.abs(st.vx); if (sp > 0.35) { ch.setCycle('walk', 5 + sp * 3); ch.heading = Math.PI + clamp(st.vx * 0.45, -0.9, 0.9); } else { ch.setCycle('idle', 1); ch.heading = damp(ch.heading, Math.PI, 8, dt); }
       const cm = Math.round(Math.abs(st.x) * 100), left = DROP - el; ring.material.color.setScalar(Math.abs(st.x) < 0.1 ? 2.4 : 1.2);
-      s.hud.readout('off', 'Off the mark (cm)', cm, cm <= 8 ? 'ok' : cm > 26 ? 'warn' : ''); s.hud.readout('wind', 'Wind', (st.w < -0.4 ? '◀ ' : '') + Math.abs(st.w * 9).toFixed(0) + ' mph' + (st.w > 0.4 ? ' ▶' : ''), Math.abs(st.w) > 3.4 ? 'warn' : '');
+      s.hud.readout('off', 'Off the mark (cm)', cm, cm <= 10 ? 'ok' : cm > 28 ? 'warn' : ''); s.hud.readout('wind', 'Wind', (st.w < -0.4 ? '◀ ' : '') + Math.abs(st.w * 9).toFixed(0) + ' mph' + (st.w > 0.4 ? ' ▶' : ''), Math.abs(st.w) > 3.4 ? 'warn' : '');
       if (st.fall < 0) s.hud.readout('drop', 'Wall drops in', Math.max(0, left).toFixed(1), left < 4 ? 'warn' : '');
     });
     s.dbg = () => ({ x: +st.x.toFixed(2) });
   },
-  bot(s, inp) { const st = s.st; inp.x = clamp(-(st.x * 9 + st.vx * 2.6) - st.w * 0.95 / 7.5, -1, 1); },
+  bot(s, inp) { const st = s.st, off = typeof location !== 'undefined' ? +(new URLSearchParams(location.search).get('off') || 0) : 0; inp.x = clamp(-((st.x - off) * 9 + st.vx * 2.6) - st.w * 0.95 / 7.5, -1, 1); }, // ?off=0.4 tests a sloppy mark
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -71,7 +77,7 @@ const spidey = {
   id: 'spiderman_tray', title: 'The Lunch Tray', film: 'Spider-Man', year: 2002, tier: 1, pay: 1600, mode: 'custom', art: 'bd_nyc_night', music: 'tension',
   role: 'High-school kid with suspiciously good reflexes',
   brief: 'She slips, the lunch goes up, and you catch every piece of it on the tray. No wires, no CG — the real fella did it with glue on his hand and it took him a hundred and fifty-six takes. I\'d like it in fewer.',
-  tips: ['Each item has a <b>yellow ring</b> on the floor where it will come down. Put the <b>white ring</b> (your tray) on it.', `${K('A')}${K('D')} move sideways, ${K('W')}${K('S')} move away / toward camera. Items land <b>in the order they were thrown</b>.`, 'Catch near the <b>centre of the tray</b> for full marks. Drop one and it is take two.'],
+  tips: ['Each item has a <b>yellow ring</b> on the floor where it will come down. Put the <b>white ring</b> (your tray) on it.', `${K('A')}${K('D')} move sideways, ${K('W')}${K('S')} move away / toward camera. Items land <b>in the order they were thrown</b>.`, 'Catch near the <b>centre of the tray</b> for full marks. A dropped item splats on the floor and costs you — <b>keep going</b>, the take runs to the last item.'],
   controls: `${K('A')}${K('D')} left / right &nbsp; ${K('W')}${K('S')} back / forward`, intro: { r: 6.5, h: 2.6, up: 1 },
   assets: { models: ['ch_stunt', 'ch_bride', 'camera_crew', 'film_light', 'director_chair'], tex: ['tx_concrete', 'tx_wallpaper', 'tx_wood', 'tx_metal'] },
   build(s) {
@@ -88,7 +94,7 @@ const spidey = {
     for (let i = 0; i < 3; i++) s.light({ x: -7 + i * 7, y: 5.6, z: -1, color: 0xfff6e0, i: 22, dist: 16, r: 0.3 });
     s.crew({ x: 5.2, z: 4.4, ry: 0.5, people: false });
     const girl = s.char('ch_bride', { x: -3.7, z: 0.2, heading: -Math.PI / 2 }); girl.setPose('idle', 0);
-    const ch = s.me = s.char('ch_stunt', { x: 0.6, z: 0, heading: Math.PI, pose: 'tray' }), TY = 1.08, TO = 0.46;
+    const ch = s.me = s.char('ch_stunt', { x: 0.6, z: 0, heading: Math.PI, pose: 'tray' }), TY = 1.08, TO = 0.46; s.subject = ch.root;
     const tray = s.box({ w: 0.72, h: 0.025, d: 0.5, color: 0xc8611c }); for (const sx of [-1, 1]) s.box({ parent: tray, x: sx * 0.35, y: -0.012, z: 0, w: 0.02, h: 0.045, d: 0.5, color: 0x8a4212 });
     const mkRing = (r, c) => { const m = s.mark({ x: 0, z: 0, r, color: c }); m.visible = false; return m; }, rings = [0, 1, 2, 3].map(() => mkRing(0.24, 0xffd020)), trayRing = mkRing(0.2, 0xffffff); trayRing.visible = true;
     s.cam.fixed(V3(0.2, 2.7, 4.5), () => ({ pos: s.focus }), { fov: 54, up: 0 }); s.focus.set(0.1, 0.95, -0.4); s.introFocus = V3(0.6, 0, 0);
@@ -97,7 +103,18 @@ const spidey = {
     for (let i = 0; i < N; i++) { const gapT = lerp(1.75, 1.0, i / (N - 1)); let nx, nz, d; do { nx = sr(-2.3, 2.6); nz = sr(-1.5, 1.4); d = Math.hypot(nx - lx, nz - lz); } while (i && (d < 0.7 || d > Math.min(2.6, 1.95 * gapT))); const T = sr(1.15, 1.4), F = FOOD[i % FOOD.length]; lt += i ? gapT : 0; lx = nx; lz = nz; items.push({ n: F[0], F, t0: lt - T, T, lx, lz, x0: -3.35, y0: 1.35, z0: 0.2 + sr(-0.3, 0.3), state: 0 }); }
     const mkFood = F => { const g = F[2] === 's' ? new THREE.SphereGeometry(F[3], 12, 8) : F[2] === 'c' ? new THREE.CylinderGeometry(F[3][0], F[3][0] * 0.8, F[3][1], 12) : new THREE.BoxGeometry(...F[3]); const m = new THREE.Mesh(g, s.mat({ color: F[1], rough: 0.5, ...(F[0] === 'jello' ? { emissive: 0x1a7030, emI: 0.5 } : {}) })); m.castShadow = true; m.visible = false; s.scene.add(m); return m; };
     for (const it of items) { it.m = mkFood(it.F); it.h = it.F[2] === 's' ? it.F[3] : it.F[2] === 'c' ? it.F[3][1] / 2 : it.F[3][1] / 2; }
-    const st = s.st = { x: 0.6, z: 0, vx: 0, vz: 0, caught: 0, sum: 0, items, tx: 0, tz: 0, slip: false };
+    const st = s.st = { x: 0.6, z: 0, vx: 0, vz: 0, caught: 0, sum: 0, items, tx: 0, tz: 0, slip: false, dropped: 0, over: false };
+    const RC = 0.34; // catch radius (tray centre to landing point)
+    // the end of the take: every item is on the tray or on the floor
+    const finish = () => {
+      st.over = true; const n = st.caught; s.rate(`Catches (${n} / ${N})`, n / N, 3); s.rate('Centre of the tray', n ? st.sum / n : 0, 1.5);
+      const t0 = s.t0 + items[N - 5].t0 + items[N - 5].T - 1.2;
+      s.moment(n === N ? 'Every last bite' : 'The lunch tray', { t0, t1: s.t + 1.2, w: 2 + n / N, shots: [{ type: 'low', a: -0.05, b: 0.55, speed: 0.45 }, { type: 'wide', a: 0.3, b: 0.8, speed: 0.6, dist: 0.5 }, { type: 'orbit', a: 0.6, b: 1.05, speed: 0.45 }] });
+      girl.setPose('stand', 0.4);
+      if (n === N) { s.msg('ONE TAKE!', 'huge good'); s.after(0.5, () => s.audio.say('Wow. Nice reflexes.', { rate: 1, pitch: 1.35 })); s.after(1.2, () => s.audio.cheer?.(0.6)); s.wrap(2.4, 'Got it in one. The original needed 156 takes.'); }
+      else { s.msg(`${n} OF ${N} ON THE TRAY`, n >= N - 2 ? 'good' : 'bad'); s.wrap(2, n >= N - 2 ? 'So close. The original needed 156 takes.' : 'Lunch is on the floor. Go again.'); }
+    };
+    const splat = it => { const r = it.F[2] === 's' ? it.F[3] * 1.6 : 0.14, m = new THREE.Mesh(new THREE.CircleGeometry(r, 14), s.mat({ color: it.F[1], rough: 0.4 })); m.rotation.x = -Math.PI / 2; m.position.set(it.m.position.x, 0.012, it.m.position.z); m.scale.set(1, 0.7 + Math.random() * 0.5, 1); s.scene.add(m); it.m.scale.set(1.3, 0.35, 1.3); it.m.position.y = it.h * 0.35; it.m.rotation.set(0, rnd(3), 0); };
     s.objective('Catch the whole lunch on the tray'); const p = V3();
     s.onUpdate((dt, t) => {
       const el = s.started ? t - s.t0 : -1, live = s.started && !s.ended;
@@ -115,13 +132,16 @@ const spidey = {
           if (ri < rings.length) { const r = rings[ri++]; r.visible = true; r.position.set(it.lx, 0.06, it.lz); r.scale.setScalar(1 + clamp(1 - k) * 1.6); r.material.opacity = 0.35 + 0.6 * clamp(k); }
           if (k >= 1 && !s.ended) {
             const d = Math.hypot(it.lx - st.tx, it.lz - st.tz);
-            if (d < 0.3) { it.state = 2; st.caught++; const q = near(d, 0, 0.07, 0.3); st.sum += q; it.off = [clamp(it.lx - st.tx + ((st.caught * 5) % 7 - 3) * 0.075, -0.27, 0.27), clamp(it.lz - st.tz + ((st.caught * 3) % 5 - 2) * 0.07, -0.17, 0.17)]; it.m.rotation.set(0, rnd(3), 0); s.audio.tick(); s.audio.thud?.(); s.msg(q > 0.9 ? 'CENTRE!' : q > 0.5 ? 'Caught' : 'Just!', q > 0.9 ? 'small good' : 'small'); if (st.caught === N) { s.rate('Every item caught', 1, 1); s.rate('Centre of the tray', st.sum / N, 2); girl.setPose('stand', 0.4); s.msg('ONE TAKE!', 'huge good'); s.wrap(2, 'Got it in one. The original needed 156 takes.'); } }
+            if (d < RC) { it.state = 2; st.caught++; const q = near(d, 0, 0.08, RC); st.sum += q; it.off = [clamp(it.lx - st.tx + ((st.caught * 5) % 7 - 3) * 0.075, -0.27, 0.27), clamp(it.lz - st.tz + ((st.caught * 3) % 5 - 2) * 0.07, -0.17, 0.17)]; it.m.rotation.set(0, rnd(3), 0); s.audio.tick(); s.audio.thud?.(); s.msg(q > 0.9 ? 'CENTRE!' : q > 0.5 ? 'Caught' : 'Just!', q > 0.9 ? 'small good' : 'small'); }
             else { it.state = 3; it.vy = vy0 - G * it.T; }
           }
         } else if (it.state === 2) it.m.position.set(st.tx + it.off[0], TY + it.h, st.tz + it.off[1]);
-        else if (it.state === 3) { it.vy -= G * dt; it.m.position.y += it.vy * dt; it.m.position.x += 1.2 * dt; if (it.m.position.y <= it.h) { it.m.position.y = it.h; it.state = 4; s.audio.thud?.(); s.fx.debris(p.copy(it.m.position), 6, { color: it.F[1], speed: 2.5, size: 0.05 }); s.fail(`Dropped the ${it.n} — only ${155 - Math.min(150, st.caught)} more takes to match the original`, { injury: 0, delay: 1.6 }); } }
+        else if (it.state === 3) { it.vy -= G * dt; it.m.position.y += it.vy * dt; it.m.position.x += 1.2 * dt; if (it.m.position.y <= it.h) { it.m.position.y = it.h; it.state = 4; st.dropped++; s.audio.thud?.(); s.audio.splash?.(0.25); s.fx.debris(p.copy(it.m.position), 8, { color: it.F[1], speed: 2.5, size: 0.05 }); splat(it); s.msg('SPLAT! ' + it.n.toUpperCase(), 'bad');
+            s.flub('Dropped the ' + it.n, { penalty: 0.04, quiet: st.dropped > 1, advice: 'Look at the next yellow ring as soon as it appears and move there early — be standing still on it before the item comes down, then go straight to the next ring.' }); } }
       }
       for (; ri < rings.length; ri++) rings[ri].visible = false;
+      const lastIt = items[N - 1]; if (!st.slowed && el > lastIt.t0 + lastIt.T - 0.45) { st.slowed = true; s.slowmo(0.35, 0.7); }
+      if (!st.over && !s.ended && items.every(i => i.state === 2 || i.state === 4)) finish();
       s.hud.readout('take', 'Take (film: 156)', 1); s.hud.readout('got', 'On the tray', st.caught + ' / ' + N, 'ok');
     });
     s.dbg = () => ({ caught: st.caught });
@@ -150,11 +170,14 @@ const vault = {
     s.box({ x: 0, y: 0, z: TZ + 0.75, w: 0.5, h: 0.45, d: 0.5, mat: dark }); s.box({ x: 0, y: CH - 0.05, z: 0.85, w: 1.1, h: 0.06, d: 1.1, color: 0x0c0d10, cast: false });
     for (const [x, z] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) s.light({ x, y: CH - 0.4, z, color: 0xf2f7ff, i: 5, dist: 16, r: 0.25, glow: 2 });
     const laser = s.box({ x: 0, y: 0.02, z: 0, w: 2 * R, h: 0.01, d: 2 * R, mat: new THREE.MeshBasicMaterial({ color: 0xff2020, transparent: true, opacity: 0, depthWrite: false }), cast: false });
-    const CZ = 0.85, ch = s.me = s.char('ch_agent', { x: 0, y: 5, z: CZ, heading: 0, pose: 'wire' }), hipH = ch.hipH || 0.95;
+    const CZ = 0.85, ch = s.me = s.char('ch_agent', { x: 0, y: 5, z: CZ, heading: 0, pose: 'wire' }), hipH = ch.hipH || 0.95; s.subject = ch.root;
     const wire = s.cyl({ r: 0.012, h: 1, color: 0x15171a, cast: false }), drop = new THREE.Mesh(new THREE.SphereGeometry(0.022, 8, 6), new THREE.MeshBasicMaterial({ color: 0x9fd8ff })); drop.visible = false; s.scene.add(drop);
     const Y0 = 6.1, BAND = [1.06, 1.5], VMAX = 2.4, FLOOR = 0.34, QUIET = 0.45, st = s.st = { y: Y0, vy: 0, sw: 0, noise: 0, maxN: 0, temp: 0, prog: 0, phase: 'in', slip: null, slips: 0, drops: [], sweat: null, sweats: 0, sw8: [], jolt: 0, alarm: false };
     s.cam.fixed(V3(4.6, 1.9, 4.9), () => ({ pos: s.focus }), { fov: 46, up: 0, lookStiff: 4 }); s.introFocus = V3(0, 1.6, 0);
-    const alarm = why => { if (st.alarm) return; st.alarm = true; laser.material.opacity = 0.35; s.hemi.color.set(0xff3030); s.audio.bell(); s.audio.bad?.(); s.engine.flash(0.5); s.fail(why, { injury: 0.1 }); };
+    const alarm = (why, advice) => { if (st.alarm) return; st.alarm = true; laser.material.opacity = 0.35; s.hemi.color.set(0xff3030); s.audio.bell(); s.audio.bad?.(); s.engine.flash(0.5); s.fail(why, { injury: 0.1, advice }); };
+    const SHOTS = [{ type: 'orbit', a: -0.1, b: 1.0, speed: 0.35 }, { type: 'low', a: 0.1, b: 0.95, speed: 0.5, heading: Math.PI }, { type: 'track', a: 0.3, b: 1.05, speed: 0.7, fov: 40 }];
+    // the director's calls: close shaves, noise spikes and a warm room cost stars, they do not stop the take
+    const done = () => { const av = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : st.prog; s.rate('Download', st.prog, 1.5); s.rate('Silence', clamp(1.3 - st.maxN * 1.1), 1.2); s.rate('Rope arrests', av(st.drops.map(d => near(d, 0, 0.18, 0.95))), 1.2); s.rate('Sweat catch', av(st.sw8), 1); s.rate('Cool room', clamp((1.05 - st.temp) / 0.45), 0.8); };
     s.objective('Lower to the terminal — quietly');
     s.onUpdate((dt, t) => {
       const el = s.started ? t - s.t0 : 0, live = s.started && !s.ended, inp = s.input;
@@ -164,15 +187,19 @@ const vault = {
         const sl = st.slip;
         if (sl) {
           sl.t += dt; if (!sl.fall && Math.floor(sl.t * 14) % 2 === 0) s.audio.tick();
-          if (inp.hit('a')) { const d = sl.y0 - st.y; st.drops.push(d); st.slip = null; st.vy = 0; st.jolt = 0.5 + d; st.noise += 0.05 + d * 0.12; s.audio.thud(); s.engine.addShake(0.25 + d * 0.5); s.hud.prompt(''); s.msg(d < 0.12 ? 'HELD IT!' : d < 0.5 ? 'Caught it' : 'INCHES!', d < 0.5 ? 'good' : 'bad'); }
+          if (inp.hit('a')) { const d = sl.y0 - st.y; st.drops.push(d); st.slip = null; st.vy = 0; st.jolt = 0.5 + d; st.noise += 0.05 + d * 0.12; s.audio.thud(); s.engine.addShake(0.25 + d * 0.5); s.hud.prompt(''); s.msg(d < 0.12 ? 'HELD IT!' : d < 0.5 ? 'Caught it' : 'INCHES!', d < 0.5 ? 'good' : 'bad');
+            s.slowmo(0.35, 0.8); s.moment(st.y < 0.8 ? 'Inches from the floor' : 'The rope slips', { t0: s.t - 1.6 - sl.t * 0.5, t1: s.t + 1.6, w: 2 + d + (st.y < 0.8 ? 0.6 : 0), shots: SHOTS }); }
           else if (sl.t > 0.62) { if (!sl.fall) { sl.fall = true; sl.y0 = st.y; s.audio.whoosh(1.4); } st.vy -= 7.5 * dt; s.hud.prompt(`ROPE! ${K('SPACE')}`); }
           else { st.vy = damp(st.vy, 0, 6, dt); s.hud.prompt(`The rope is slipping… ${K('SPACE')} to arrest`); }
         } else st.vy = damp(st.vy, -inp.y * VMAX, 4, dt);
         st.y = Math.min(Y0 + 0.2, st.y + st.vy * dt); if (st.y >= Y0 + 0.2 && st.vy > 0) st.vy = 0;
         // sensors
         const lvl = sl?.fall ? 0.45 : Math.abs(st.vy) / VMAX; st.noise = clamp(st.noise + (lvl - QUIET) * 0.75 * dt, 0, 1.2); st.maxN = Math.max(st.maxN, st.noise); st.temp = el / 58;
-        if (st.y <= FLOOR) { st.y = FLOOR; return alarm('Touched the pressure floor — every alarm in the building'); }
-        if (st.noise >= 1) return alarm('Too fast on the wire — the sound sensor heard you'); if (st.temp >= 1) return alarm('Took too long — your body heat raised the room one degree');
+        if (st.y <= FLOOR) { st.y = FLOOR; return alarm('Touched the pressure floor — every alarm in the building', sl ? 'The moment the rope ticks, hit SPACE — you have over half a second before it starts to run, and SPACE stops it dead.' : 'Hover with S as you near the screen — the Above floor readout should read 70–115 cm at the screen; never go under 30.'); }
+        if (st.y < FLOOR + 0.2 && !st.brush) { st.brush = true; s.flub('Brushed within inches of the floor', { penalty: 0.12, advice: 'Watch the "Above floor" readout: the screen is at 70–115 cm. Ease off W (tap S) as soon as the Download bar starts filling.' }); } else if (st.y > FLOOR + 0.5) st.brush = false;
+        if (st.noise >= 1) { st.noise = 0.55; s.engine.flash(0.25); s.audio.tick(); s.flub('The sound sensor twitched', { penalty: 0.15, advice: 'Half-press W: the Sound meter only climbs when you move faster than half speed. Tap, pause, tap.' }); }
+        if (st.temp >= 1 && !st.warm) { st.warm = true; s.flub('The room is warming up', { penalty: 0.15, advice: 'You have about 58 s before your body heat registers — go straight down, hover, and come straight back up.' }); }
+        if (st.temp >= 1.3) { done(); s.flub('Ran out of time — the guards are on their way', { penalty: 0.2, advice: 'Get down to the screen within 15 s, hold level while the bar fills (about 10 s), then straight back up with S.' }); return s.wrap(1.4, 'Out of time.'); }
         // download while hovering at the terminal
         const inBand = st.y > BAND[0] && st.y < BAND[1] && !sl;
         if (st.phase === 'in' && inBand) { st.phase = 'dl'; s.objective('Hold level with the screen — copying the list'); }
@@ -180,15 +207,14 @@ const vault = {
           if (inBand && !st.sweat) st.prog += dt / 9.5; scr.material.color.setHex(inBand ? (Math.floor(t * 8) % 2 ? 0x30ff80 : 0x20c060) : 0x1a6a3a);
           if (!st.sweat && !sl && st.sweats < 2 && st.prog > [0.22, 0.78][st.sweats]) { st.sweat = { t: 0 }; st.sweats++; drop.visible = true; s.msg('SWEAT!', 'small bad'); }
           if (st.sweat) {
-            const sw = st.sweat; sw.t += dt; const v = sw.t / 1.5, hy = st.y + 0.12, hz = CZ - 0.78; drop.position.set(st.sw * 0.5, lerp(hy, v < 0.72 ? hy - 0.45 : 0.02, v < 0.72 ? v / 0.72 : (v - 0.72) / 0.28), hz); s.hud.bar(clamp(v), [0.58, 0.84], [0.68, 0.76]); s.hud.prompt(`${K('E')} catch the drop`);
-            const end = ok => { st.sweat = null; drop.visible = false; s.hud.hideBar(); s.hud.prompt(''); ch.setPose('wire', 0.3); if (!ok) alarm('A bead of sweat hit the pressure floor'); };
-            if (inp.hit('x')) { if (v >= 0.58 && v <= 0.84) { st.sw8.push(near(v, 0.72, 0.045, 0.13)); s.audio.tick(); s.msg('Caught', 'small good'); ch.setPose({ ...POSES.wire, aR: [0.25, -0.2, 1, 0.0, -0.9, 0.6] }, 0.08); s.after(0.35, () => !st.alarm && ch.setPose('wire', 0.3)); st.sweat = null; drop.visible = false; s.hud.hideBar(); s.hud.prompt(''); } else end(false); }
+            const sw = st.sweat; sw.t += dt; const v = sw.t / 1.5, hy = st.y + 0.12, hz = CZ - 0.78; drop.position.set(st.sw * 0.5, lerp(hy, v < 0.72 ? hy - 0.45 : 0.02, v < 0.72 ? v / 0.72 : (v - 0.72) / 0.28), hz); s.hud.bar(clamp(v), [0.56, 0.86], [0.67, 0.77]); s.hud.prompt(`${K('E')} catch the drop`);
+            const end = ok => { st.sweat = null; drop.visible = false; s.hud.hideBar(); s.hud.prompt(''); ch.setPose('wire', 0.3); if (!ok) { st.sw8.push(0); s.engine.flash(0.2); s.audio.tick(); s.flub('A bead of sweat hit the floor', { penalty: 0.2, advice: 'Press E while the falling marker is inside the green band (about two thirds of the way along) — not when the drop first falls.' }); } };
+            if (inp.hit('x')) { if (v >= 0.56 && v <= 0.86) { st.sw8.push(near(v, 0.72, 0.05, 0.15)); s.audio.tick(); s.msg('Caught', 'small good'); s.slowmo(0.3, 0.7); s.moment('The bead of sweat', { t0: s.t - 2.2, t1: s.t + 1.2, w: 2.4 + st.sw8.length * 0.01, shots: SHOTS }); ch.setPose({ ...POSES.wire, aR: [0.25, -0.2, 1, 0.0, -0.9, 0.6] }, 0.08); s.after(0.35, () => !st.alarm && ch.setPose('wire', 0.3)); st.sweat = null; drop.visible = false; s.hud.hideBar(); s.hud.prompt(''); } else end(false); }
             else if (v >= 1) end(false);
           }
           if (st.prog >= 1) { st.phase = 'out'; scr.material.color.setHex(0x2060ff); s.audio.good(); s.msg('DOWNLOAD COMPLETE', 'good'); s.objective('Out! Raise back to the vent — still quiet'); }
         } else if (st.phase === 'out' && st.y > 5.4) {
-          const av = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 1; s.rate('Silence', clamp(1.3 - st.maxN * 1.1), 1.2); s.rate('Rope arrests', av(st.drops.map(d => near(d, 0, 0.14, 0.85))), 1.2); s.rate('Sweat catch', av(st.sw8), 1); s.rate('Cool room', clamp((1 - st.temp) / 0.4), 0.8);
-          s.wrap(1.4, 'Toast.');
+          done(); s.wrap(1.4, 'Toast.');
         }
         s.hud.meter('noise', 'Sound', st.noise, { color: st.noise > 0.7 ? '#ff4030' : '#40c0ff' }); s.hud.meter('temp', 'Room temp', st.temp, { color: st.temp > 0.75 ? '#ff4030' : '#ffb040' }); s.hud.meter('dl', 'Download', st.prog, { color: '#40ff70' });
         s.hud.readout('h', 'Above floor (cm)', Math.round((st.y - FLOOR) * 100), st.y < 0.9 ? 'warn' : inBand ? 'ok' : '');
@@ -206,4 +232,16 @@ const vault = {
   },
 };
 
-export default [steamboat, spidey, vault];
+// What the player is asked to do, in plain numbers, plus the film's signature camera angles for the replay.
+const EXTRA = {
+  steamboat: { cine: [{ type: 'front', heading: Math.PI, fov: 36 }, { type: 'low', heading: Math.PI }, { type: 'top', heading: Math.PI }], goals: {
+    shot: ['Walk onto the white chalk cross with A/D — the "Off the mark" readout should say 0', 'The storm shoves you about for 17 s: tap the key against the wind (wind ▶ = tap A, ◀ wind = tap D) to stay under 10 cm', 'When the wall drops (1.75 s) stay still on the mark'],
+    cut: ['You are more than about 64 cm off the mark when the wall lands (it lands on you)'], stars: ['On the mark: under 10 cm perfect, under 28 cm clean, 28–64 cm the window frame clips you', 'Not moving as it lands'] } },
+  spiderman_tray: { cine: ['low', { type: 'wide', dist: 0.5 }, 'orbit'], goals: {
+    shot: ['14 items fly off her tray, one every 1–1.75 s, in the order they are thrown', 'Each shows a yellow ring on the floor where it will land: move your white tray ring onto it with W A S D before it comes down', 'A dropped item splats on the floor — keep going, the take always runs to the 14th item'],
+    cut: ['Nothing — the take ends after the last item, caught or not'], stars: ['How many of the 14 you caught', 'How close to the tray centre each landed'] } },
+  mi_vault: { cine: [{ type: 'orbit', speed: 0.35 }, { type: 'low', heading: Math.PI }, { type: 'track', fov: 40 }], goals: {
+    shot: ['Hold W gently to lower to the screen (Above floor 70–115 cm) — over half speed raises the Sound meter', 'Hover there ~10 s while the Download bar fills; when the rope ticks and slips, press SPACE at once', 'Twice a bead of sweat falls: press E while the marker is in the green band', 'When the download completes, hold S to rise back to the vent'],
+    cut: ['You (or the slipping rope) touch the floor'], stars: ['Download', 'Silence', 'Rope arrests (how far it slipped)', 'Sweat catches', 'Cool room (be out inside ~58 s)'] } },
+};
+export default [steamboat, spidey, vault].map(d => Object.assign(d, EXTRA[d.id]));

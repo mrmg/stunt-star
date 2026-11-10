@@ -68,6 +68,7 @@ function playReplay(then) {
   if (!player || player.done) return endReplay();
   state = 'replay'; audio.stopLoops(); audio.music('replay'); engine.fx.uLetter.value = 0.105; screens.hideAll();
   const title = stage.result?.ok ? (m.label && m.label !== 'the finish' ? '' : '') : '';
+  player.onFreeze = line => { document.querySelector('#replay .ttl').textContent = line ? `“${line}”` : ''; };
   player.onCut = (sh, i) => { screens.replay(true, { label: sh.label, type: sh.type, speed: sh.speed, title: i === 0 ? `${def.title.toUpperCase()} — TAKE ${take.n}` : '' }); audio.whoosh(0.8); };
 }
 function endReplay() { if (state === 'replay') { screens.replay(false); audio.stopMusic(); audio.stopLoops(); audio.slowmo(1); } player = null; const f = afterReplay; afterReplay = null; f?.(); }
@@ -106,8 +107,8 @@ function loop(now) {
   else if (state === 'play') { if (input.hit('pause')) pause(true); else if (input.hit('retry') && stage.t - (stage.t0 || 0) > 1) callCut(); }
   else if (state === 'pause') { if (input.hit('pause')) pause(false); }
   else if (state === 'replay') { if (input.hit('a') || input.hit('start') || input.hit('pause')) endReplay(); }
-  else if (state === 'take') { if (input.hit('retry')) takeAction('again'); else if (input.hit('start')) takeAction('print'); else if (input.hit('v')) takeAction('watch'); }
-  else if (state === 'statement') { if (input.hit('start')) menu(); else if (input.hit('retry')) pickStunt(def); }
+  else if (state === 'take') { if (input.hit('retry')) takeAction('again'); else if (input.hit('start') || (input.hit('a') && take?.ok)) takeAction('print'); else if (input.hit('a')) takeAction(career.takesLeft(shoot) > 0 ? 'again' : 'print'); else if (input.hit('v')) takeAction('watch'); }
+  else if (state === 'statement') { if (input.hit('start') || input.hit('a')) menu(); else if (input.hit('retry')) pickStunt(def); }
   if (state === 'replay' && player) { player.update(dt); engine.render(dt); if (player.done) endReplay(); }
   else if (stage && state !== 'pause' && state !== 'menu' && state !== 'loading' && state !== 'take' && state !== 'statement') {
     const N = state === 'play' ? SPEED : 1; for (let i = 0; i < N; i++) { if (i) input.poll(); stage.update(N > 1 ? 1 / 60 : dt); if (state !== 'play') break; }

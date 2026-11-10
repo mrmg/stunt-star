@@ -43,7 +43,7 @@ export class Recorder {
 }
 
 // sound calls that are replayed during playback (loops are recorded separately at 10 Hz)
-export const ONESHOT = new Set(['impact', 'crash', 'glass', 'explosion', 'thud', 'punch', 'whoosh', 'splash', 'thunder', 'gun', 'horn', 'bell', 'clap', 'skidHit', 'metal', 'roar']);
+export const ONESHOT = new Set(['tune', 'cheer', 'sting', 'impact', 'crash', 'glass', 'explosion', 'thud', 'punch', 'whoosh', 'splash', 'thunder', 'gun', 'horn', 'bell', 'clap', 'skidHit', 'metal', 'roar']);
 export function recordingAudio(audio, s) {
   const lastSet = new Map();
   return new Proxy(audio, {
@@ -99,11 +99,11 @@ export function makeShot(s, type, pts, R, o = {}) {
   const N = V3(D.z, 0, -D.x), up = R * 0.45, span = Math.max(L, R * 4);
   let peak = -1e9; for (const q of pts) peak = Math.max(peak, q.p.y);
   const look = t => pathAt(pts, t).add(_v.set(0, up, 0));
-  const subj = o.subject, tryBest = (cands, f) => { let best = null, bs = 1e9; for (const c of cands) { let sc = 0; for (let i = 0; i <= 4; i++) sc += blockedFrac(s, f(c, lerp(pts[0].t, pts.at(-1).t, i / 4)), look(lerp(pts[0].t, pts.at(-1).t, i / 4)), subj); sc = sc / 5 + (c.pen || 0); if (sc < bs) { bs = sc; best = c; } if (sc === 0 && !c.pen) break; } return best; };
+  const subj = o.subject, tryBest = (cands, f) => { let best = null, bs = 1e9; for (const c of cands) { let sc = 0; const W = [0.4, 1, 2.5, 1.5, 0.8]; for (let i = 0; i <= 4; i++) sc += W[i] * blockedFrac(s, f(c, lerp(pts[0].t, pts.at(-1).t, i / 4)), look(lerp(pts[0].t, pts.at(-1).t, i / 4)), subj); sc = sc / 6.2 + (c.pen || 0); if (sc < bs) { bs = sc; best = c; } if (sc === 0 && !c.pen) break; } return best; };
   const side = o.side;
   if (type === 'wide' || type === 'front' || type === 'low' || type === 'top') {
     let pos;
-    if (type === 'wide') { const C = []; for (const dk of [0.6, 1, 0.4, 1.4]) for (const sd of side ? [side] : [1, -1]) for (const h of [0.08, 0.35, 0.8]) C.push({ sd, h, dk, d: clamp(span * 0.5, Math.max(12, R * 5), 50) * dk * (o.dist ?? 1), pen: h * 0.06 + Math.abs(dk - 0.8) * 0.08 }); const P = c => { const q = mid.clone().addScaledVector(N, c.sd * c.d); q.y = Math.max(groundAt(s, q.x, q.z, q.y + 50) + 1.6, lerp(mid.y, peak, 0.3) + 1.6) + c.h * c.d; return q; }; const c = tryBest(C, P); pos = P(c); }
+    if (type === 'wide') { const C = []; for (const dk of [0.6, 1, 0.4, 0.25, 1.4]) for (const sd of side ? [side] : [1, -1]) for (const h of [0.08, 0.35, 0.8, 1.4]) C.push({ sd, h, dk, d: clamp(span * 0.5, Math.max(12, R * 5), 50) * dk * (o.dist ?? 1), pen: h * 0.06 + Math.abs(dk - 0.8) * 0.08 }); const P = c => { const q = mid.clone().addScaledVector(N, c.sd * c.d); q.y = Math.max(groundAt(s, q.x, q.z, q.y + 50) + 1.6, lerp(mid.y, peak, 0.3) + 1.6) + c.h * c.d; return q; }; const c = tryBest(C, P); pos = P(c); }
     else if (type === 'front') { const d = Math.max(12, R * 6) + span * 0.25; const C = []; for (const sd of [0.12, -0.12, 0.35, -0.35]) for (const h of [0.6, 2.5]) C.push({ sd, h }); const c = tryBest(C, c => B.clone().addScaledVector(D, d).addScaledVector(N, c.sd * d).setY(groundAt(s, B.x + D.x * d, B.z + D.z * d, B.y + 3) + c.h)); pos = B.clone().addScaledVector(D, d).addScaledVector(N, c.sd * d); pos.y = groundAt(s, pos.x, pos.z, B.y + 3) + c.h; }
     else if (type === 'low') { const at = pathAt(pts, lerp(pts[0].t, pts.at(-1).t, o.at ?? 0.62)); const C = []; for (const sd of side ? [side] : [1, -1]) for (const f of [1, 2]) C.push({ sd, f }); const c = tryBest(C, c => at.clone().addScaledVector(N, c.sd * R * 2.2 * c.f).addScaledVector(D, R * 2.5).setY(groundAt(s, at.x, at.z, at.y) + 0.35)); pos = at.clone().addScaledVector(N, c.sd * R * 2.2 * c.f).addScaledVector(D, R * 2.5); pos.y = groundAt(s, pos.x, pos.z, at.y) + 0.35; if (pos.y < at.y - 25) pos.y = at.y - 3; }
     else { pos = mid.clone().addScaledVector(N, span * 0.15); pos.y = peak + Math.max(20, span * 0.7); }
@@ -150,7 +150,7 @@ export class ReplayPlayer {
       const shot = makeShot(s, e.type, pts, R, { ...e, subject: subj }); shot.ta = ta; shot.tb = tb; shot.speed = speed; shot.label = String.fromCharCode(65 + this.shots.length); this.shots.push(shot); total += (tb - ta) / speed;
     });
     this.total = total; this.i = 0; this.st = 0; this.simT = null; this.sfxI = 0; this.done = !this.shots.length;
-    this.focus = V3(); s.focus = this.focus; this.subj = subj; this._lp = V3();
+    this.focus = V3(); s.focus = this.focus; this.subj = subj; this._lp = V3(); this.freeze = m.kind !== 'fail' && s.result?.ok ? (m.freeze || s.def.freeze) : null;
     s.engine.fx.uBlur.value = 0; s.engine.fx.uHurt.value = 0; s.engine.timeScale = 1;
     s.audio.stopLoops?.();
   }
@@ -163,6 +163,7 @@ export class ReplayPlayer {
   }
   update(dt) {
     if (this.done) return; const s = this.s, sh = this.shot;
+    if (this.hold > 0) { this.hold -= dt; if (this.hold <= 0) { s.engine.setLook(s.lookName); this.onFreeze?.(null); } return; }
     if (this.simT == null) { this.simT = sh.ta; this._primeFx(sh.ta); this.onCut?.(sh, this.i); }
     const prev = this.simT; this.simT = Math.min(sh.tb, this.simT + dt * sh.speed); const sdt = this.simT - prev;
     this.rec.seek(this.simT);
@@ -171,6 +172,7 @@ export class ReplayPlayer {
     if (this.subj) { this.subj.updateWorldMatrix(true, false); this.subj.getWorldPosition(this.focus); }
     const c = sh.cam(this.simT), cam = s.camera; cam.up.set(0, 1, 0); cam.position.copy(c.pos); cam.lookAt(c.look); if (Math.abs(cam.fov - c.fov) > 0.01) { cam.fov = c.fov; cam.updateProjectionMatrix(); }
     s._updateEnv(0); s.engine.timeScale = sh.speed; s.audio.slowmo?.(sh.speed);
+    const F = this.freeze; if (F && !this.froze && this.i === (F.shot ?? 1) && this.simT >= lerp(sh.ta, sh.tb, F.at ?? 0.45)) { this.froze = true; this.hold = F.dur ?? 2.6; s.engine.setLook(s.lookName, { mono: 1, sepia: 0.9, grain: 0.09, vignette: 0.6 }); s.engine.flash(0.35); s.audio.clap?.(); s.audio.say?.(F.line, { rate: 0.95, pitch: 0.75 }); this.onFreeze?.(F.line); }
     if (this.simT >= sh.tb - 1e-4) { this.i++; this.simT = null; if (this.i >= this.shots.length) { this.done = true; s.audio.slowmo?.(1); } }
   }
 }
@@ -182,6 +184,6 @@ export class ReplayPlayer {
 export function liveCut(s, subject, pts, type = 'wide', o = {}) {
   const R = o.R ?? sizeOf(subject), shot = makeShot(s, type, pts, R, { ...o, subject }), cam = s.cam, saved = { mode: cam.mode, target: cam.target, o: cam.o, fpos: cam.fpos };
   const tStart = s.t, wp = V3();
-  cam.mode = 'cine'; cam.cineFn = () => { subject.updateWorldMatrix(true, false); subject.getWorldPosition(wp); const t = pts[0].t + (s.t - tStart); const c = shot.cam(t); c.look = wp.clone().add(V3(0, R * 0.45, 0)); return c; };
+  cam.mode = 'cine'; cam.cineFn = () => { subject.updateWorldMatrix(true, false); subject.getWorldPosition(wp); const c = shot.cam(s.t); c.look = wp.clone().add(V3(0, R * 0.45, 0)); return c; };
   return () => { if (cam.mode !== 'cine') return; Object.assign(cam, saved); cam.first = true; };
 }
