@@ -200,21 +200,21 @@ const speedBus = {
 };
 
 // ---------------------------------------------------------------------------------------------
-const CAN_Z = [-170, -340, -510, -680, -850];
+const CAN_Z = [-170, -340, -510, -680, -850], T2_BZ = -950; // T2_BZ: the low overpass the truck goes into
 const t2 = {
   id: 't2_canal', title: 'Flood Channel', film: 'Terminator 2: Judgment Day', year: 1991, tier: 3, pay: 8000, mode: 'drive', art: 'bd_la', music: 'chase',
   role: 'Doubling the T-800 — Harley Fat Boy, with a tow truck on your tail',
-  brief: 'You drop the Harley off the spillway into the flood channel, land it flat, and then you run. The truck comes in right behind you and it does not stop for anything. Neither do you.',
-  tips: ['Off the ledge the bike wants to nose-dive: <b>feather W</b> to land it level.', 'The truck is only a little slower than you. Every scrape and every piece of junk lets it close in.', 'Pick your gap between the bridge piers <b>early</b> and stay off the sloping walls.'],
+  brief: 'You drop the Harley off the spillway into the flood channel, land it flat, and then you run. The truck comes in right behind you and it does not stop for anything. Neither do you. At the end of the channel there is a low overpass: you fit under it, the truck does not. Keep it pinned until he hits, ride out of the fireball, then pull up and look back.',
+  tips: ['Off the ledge the bike wants to nose-dive: <b>feather W</b> to land it level.', 'The truck is only a little slower than you. Every scrape and every piece of junk lets it close in.', 'Pick your gap between the bridge piers <b>early</b> and stay off the sloping walls.', 'Stay flat out under the <b>LOW CLEARANCE</b> overpass — the truck goes into it behind you. Once it blows, <b>brake and pull up</b> 40–100 m past the bridge, before the culvert grate.'],
   controls: BIKE_CTL, intro: { r: 8, h: 2.4 },
   assets: { models: ['fatboy', 'ch_biker', 'semi_truck'], tex: ['bd_la', 'tx_concrete', 'tx_brick', 'tx_fac_office', 'tx_roof', 'tx_metal'] },
   build(s) {
     // the LA River, 1991: hard, smoggy San Fernando Valley daylight, warm brown haze down the channel
     s.env('day', { backdrop: 'bd_la', look: 'teal_orange', fog: 0.0026, hz: 0.42, sun: [40, -35], sunI: 3.0, amb: 0.75, fogColor: 0xc9bea6, lookOver: { tint: [1.07, 1.0, 0.88], contrast: 1.14, sat: 1.05 } });
     const LZ = -18, UP = 7, FW = 8, cy = z => UP * smooth(LZ - 3, LZ, z), fn = (x, z) => cy(z) + clamp((Math.abs(x) - FW) * 0.8, 0, 6.5);
-    s.terrain({ x0: -60, x1: 60, z0: 130, z1: -1060, res: 2.5, fn, mat: s.mat({ tex: 'tx_concrete', color: 0xb6b1a4 }), tile: 9 });
-    const WALL = { y0: -2, y1: 40, z0: -1100, z1: 200, msg: 'Hit the channel wall', hardK: 4, advice: 'Keep off the sloping walls — ride the flat floor (the dark wet stripe marks the middle).' }; s.course.addSolid({ x0: 10.6, x1: 70, ...WALL }); s.course.addSolid({ x0: -70, x1: -10.6, ...WALL });
-    const wet = s.mat({ color: 0x3d4a48, rough: 0.15, metal: 0.3 }); s.box({ x: 0, y: 0.005, z: (LZ - 3 - 1060) / 2, w: 1.3, h: 0.02, d: 1060 + LZ - 3, mat: wet, cast: false }); s.box({ x: 0, y: UP + 0.005, z: (130 + LZ) / 2, w: 1.3, h: 0.02, d: 130 - LZ, mat: wet, cast: false });
+    s.terrain({ x0: -60, x1: 60, z0: 130, z1: -1200, res: 2.5, fn, mat: s.mat({ tex: 'tx_concrete', color: 0xb6b1a4 }), tile: 9 });
+    const WALL = { y0: -2, y1: 40, z0: -1240, z1: 200, msg: 'Hit the channel wall', hardK: 4, advice: 'Keep off the sloping walls — ride the flat floor (the dark wet stripe marks the middle).' }; s.course.addSolid({ x0: 10.6, x1: 70, ...WALL }); s.course.addSolid({ x0: -70, x1: -10.6, ...WALL });
+    const wet = s.mat({ color: 0x3d4a48, rough: 0.15, metal: 0.3 }); s.box({ x: 0, y: 0.005, z: (LZ - 3 - 1200) / 2, w: 1.3, h: 0.02, d: 1200 + LZ - 3, mat: wet, cast: false }); s.box({ x: 0, y: UP + 0.005, z: (130 + LZ) / 2, w: 1.3, h: 0.02, d: 130 - LZ, mat: wet, cast: false });
     s.box({ x: 0, y: UP - 0.05, z: LZ + 0.5, w: 21, h: 0.12, d: 0.6, mat: s.mat({ color: 0xe0c020 }), cast: false });
     // road bridges with piers standing in the channel
     const conc = s.mat({ tex: 'tx_concrete', color: 0x9d9a90 });
@@ -223,39 +223,69 @@ const t2 = {
     srand(23); const junk = [0x7a5a3a, 0x445566, 0x883322, 0x55604a, 0x999999]; s.rate('Clean ride', 1, 1);
     for (let z = -80; z > -880; z -= sr(34, 52)) { if (CAN_Z.some(b => Math.abs(z - b) < 34)) continue; const x = sr(-7, 7), c = junk[Math.floor(sr(junk.length))], big = sr() < 0.4; s.box({ x, y: 0, z, w: big ? 1.6 : 0.9, h: big ? 1.1 : 0.7, d: big ? 1.2 : 0.9, ry: sr(3), mat: s.mat({ color: c, rough: 0.8 }), solid: 'break', sol: { debris: c, slow: 0.8, on: () => { dock(s, 'Clean ride', 0.2); s.msg('JUNK!', 'bad'); } } }); }
     // fences and the city on the banks
-    const mesh = s.mat({ color: 0x8a9096, opacity: 0.35, metal: 0.6 }); for (const sx of [-1, 1]) { s.box({ x: sx * 17, y: 6.5, z: (LZ - 1060) / 2, w: 0.06, h: 2.2, d: 1060 + LZ, mat: mesh, cast: false }); s.row({ side: sx, x: sx * 24, z0: LZ - 6, z1: -1060, fac: ['tx_brick', 'tx_fac_office'], height: [6, 15], width: [18, 34], y: 6.5, solid: false, seedv: 6, gap: 10 }); s.row({ side: sx, x: sx * 24, z0: 130, z1: LZ + 4, fac: ['tx_brick', 'tx_fac_office'], height: [6, 12], width: [18, 30], y: 13.5, solid: false, seedv: 9 }); }
+    const mesh = s.mat({ color: 0x8a9096, opacity: 0.35, metal: 0.6 }); for (const sx of [-1, 1]) { s.box({ x: sx * 17, y: 6.5, z: (LZ - 1200) / 2, w: 0.06, h: 2.2, d: 1200 + LZ, mat: mesh, cast: false }); s.row({ side: sx, x: sx * 24, z0: LZ - 6, z1: -1200, fac: ['tx_brick', 'tx_fac_office'], height: [6, 15], width: [18, 34], y: 6.5, solid: false, seedv: 6, gap: 10 }); s.row({ side: sx, x: sx * 24, z0: 130, z1: LZ + 4, fac: ['tx_brick', 'tx_fac_office'], height: [6, 12], width: [18, 30], y: 13.5, solid: false, seedv: 9 }); }
     // banks: LA palms, power poles and scrub along the fences
-    for (const sx of [-1, 1]) { dress.treeLine(s, { x: sx * 20.5, z0: 120, z1: -1050, side: sx, depth: 2, step: 26, kinds: ['palm'], h: [15, 24], seed: 70 + sx, bushes: false }); dress.poles(s, { x: sx * 18.6, z0: 125, z1: -1050, gap: 46, h: 10 }); }
-    s.trees('bush', 160, (r, i) => [(i % 2 ? 1 : -1) * sr(17.6, 21), sr(125, -1050)], { h: [0.8, 2.0], seedv: 71, wide: 1.3 });
+    for (const sx of [-1, 1]) { dress.treeLine(s, { x: sx * 20.5, z0: 120, z1: -1190, side: sx, depth: 2, step: 26, kinds: ['palm'], h: [15, 24], seed: 70 + sx, bushes: false }); dress.poles(s, { x: sx * 18.6, z0: 125, z1: -1190, gap: 46, h: 10 }); }
+    s.trees('bush', 160, (r, i) => [(i % 2 ? 1 : -1) * sr(17.6, 21), sr(125, -1190)], { h: [0.8, 2.0], seedv: 71, wide: 1.3 });
     s.crew({ x: 6, z: 28, y: UP, ry: 1.0 }); s.crew({ x: -6.5, z: -75, ry: -2.2, people: false });
+    // --- the finale set: a low overpass across the channel (3.3 m clearance: the bike fits, the truck does not), and the culvert grate 200 m on
+    const BZ = T2_BZ, BF = BZ + 6, CLR = 3.3;
+    s.box({ x: 0, y: CLR, z: BZ, w: 70, h: 3.9, d: 12, mat: conc, tile: 6 }); s.box({ x: 0, y: CLR + 3.9, z: BZ, w: 70, h: 0.06, d: 9, mat: s.mat({ tex: 'tx_asphalt', color: 0x55534e }), cast: false });
+    for (const sz of [-1, 1]) { s.box({ x: 0, y: CLR + 3.9, z: BZ + sz * 5.6, w: 70, h: 1.0, d: 0.5, mat: conc, cast: false }); for (let x = -30; x <= 30; x += 15) s.box({ x, y: CLR + 4.9, z: BZ + sz * 5.6, w: 0.18, h: 4.5, d: 0.18, mat: s.mat({ color: 0x6a6e70, metal: 0.5 }), cast: false }); }
+    const hz = [s.mat({ color: 0xe8c020 }), s.mat({ color: 0x1a1a1a })]; for (let i = 0, x = -12; x < 12; x += 1.2, i++) s.box({ x: x + 0.6, y: CLR, z: BF + 0.04, w: 1.2, h: 0.45, d: 0.1, mat: hz[i % 2], cast: false });
+    sign(s, "LOW CLEARANCE  10'-9\"", { x: 0, y: CLR + 1.9, z: BF + 0.1, w: 9, bg: '#e8c020', fg: '#111', size: 50 });
+    s.box({ x: 0, y: 0, z: -1150, w: 44, h: 9, d: 2, mat: conc, tile: 6, solid: true, sol: { msg: 'Rode into the culvert grate', advice: 'As soon as the truck goes up, brake — you have 200 m to pull up before the culvert grate.' } });
+    for (let x = -7; x <= 7; x += 1) s.box({ x, y: 0.2, z: -1148.9, w: 0.14, h: 4.4, d: 0.14, mat: s.mat({ color: 0x3a3a38, metal: 0.6 }), cast: false }); s.box({ x: 0, y: 0, z: -1148.95, w: 15, h: 4.6, d: 0.05, mat: s.mat({ color: 0x0c0d0e }), cast: false });
     const b = s.car = new Drive(s, { kind: 'bike', model: 'fatboy', driver: 'ch_biker', driverPos: [0, -0.52, 0.3], x: 0, z: 40, top: 40, accel: 11.5, nose: -0.9, air: 1.5, hard: 14, cam: { dist: 6.2, height: 2.3 } });
     const mv = new Movers(s, b); const T = { tx: 0, vy: 0, down: false, back: 0, warned: false }, side = z => (Math.round((z + 340) / 340) % 2 ? 1 : -1);
     // the truck's path is scripted through the gaps between the bridge piers (avoid:false); it bulldozes the junk (Movers._smash)
     const tr = mv.add({ model: 'semi_truck', z: 76, y: UP, v: 0, solid: false, nearMiss: false, avoid: false, path: (z, e) => { let x = T.tx; CAN_Z.forEach((bz, i) => { const w = smooth(75, 28, Math.abs(z - bz)); x = lerp(x, i % 2 ? side(bz) * 3.9 : clamp(x, -2.2, 2.2), w); }); return x; },
       ai: (e, dt) => {
-        if (!s.started) return; const gap = e.z - b.pos.z - 4.6, tt = s.t - s.t0;
+        if (!s.started) return; if (T.hit) { e.v = 0; return; } const gap = e.z - b.pos.z - 4.6, tt = s.t - s.t0;
         let want = gap > 55 ? 40.5 : gap > 28 ? 37.5 : gap > 12 ? 35.5 : 34; if (tt < 6) want = Math.min(want, b.v + 1.5); if (T.back > 0) { T.back -= dt; want = Math.min(want, b.v * 0.6); } if (b.dead) want = 12;
         e.v += (want - e.v) * Math.min(1, dt * 1.2); T.tx = damp(T.tx, clamp(b.pos.x, -5.5, 5.5), 0.9, dt);
         if (e.z < LZ - 1 && e.y > 0) { T.vy -= 9.8 * dt; e.y = Math.max(0, e.y + T.vy * dt); if (e.y === 0 && !T.down) { T.down = true; s.moment('the truck drops in', { t0: s.t - 2.0, dur: 3.6, w: 2.5, subject: e.m, shots: [{ type: 'low', pos: [6.4, 1.0, LZ - 42], fov: 40, lookUp: 1.6, speed: 0.4, a: 0.25, b: 0.8 }, { type: 'rear', speed: 0.6 }, { type: 'chase', speed: 0.6, a: 0.4 }] }); /* signature: from the channel floor as the truck comes off the spillway at you */ s.audio.crash(); s.engine.addShake(0.7); s.fx.dust(e.m.position, 24, { spread: 4, size: 3 }); s.fx.sparks(e.m.position, 40); } }
         if (T.down && Math.random() < 0.3) s.fx.sparks(V3(e.m.position.x + rnd(-1.2, 1.2), 0.1, e.z), 2);
+        // too tall for the overpass: the cab goes into the fascia at full speed
+        if (e.z - 3.75 < BF) { if (!b.dead && !s.ended) boom(e); else { T.hit = true; e.v = 0; } }
       } });
+    const boom = e => {
+      T.hit = s.bfin = true; e.v = 0; e.z = BF + 3.5; e.m.rotation.x = -0.05; e.m.rotation.z = 0.06; // stopped dead, the cab folded under the deck
+      const p = V3(e.x, 2.6, BF + 1.2);
+      s.fx.explosion(p, 1.7); s.fx.fireBurst(p, 70, { size: 5, speed: 10, life: 1.6 }); s.fx.smokePuff(V3(e.x, 6, BF + 3), 30, { size: 5, up: 9, spread: 3, life: 4.5, a: 0.6, color: [0.07, 0.06, 0.06] });
+      s.after(0.16, () => { s.fx.explosion(V3(e.x, 1.6, BZ + 1), 1.0); s.fx.fireBurst(V3(e.x, 1.4, BZ), 40, { size: 4, speed: 8, life: 1.3 }); }); // the fireball rolls through under the deck after you
+      s.after(0.32, () => { s.fx.explosion(V3(e.x * 0.7, 1.4, BZ - 6), 0.9); s.fx.fireBurst(V3(e.x * 0.7, 1.2, BZ - 7), 40, { size: 4, speed: 9, life: 1.2 }); });
+      s.after(0.55, () => { s.fx.explosion(V3(e.x + 1.2, 6.5, BF + 4), 1.1); s.fx.fireBurst(V3(e.x + 1.2, 7, BF + 4), 50, { size: 5, speed: 8, life: 1.8 }); }); // and boils up over the parapet
+      s.fx.debris(p, 50, { color: 0x5a5550, speed: 15 }); s.fx.sparks(p, 60, { speed: 14 });
+      s.audio.explosion(1); s.after(0.3, () => s.audio.explosion(0.8)); s.engine.addShake(1.1); s.slowmo(0.45, 1.3); s.msg('THE OVERPASS!', 'huge good');
+      s.rate('Lead over the truck', clamp(minGap / 15), 1.5); s.objective('Ride out of it — then pull up and look back');
+      // signature: from the channel floor downstream, the bike coming out from under the bridge at you as the truck goes up behind it
+      s.moment('the overpass', { t0: s.t - 2.2, dur: 5.4, w: 12, subject: e.m, shots: [{ type: 'front', pos: [-3.4, 1.1, BZ - 46], fov: 40, lookUp: 0.6, a: 0.22, b: 0.74, speed: 0.45 }, { type: 'rear', pos: [4.6, 2.0, BZ + 44], fov: 34, lookUp: 0.8, a: 0.3, b: 0.8, speed: 0.4 }, { type: 'wide', pos: [-19.5, 10.5, BZ + 24], fov: 44, lookUp: 0.5, a: 0.38, b: 1.05, speed: 0.65 }] });
+      // live: a camera planted on the channel floor ahead of you, looking back past you at the fireball (you ride by it)
+      const cx = b.pos.x > 0 ? b.pos.x - 3.6 : b.pos.x + 3.6, back = s.cut([{ t: s.t, p: e.m.position.clone() }, { t: s.t + 1.5, p: e.m.position.clone() }], 'front', { subject: e.m, pos: [cx, 1.4, b.pos.z - 26], fov: 52 }); s.after(1.2, () => back());
+    };
     let dropped = false, minGap = 99, fin = false; s.objective('Off the spillway — land it level'); idleGuard(s, b, { warn: 4, stop: 30 });
     b.onLand = i => { if (!dropped && i.airTime > 0.5 && b.pos.z < LZ) { dropped = true; s.rate('Drop landing', i.clean, 1.3); s.msg(i.clean > 0.75 ? 'CLEAN DROP' : 'DOWN!', 'good'); s.objective('Outrun the truck'); } };
     b.onAir = t => { if (t.z < LZ + 4 && !dropped) s.slowmo(0.5, 1.2); };
     b.onHit = () => dock(s, 'Clean ride', 0.12);
     s.onUpdate(() => {
-      if (!s.started || s.ended) return; const gap = tr.z - b.pos.z - 4.6; if (dropped) minGap = Math.min(minGap, gap);
-      s.hud.readout('gap', 'Truck (m)', Math.max(0, Math.round(gap)), gap < 14 ? 'warn' : 'ok'); s.hud.readout('spd', 'MPH', Math.round(b.mph)); s.hud.readout('dst', 'To go (m)', Math.max(0, Math.round(b.pos.z + 900)));
+      const uz = b.pos.z; if (s.cam.mode === 'follow') s.cam.o.height = 2.3 - 1.0 * smooth(BF + 45, BF + 15, uz) * smooth(BZ - 40, BZ - 12, uz); // tuck the follow camera in under the deck
+      if (T.hit) for (let k = 0; k < 3; k++) s.fx.flame(V3(tr.x + rnd(-1.4, 1.4), rnd(0.4, 3), BF + rnd(-1, 5)), rnd(1.4, 2.6)); // the wreck burns on
+      if (!s.started || s.ended) return; const gap = tr.z - b.pos.z - 4.6; if (dropped && !T.hit) minGap = Math.min(minGap, gap);
+      s.hud.readout('spd', 'MPH', Math.round(b.mph)); if (!T.hit) { s.hud.readout('gap', 'Truck (m)', Math.max(0, Math.round(gap)), gap < 14 ? 'warn' : 'ok'); s.hud.readout('dst', 'Overpass (m)', Math.max(0, Math.round(b.pos.z - BF))); } else s.hud.readout('dst', 'Past it (m)', Math.max(0, Math.round(BZ - 6 - b.pos.z)));
+      // the finale: once the truck has gone into the overpass, pull up 30-90 m past the bridge and look back
+      if (T.hit && !fin && Math.abs(b.v) < 1 && b.grounded) { fin = true; const past = BZ - 6 - b.pos.z; s.rate('Pulled up', near(past, 60, 30, 85), 0.8); s.wrap(1.8, past > 25 ? 'Hasta la vista. Print it.' : undefined); }
+      if (T.hit) return;
       // first time it gets on your back wheel the driver backs off (a flub); the second time it runs you down
       if (gap < 6 && !T.warned && !b.dead) { T.warned = true; T.back = 2.5; s.audio.horn?.(110); s.flub('The truck was on your back wheel', { penalty: 0.2, advice: 'Every scrape and every piece of junk lets the truck close in. Pick a clean line 60 m ahead and keep W flat.' }); }
       if (gap < 0.6 && !b.dead) { s.audio.horn?.(110); return b.crash('The truck ran you down', { injury: 0.95, advice: 'The truck is only a little slower than you. Never touch the brakes — dodge the junk early and keep W flat all the way.' }); }
-      if (b.pos.z < -900 && !fin) { fin = true; s.rate('Lead over the truck', clamp(minGap / 15), 1.5); s.wrap(1.3); }
     });
   },
   bot(s, inp, B) {
     const c = s.car, cand = [0, -2.6, 2.6, -5.6, 5.6, -7.4, 7.4]; const blocked = x => { for (const sol of s.course.solids) { if (sol.dead || sol.mover || sol.type === 'trigger' || sol.x1 - sol.x0 > 5) continue; const dz = c.pos.z - sol.z1; if (dz > -10 && dz < 62 && sol.x0 < x + 1.25 && sol.x1 > x - 1.25) return true; } return false; };
     let tx = B.tx ?? 0; if (blocked(tx)) { let best = null; for (const x of cand) if (!blocked(x) && (best == null || Math.abs(x - c.pos.x) < Math.abs(best - c.pos.x))) best = x; if (best != null) tx = best; } B.tx = tx;
     botDrive(c, inp, tx, 99, 0.09); if (!c.grounded) { inp.x = 0; inp.y = c.pitch < -0.04 ? 0.55 : 0; }
+    if (s.bfin && c.pos.z < T2_BZ - 34) inp.y = c.v > 0.5 ? -1 : 0; // the truck has gone up: ride clear, then pull up
   },
 };
 
@@ -456,14 +486,14 @@ const gone60 = {
 };
 
 // ---------------------------------------------------------------------------------------------
-const MX_L = [-7.4, -3.7, 0, 3.7, 7.4];
+const MX_L = [-7.4, -3.7, 0, 3.7, 7.4], MX_FZ = -1390; // MX_FZ: where the two trucks meet head-on
 const matrix = {
   id: 'matrix_freeway', title: 'Wrong Way', film: 'The Matrix Reloaded', year: 2003, tier: 4, pay: 13000, mode: 'drive', art: 'bd_la', music: 'synth',
   role: 'Doubling Trinity — Ducati 996, against five lanes of freeway traffic',
-  brief: 'You go up the off-ramp and ride straight into the traffic. Five lanes, all of it coming at you, and the Agents right behind. Brush a wing mirror and we keep rolling — meet one of them nose to nose and you are done.',
-  tips: ['<b>A head-on is fatal</b>; a glancing clip costs you. Ride the white lines between lanes — but trucks leave you no room.', 'Watch for cars <b>changing lanes</b>. Look far up the road, not at your front wheel.', 'Stay above <b>60 mph</b> or the Agents catch you. Close passes pay a bonus.'],
+  brief: 'You go up the off-ramp and ride straight into the traffic. Five lanes, all of it coming at you, and the Agents right behind. Brush a wing mirror and we keep rolling — meet one of them nose to nose and you are done. At the end an Agent has the wheel of a semi in the left lane, going your way, and a tanker is coming the other way in the same lane. They meet head-on in front of you. Keep it pinned and ride past the fireball.',
+  tips: ['<b>A head-on is fatal</b>; a glancing clip costs you. Ride the white lines between lanes — but trucks leave you no room.', 'Watch for cars <b>changing lanes</b>. Look far up the road, not at your front wheel.', 'Stay above <b>60 mph</b> or the Agents catch you. Close passes pay a bonus.', 'Near the end the traffic clears: a <b>semi going your way</b> and a <b>tanker</b> are in the far-left lane. Stay right of centre and <b>do not lift</b> — ride straight past the wreck.'],
   controls: BIKE_CTL, intro: { r: 7, h: 2.1 },
-  assets: { models: ['ducati', 'ch_coat', 'semi_truck', 'van_white', 'charger_black', ...TRAFFIC], tex: ['bd_la', 'tx_asphalt', 'tx_concrete', 'tx_fac_office', 'tx_glass_tower', 'tx_roof'] },
+  assets: { models: ['ducati', 'ch_coat', 'semi_truck', 'tanker', 'van_white', 'charger_black', ...TRAFFIC], tex: ['bd_la', 'tx_asphalt', 'tx_concrete', 'tx_fac_office', 'tx_glass_tower', 'tx_roof'] },
   build(s) {
     // the purpose-built Alameda freeway: flat grey Bay Area overcast with a weak sun, everything pushed toward the film's green
     s.env('overcast', { backdrop: 'bd_la', look: 'matrix', fog: 0.0028, hz: 0.47, sun: [36, 25], sunI: 2.1, amb: 1.0, fogColor: 0xa8b4a8, lookOver: { contrast: 1.2, sat: 0.7, vignette: 0.5 } });
@@ -481,10 +511,33 @@ const matrix = {
     const mv = s.mv = new Movers(s, b); mv.nearPay = 70; srand(11);
     for (let i = 0; i < 20; i++) {
       const li = (i * 2 + (i > 11 ? 1 : 0)) % 5, x0 = MX_L[li], id = i % 6 === 0 ? 'semi_truck' : i % 6 === 3 ? 'van_white' : TRAFFIC[Math.floor(sr(TRAFFIC.length))], weave = i % 5 === 2, xb = MX_L[li === 4 ? 3 : li + 1], ph = sr(6.28);
-      const e = mv.add({ model: id, x: x0, path: weave ? z => lerp(x0, xb, smooth(0.25, 0.75, 0.5 + 0.5 * Math.sin(z * 0.011 + ph))) : undefined, z: -150 - i * 27 - sr(10), v: -sr(17, 25), recycle: [35, 290, 620], zEnd: ZE - 120, msg: 'Head-on with the freeway traffic', hardK: 0.45, xmin: -8, xmax: 8 }); e.sol.advice = 'Look far up the road, not at your front wheel: pick the white line with the most room 2 seconds ahead and move early. Trucks need a whole lane.';
+      const e = mv.add({ model: id, x: x0, path: weave ? z => lerp(x0, xb, smooth(0.25, 0.75, 0.5 + 0.5 * Math.sin(z * 0.011 + ph))) : undefined, z: -150 - i * 27 - sr(10), v: -sr(17, 25), recycle: [35, 290, 620], zEnd: MX_FZ + 240, msg: 'Head-on with the freeway traffic', hardK: 0.45, xmin: -8, xmax: 8 }); e.sol.advice = 'Look far up the road, not at your front wheel: pick the white line with the most room 2 seconds ahead and move early. Trucks need a whole lane.';
     }
     // the Agents' Charger drives for real (speed-controlled to its slot behind you) so Movers steering threads it through the oncoming traffic
     const ag = { m: 0, warned: false }; mv.add({ model: 'charger_black', x: 0, z: 110, v: 0, solid: false, nearMiss: false, swerve: 8, xmin: -8, xmax: 8, path: (z, e) => e?.cx ?? 0, ai: (e, dt) => { if (!s.started) return; e.cx = damp(e.cx ?? 0, b.pos.x * 0.7, 2, dt); const slot = b.pos.z + 76 - 66 * ag.m; e.v = Math.max(0, b.v + clamp((e.z - slot) * 0.8, -12, 14)); if (e.z - b.pos.z > 220) e.z = b.pos.z + 200; } });
+    // --- the finale: an Agent drives a semi down the far-left lane ahead of you (your way), a tanker comes up the same lane, they meet head-on at FZ.
+    // Traffic stops spawning beyond FZ + 240 (zEnd above), so the last stretch is clear for the set piece.
+    const FZ = MX_FZ, LX = -6.8, KA = 1.1, F = { on: false, hit: false, past: false, wz: FZ };
+    const tB = mv.add({ model: 'semi_truck', x: LX, z: FZ + 230, v: 0, avoid: false, nearMiss: false, msg: 'Rode into the trucks', hardK: 0.45, ai: (e, dt) => {
+      if (!s.started) return; if (!F.on) { if (b.pos.z < FZ + 500) { F.on = true; e.alive = tA.alive = true; e.m.visible = tA.m.visible = true; e.v = 22; } else return; }
+      if (F.hit) { e.v = 0; return; } const gap = b.pos.z - e.z, want = 46 + (e.z - FZ) * 0.3; e.v += (clamp(b.v - (gap - want) * 0.5, 10, 55) - e.v) * Math.min(1, dt * 1.5);
+    } });
+    const tA = mv.add({ model: 'tanker', x: LX, z: FZ - 260, v: 0, avoid: false, nearMiss: false, msg: 'Rode into the trucks', hardK: 0.45, ai: (e, dt) => {
+      if (!F.on || F.hit) { if (F.hit) e.v = 0; return; } e.v = -KA * tB.v; e.z = FZ - KA * (tB.z - FZ) + e.v * dt; // timed so the two meet at FZ, whatever speed the Agent drives
+      if (e.z + e.hd >= tB.z - tB.hd - 0.3) mxBoom();
+    } });
+    for (const e of [tB, tA]) { e.alive = false; e.m.visible = false; e.sol.advice = 'When the two trucks meet, stay right of centre — they fill the far-left lane and the fireball spreads two lanes wide.'; }
+    const mxBoom = () => {
+      F.hit = s.bfin = true; tA.v = tB.v = 0; F.wz = (tA.z + tA.hd + tB.z - tB.hd) / 2; tB.o.ry = -0.22; tA.o.ry = 0.3; tB.m.rotation.x = -0.12; // both cabs fold, the tanker jackknifes
+      const p = V3(LX, 2.4, F.wz);
+      s.fx.explosion(p, 1.15); s.fx.fireBurst(p, 20, { size: 4, speed: 10, life: 1.3 }); s.fx.smokePuff(V3(LX, 7, F.wz - 4), 40, { size: 6, up: 11, spread: 4, life: 5, a: 0.7, color: [0.06, 0.05, 0.05] });
+      s.after(0.2, () => { s.fx.explosion(V3(LX + 0.5, 3, F.wz - 7), 1.0); s.fx.fireBurst(V3(LX, 5, F.wz - 8), 26, { size: 4.5, speed: 8, life: 1.6 }); }); // the tanker goes up a beat later
+      s.after(0.45, () => { s.fx.fireBurst(V3(LX, 9, F.wz - 4), 22, { size: 5, speed: 5, life: 2 }); s.fx.smokePuff(V3(LX, 12, F.wz - 4), 24, { size: 7, up: 8, spread: 3, life: 5, a: 0.6, color: [0.08, 0.07, 0.06] }); });
+      s.fx.debris(p, 60, { color: 0x4a4a48, speed: 18 }); s.fx.sparks(p, 70, { speed: 16 }); s.fx.light(p, 0xffa040, 100, 1.2, 90);
+      s.audio.explosion(1); s.after(0.2, () => s.audio.explosion(1)); s.engine.addShake(1.2); s.slowmo(0.45, 1.3); s.msg('HEAD-ON!', 'huge good'); s.objective('Keep it pinned — ride past the fireball');
+      // signature: side-on from the shoulder, the two rigs meeting nose to nose in the far lane with Trinity crossing the frame in front of the fireball
+      s.moment('the trucks', { t0: s.t - 1.8, dur: 4.6, w: 12, subject: tB.m, shots: [{ type: 'wide', pos: [13, 2.1, F.wz + 1], fov: 52, lookUp: 0.3, a: 0.15, b: 0.9, speed: 0.4 }, { type: 'chase', pos: [3.2, 4.2, F.wz + 80], fov: 19, lookUp: 1.2, a: 0, b: 0.62, speed: 0.5 }, { type: 'front', pos: [-1.5, 9.6, F.wz - 44], fov: 46, lookUp: 0, a: 0.35, b: 1.05, speed: 0.6 }] });
+    };
     let sum = 0, n = 0, clips = 0; s.rate('Barrier-free', 1, 0.6); idleGuard(s, b, { warn: 5, stop: 15 });
     b.onHit = (sol, imp) => { if (sol.mover) { if (imp > b.k.crashV * 1.3 * 0.45) return; if (imp > 0.8) { clips++; ag.m = clamp(ag.m + 0.12); s.flub('Clipped a car', { penalty: 0.12, advice: 'Give the traffic half a metre more: ride the exact middle of the white line and move over before the car is alongside.' }); } return; } dock(s, 'Barrier-free', 0.34); }; s.objective('Ride against the traffic — stay above 60');
     let lastNear = 0; const nearT = [];
@@ -494,16 +547,18 @@ const matrix = {
       if (ag.m > 0.65 && !ag.warned) { ag.warned = true; s.flub('The Agents are closing in', { penalty: 0.1, advice: 'Keep the MPH above 60 — the AGENTS meter only fills while you are slower. Thread gaps instead of braking.' }); } if (ag.m < 0.3) ag.warned = false;
       // close passes in quick succession are the money shot: mark them for the replay
       if (b.stats.near !== lastNear) { lastNear = b.stats.near; nearT.push(s.t); while (nearT.length && s.t - nearT[0] > 2.5) nearT.shift(); const lx = [-5.55, -1.85, 1.85, 5.55].reduce((a, x) => Math.abs(x - b.pos.x) < Math.abs(a - b.pos.x) ? x : a); s.moment('threading the traffic', { t0: s.t - 1.8, dur: 3, w: nearT.length > 1 ? 1.4 + nearT.length * 0.5 : 0.9, shots: [{ type: 'front', pos: [lx, 0.75, b.pos.z - 62], fov: 11, lookUp: 0.5, speed: 0.5, a: 0.3, b: 1.0 }, 'track', 'chase'] }); } // signature: a camera planted on the lane line 60 m ahead, long lens, Trinity coming at it through the traffic
-      s.hud.readout('spd', 'MPH', Math.round(m), tt > 6 ? (m < 60 ? 'warn' : 'ok') : ''); s.hud.readout('dst', 'To go (m)', Math.max(0, Math.round(b.pos.z - ZE))); s.hud.readout('nm', 'Near misses', b.stats.near);
+      if (F.hit) for (let k = 0; k < 3; k++) s.fx.flame(V3(LX + rnd(-2, 2), rnd(0.5, 3.5), F.wz + rnd(-9, 4)), rnd(1.6, 3)); // the wreck burns on
+      if (F.hit && !F.past && b.pos.z < F.wz - 10) { F.past = true; s.rate('Rode through it', clamp((m - 45) / 18), 1.2); s.msg(m > 60 ? 'THROUGH IT!' : 'THROUGH', 'good'); }
+      s.hud.readout('spd', 'MPH', Math.round(m), tt > 6 ? (m < 60 ? 'warn' : 'ok') : ''); s.hud.readout('dst', 'To go (m)', Math.max(0, Math.round(b.pos.z - ZE + 40))); s.hud.readout('nm', 'Near misses', b.stats.near);
       s.hud.meter('ag', 'AGENTS', ag.m, { color: ag.m > 0.6 ? '#ff4030' : '#40ff80' });
       if (ag.m >= 1) return s.fail('Dropped below 60 mph for too long — the Agents ran you off the road', { injury: 0.35, advice: 'Never sit under 60 mph for more than a few seconds — when the AGENTS meter turns red, open the throttle and pick the widest gap.' });
-      if (b.pos.z < ZE) { s.rate(`Speed (avg ${Math.round(sum / n)} mph)`, clamp((sum / n - 62) / 18), 1.5); s.rate(`Nerve (${b.stats.near} close passes)`, clamp(b.stats.near / 10), 1.2); s.rate(clips ? `Untouched (${clips} clip${clips > 1 ? 's' : ''})` : 'Untouched', clamp(1 - clips * 0.25), 1.5); s.wrap(1.2); }
+      if (b.pos.z < ZE - 40 && F.past) { s.rate(`Speed (avg ${Math.round(sum / n)} mph)`, clamp((sum / n - 62) / 18), 1.5); s.rate(`Nerve (${b.stats.near} close passes)`, clamp(b.stats.near / 10), 1.2); s.rate(clips ? `Untouched (${clips} clip${clips > 1 ? 's' : ''})` : 'Untouched', clamp(1 - clips * 0.25), 1.5); s.wrap(1.2); }
     });
   },
   bot(s, inp, B) {
     const c = s.car, xs = [-8.3, -7.4, -6.5, -5.55, -4.6, -3.7, -2.8, -1.85, -0.9, 0, 0.9, 1.85, 2.8, 3.7, 4.6, 5.55, 6.5, 7.4, 8.3]; let best = B.tx ?? 1.85, bs = -1e9;
     for (const x of xs) {
-      if (Math.abs(x - c.pos.x) > 6) continue; let cn = 2, cf = 2;
+      if (Math.abs(x - c.pos.x) > 6) continue; if (c.pos.z < MX_FZ + 330 && x < -0.9) continue; let cn = 2, cf = 2; // finale: the trucks own the far-left lanes
       for (const e of s.mv.list) { if (!e.alive || !e.sol) continue; const dz = c.pos.z - e.z, tm = dz / Math.max(20, c.v - e.v); if (dz < -6 || tm > 2.3) continue; const r = 9 * Math.max(0, tm - 0.1), bx = c.pos.x + clamp(x - c.pos.x, -r, r), cl = Math.abs(bx - (e.m.position.x + (e.sol.vx || 0) * Math.min(tm, 1.5))) - e.hw - 0.55; if (tm < 1) cn = Math.min(cn, cl); else cf = Math.min(cf, cl); }
       const sc = Math.min(cn, 1.2) * 3 + Math.min(cf, 0.8) - Math.abs(x - c.pos.x) * 0.2 + (x === B.tx ? 0.3 : 0) - (cn < 0 ? 5 : 0); if (sc > bs) { bs = sc; best = x; }
     }
@@ -512,18 +567,18 @@ const matrix = {
 };
 
 // ---------------------------------------------------------------------------------------------
-const RN_L = [-2.2, -5.9];
+const RN_L = [-2.2, -5.9], RN_XZ = -1045; // RN_XZ: the junction past the tunnel where the truck takes out the BMW
 const ronin = {
   id: 'ronin', title: 'Contre-Sens', film: 'Ronin', year: 1998, tier: 4, pay: 12500, mode: 'drive', art: 'bd_paris', music: 'chase',
   role: 'Chasing the BMW in a Peugeot 406 — the wrong way through a Paris underpass',
-  brief: 'She takes the tunnel against the traffic, so you take the tunnel against the traffic. No tricks, no process shots: real cars, real speed, and their headlamps coming straight at you. Do not lose that BMW.',
-  tips: ['Stay within <b>60 metres</b> of the BMW. Lose her and she has to wait for you — the shot suffers.', 'Oncoming cars keep to the two lanes — <b>headlights</b> are your warning. Switch lanes early.', 'The centre pillars are solid concrete. Scrapes on the wall cost speed; a head-on costs everything.'],
+  brief: 'She takes the tunnel against the traffic, so you take the tunnel against the traffic. No tricks, no process shots: real cars, real speed, and their headlamps coming straight at you. Do not lose that BMW. Out of the tunnel she runs the junction and a truck takes her broadside, straight over the barriers into the roadworks. Be close enough to see it — when you hear the air horn, stand on the brakes.',
+  tips: ['Stay within <b>60 metres</b> of the BMW. Lose her and she has to wait for you — the shot suffers.', 'Oncoming cars keep to the two lanes — <b>headlights</b> are your warning. Switch lanes early.', 'The centre pillars are solid concrete. Scrapes on the wall cost speed; a head-on costs everything.', 'At the junction past the tunnel a truck T-bones the BMW. When you hear its <b>air horn, brake hard</b> and stay in lane — the truck ends up across the junction. Stop short of the zebra crossing for full marks.'],
   controls: CTL.drive, intro: { r: 9, h: 2.3 },
-  assets: { models: ['peugeot406', 'bmw_m5', ...TRAFFIC], tex: ['bd_paris', 'tx_asphalt', 'tx_fac_paris', 'tx_concrete', 'tx_roof'] },
+  assets: { models: ['peugeot406', 'bmw_m5', 'semi_truck', ...TRAFFIC], tex: ['bd_paris', 'tx_asphalt', 'tx_fac_paris', 'tx_concrete', 'tx_roof', 'tx_dirt'] },
   build(s) {
     s.env('overcast', { backdrop: 'bd_paris', look: 'bleach', fog: 0.002, hz: 0.47 });
     s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x80807c }); const TZ0 = -150, TZ1 = -950, END = -1090, HW = 8.6, CH = 5.6;
-    street(s, { z0: 100, z1: TZ0 + 2, width: 17, lanes: 4, fac: ['tx_fac_paris'], height: [17, 23], lamps: 0, double: true }); street(s, { z0: TZ1 - 2, z1: END - 120, width: 17, lanes: 4, fac: ['tx_fac_paris'], height: [17, 23], lamps: 0, double: true, seedv: 21 });
+    street(s, { z0: 100, z1: TZ0 + 2, width: 17, lanes: 4, fac: ['tx_fac_paris'], height: [17, 23], lamps: 0, double: true }); street(s, { z0: TZ1 - 2, z1: RN_XZ + 8, width: 17, lanes: 4, fac: ['tx_fac_paris'], height: [17, 23], lamps: 0, double: true, seedv: 21 }); street(s, { z0: RN_XZ - 70, z1: END - 160, width: 17, lanes: 4, fac: ['tx_fac_paris'], height: [17, 23], lamps: 0, double: true, seedv: 27 });
     s.road({ z0: TZ0 + 2, z1: TZ1 - 2, width: 17, lanes: 4, double: true });
     const wall = s.mat({ tex: 'tx_concrete', color: 0x8d8778 }), stone = s.mat({ tex: 'tx_concrete', color: 0xcfc6b0 }), tile = s.mat({ tex: 'tx_concrete', color: 0xb8b29c, rough: 0.5 });
     for (const sx of [-1, 1]) { s.box({ x: sx * (HW + 0.3), y: 0, z: (TZ0 + TZ1) / 2, w: 0.6, h: CH, d: TZ0 - TZ1, mat: tile, tile: 5, solid: true, sol: { msg: 'Buried it in the tunnel wall', hardK: 2.2, advice: 'Keep a car width off the tunnel wall — switch lanes with small steering inputs, not big swerves.' } }); s.box({ x: sx * (HW - 0.02), y: 1.1, z: (TZ0 + TZ1) / 2, w: 0.06, h: 0.25, d: TZ0 - TZ1, mat: s.mat({ color: 0xe8e2d0 }), cast: false }); }
@@ -542,7 +597,7 @@ const ronin = {
     for (let i = 0; i < 9; i++) { const e = mv.add({ model: TRAFFIC[Math.floor(sr(TRAFFIC.length))], z: nz, v: -13.5, path: (z, e) => e?.lx ?? RN_L[i % 2], msg: 'Head-on in the tunnel', hardK: 0.45, xmin: -7.4, xmax: -1.1, swerve: 3.8,
       ai: e => { if (!e.alive || e.z - car.pos.z < 45) return; let lead = 1e9, ll = null; for (const o of onc) if (o.alive && o.z < lead) { lead = o.z; ll = o; } e.z = lead - rnd(62, 88); e.lx = Math.random() < 0.62 ? RN_L[ll.lx === RN_L[0] ? 1 : 0] : ll.lx; e.near = false; if (e.z < END - 40) { e.alive = false; e.m.visible = false; } } });
       e.lx = RN_L[i % 2]; if (i % 3 === 2) e.lx = RN_L[(i + 1) % 2]; e.sol.advice = 'Watch for headlights 80 m out and switch to the other wrong-way lane early — the BMW shows you which one is clear.'; onc.push(e); lamps(e); nz -= sr(62, 88); }
-    for (let i = 0; i < 5; i++) lamps(mv.add({ model: TRAFFIC[(i * 3 + 1) % TRAFFIC.length], x: i % 2 ? 2.2 : 5.9, z: -60 - i * 190, v: 15 + (i % 3), nearMiss: false, recycle: [70, 240, 420], zEnd: END - 40, msg: 'Rear-ended the traffic', hardK: 2, xmin: 1.1, xmax: 7.4 }), false);
+    for (let i = 0; i < 5; i++) lamps(mv.add({ model: TRAFFIC[(i * 3 + 1) % TRAFFIC.length], x: i % 2 ? 2.2 : 5.9, z: -60 - i * 190, v: 15 + (i % 3), nearMiss: false, recycle: [70, 240, 420], zEnd: RN_XZ + 200, msg: 'Rear-ended the traffic', hardK: 2, xmin: 1.1, xmax: 7.4 }), false);
     // the BMW threads the oncoming cars for real: lane choice below plus Movers steering (bounded to the wrong-way half)
     const bm = s.rival = mv.add({ model: 'bmw_m5', z: -4, v: 0, nearMiss: false, hardK: 4, xmin: -7.4, xmax: -1.1, swerve: 3.8, msg: 'Rammed the BMW', path: (z, e) => e?.cx ?? -2.2,
       ai: (e, dt) => {
@@ -550,25 +605,67 @@ const ronin = {
         e.ln ??= RN_L[0]; const other = e.ln === RN_L[0] ? RN_L[1] : RN_L[0]; if (free(e.ln) < 85 && free(other) > free(e.ln) + 20) e.ln = other; e.cx = damp(e.cx ?? -2.2, e.ln, 3.2, dt);
         const want = car.dead ? 30 : gap > 140 ? 0 : gap > 90 ? 10 : gap > 52 ? 24 : gap > 34 ? 31 : gap < 14 ? 43 : 36.5; e.v += (want - e.v) * Math.min(1, dt * 1.1);
       } }); bm.cx = -2.2; bm.sol.advice = 'Sit 15–35 m behind the BMW — close enough for the shot, far enough to react when she brakes.'; lamps(bm, false);
+    // --- the finale set: a cross street at XZ, and a building site (chantier) on the left corner beyond it, behind red-and-white barriers
+    const XZ = RN_XZ, TZc = XZ + 2, red = s.mat({ color: 0xd02a20 }), wht = s.mat({ color: 0xeeeae0 });
+    s.road({ z0: XZ - 8, z1: XZ - 70, width: 17, lanes: 4, double: true }); s.box({ x: 12.25, y: 0, z: XZ - 39, w: 3.5, h: 0.16, d: 62, mat: { tex: 'tx_concrete', color: 0xbbbbbb }, tile: 4, cast: false, top: true, step: 0.4 });
+    s.row({ side: 1, x: 14, z0: XZ - 8, z1: XZ - 70, fac: ['tx_fac_paris'], height: [17, 23], depth: [14, 22], width: [12, 26], seedv: 33, solid: true });
+    for (let x = -7.6; x <= 7.6; x += 1.1) s.box({ x, y: 0.012, z: XZ + 10.5, w: 0.55, h: 0.02, d: 3, mat: wht, cast: false }); s.box({ x: 0, y: 0.012, z: XZ + 12.6, w: 17, h: 0.02, d: 0.4, mat: wht, cast: false });
+    s.box({ x: -26, y: 0, z: XZ - 40, w: 35, h: 0.06, d: 64, mat: { tex: 'tx_dirt', color: 0x9a8a70 }, tile: 8, cast: false });
+    const barr = []; for (let z = XZ - 9; z > XZ - 70; z -= 2.1) { const g = new THREE.Group(); g.position.set(-9.2, 0, z); s.scene.add(g); for (const [y, m] of [[0.2, red], [0.55, wht], [0.9, red]]) s.box({ parent: g, x: 0, y, z: 0, w: 0.12, h: 0.32, d: 2.0, mat: m, cast: false }); barr.push(g); }
+    for (let x = -10; x > -42; x -= 2.1) { const g = new THREE.Group(); g.position.set(x, 0, XZ - 8.6); g.rotation.y = Math.PI / 2; s.scene.add(g); for (const [y, m] of [[0.2, red], [0.55, wht], [0.9, red]]) s.box({ parent: g, x: 0, y, z: 0, w: 0.12, h: 0.32, d: 2.0, mat: m, cast: false }); }
+    const cpipe = s.mat({ color: 0x9a968c, rough: 0.9 }); for (const [x, z, y] of [[-24, XZ - 50, 0.7], [-24, XZ - 52.6, 0.7], [-24, XZ - 51.3, 1.9]]) s.cyl({ x, y, z, r: 0.7, h: 4, rz: Math.PI / 2, mat: cpipe });
+    s.cyl({ x: -31, y: 0, z: XZ - 42, r: 5, r1: 0.6, h: 3, mat: { tex: 'tx_dirt', color: 0xb8a070 } }); s.box({ x: -33, y: 0, z: XZ - 60, w: 3, h: 2.6, d: 6, mat: s.mat({ color: 0x3a6a8a }) }); s.box({ x: -20, y: 0, z: XZ - 64, w: 2.4, h: 1.4, d: 5, mat: s.mat({ color: 0xc89020, metal: 0.4 }) });
+    const crane = s.mat({ color: 0xe0b020, metal: 0.4, rough: 0.6 }); s.box({ x: -36, y: 0, z: XZ - 40, w: 1.6, h: 46, d: 1.6, mat: crane }); s.box({ x: -26, y: 45, z: XZ - 40, w: 50, h: 1.2, d: 1.2, mat: crane, cast: false }); s.box({ x: -48, y: 43, z: XZ - 40, w: 4, h: 2.4, d: 2.2, mat: s.mat({ color: 0x777777 }), cast: false });
+    sign(s, 'TRAVAUX', { x: -9.3, y: 1.6, z: XZ - 12, w: 2.4, ry: Math.PI / 2, bg: '#e8c020', fg: '#111', size: 74 });
+    // the truck: comes down the cross street from the right, timed off the BMW so it arrives exactly as she runs the junction
+    const tk = s.put('semi_truck', { x: 90, z: TZc, ry: Math.PI / 2 }); tk.visible = false; const tkSol = s.course.addSolid({ x0: 0, x1: 0, y0: 0, y1: 3.4, z0: TZc - 1.3, z1: TZc + 1.3, dead: true, msg: 'T-boned the truck', hardK: 0.6, advice: 'When the truck hits the BMW, brake straight away and steer right — it ends up across the two left lanes.' });
+    const R = { on: false, hit: false, tx: 90, tv: 0, w: null };
+    const ronBoom = () => {
+      R.hit = s.bfin = true; R.tv = 15; tkSol.dead = false; /* solid only from here: before the hit the traffic must not queue for it */ s.hud.prompt(''); const bmi = mv.list.indexOf(bm); if (bmi >= 0) mv.list.splice(bmi, 1); bm.sol.dead = true; bm.alive = false;
+      const p = bm.m.position; R.w = { x: p.x, y: 0, z: p.z, vx: -11, vy: 6.2, vz: -Math.max(10, bm.v * 0.4), roll: 0, rv: 5.2, yaw: bm.m.rotation.y, yv: 0.9, down: false, lit: false, t: 0 };
+      s.fx.sparks(V3(p.x + 0.9, 0.9, p.z), 50, { speed: 10 }); s.fx.glass(V3(p.x + 0.9, 1.0, p.z), 40, { dir: V3(-1, 0, 0), speed: 8 }); s.fx.debris(V3(p.x + 0.9, 0.8, p.z), 24, { color: 0x203040, speed: 9, dir: V3(-1, 0, -0.5) });
+      s.audio.crash(); s.audio.glass(); s.audio.horn?.(90); s.engine.addShake(0.6); s.slowmo(0.5, 1.3); s.msg('T-BONED!', 'huge good'); s.objective('Brake! Pull up short of the junction');
+      const gap = car.pos.z - p.z; s.rate('On her tail', clamp(close / tot / 0.8), 2); s.rate('In at the kill', near(gap, 24, 12, 70), 1);
+      // signature: the corner across the junction, low, as the truck takes her broadside and she goes over the barriers into the works
+      s.moment('the junction', { t0: s.t - 1.4, dur: 6.2, w: 12, subject: bm.m, shots: [{ type: 'chase', pos: [4.6, 3.4, XZ + 42], fov: 20, lookUp: 0.3, a: 0.16, b: 0.42, speed: 0.6 }, { type: 'front', pos: [10.6, 2.4, XZ - 7], fov: 46, lookUp: 0.4, a: 0.2, b: 0.43, speed: 0.35 }, { type: 'wide', pos: [-32, 2.6, XZ - 9], fov: 46, lookUp: 0.3, a: 0.36, b: 1.05, speed: 0.6 }] });
+    };
+    s.onUpdate(dt => {
+      if (!s.started) return; const q = R.w;
+      // traffic clears out of the finale: nothing but the BMW within 120 m of the junction once you are in the last part of the tunnel
+      if (car.pos.z < XZ + 300) for (const e of mv.list) if (e !== bm && e.alive && e.z < XZ + 120 && e.z < car.pos.z - 100) { e.alive = false; e.m.visible = false; }
+      if (!R.on && !s.ended && bm.z < TZc + 140) { R.on = true; tk.visible = true; }
+      if (R.on && !R.hit) { R.tx = Math.min(R.tx, bm.m.position.x + 4.75 + Math.max(0, bm.z - TZc) * 0.42); if (!s.rnWarn && bm.z < TZc + 46 && !s.ended) { s.rnWarn = true; s.audio.horn?.(80); s.after(0.35, () => s.audio.horn?.(80)); s.hud.prompt('TRUCK!'); } if (bm.z <= TZc + 0.3 && !s.ended) ronBoom(); } // the air horn: about 1.3 s of warning
+      else if (R.hit) { R.tv = Math.max(0, R.tv - 10 * dt); R.tx -= R.tv * dt; }
+      tk.position.x = R.tx; Object.assign(tkSol, { x0: R.tx - 3.6, x1: R.tx + 3.6 });
+      if (q) { // the BMW: knocked sideways, rolling, over the barriers and onto its roof in the works
+        q.t += dt; q.vy -= 9.8 * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt; q.roll += q.rv * dt; q.yaw += q.yv * dt;
+        if (q.y <= 0) { q.y = 0; if (q.vy < -2) { s.fx.dust(V3(q.x, 0, q.z), 16, { spread: 2.5, size: 2.4, color: [0.6, 0.55, 0.45] }); s.fx.debris(V3(q.x, 0.4, q.z), 10, { color: 0x203040, speed: 5 }); s.audio.thud(); } q.vy = Math.abs(q.vy) > 2 ? -q.vy * 0.32 : 0; q.vx *= 0.55; q.vz *= 0.55; q.rv *= 0.6; q.yv *= 0.5; }
+        if (q.x < -8.4 && !q.thru) { q.thru = true; for (const g of barr) if (Math.abs(g.position.z - q.z) < 5) { g.visible = false; s.fx.debris(V3(-9.2, 0.6, g.position.z), 6, { color: 0xd02a20, speed: 6, dir: V3(-1, 0, -1) }); } }
+        const vh = Math.hypot(q.vx, q.vz); if (q.y === 0 && vh < 3) { q.vx *= Math.exp(-3 * dt); q.vz *= Math.exp(-3 * dt); q.rv = 0; q.roll = damp(q.roll, Math.round((q.roll - Math.PI) / (2 * Math.PI)) * 2 * Math.PI + Math.PI, 5, dt); /* she ends up on her roof */ if (!q.down) { q.down = true; s.after(0.5, () => { q.lit = true; const fp = V3(q.x, 0.8, q.z); s.fx.explosion(fp, 0.85); s.fx.fireBurst(fp, 18, { size: 3, speed: 7, life: 1.3 }); s.fx.light(fp, 0xffa040, 60, 1.0, 50); s.audio.explosion(0.8); }); } }
+        const bz = bm.m.userData.size || V3(1.85, 1.4, 4.7); bm.m.position.set(q.x, q.y + bz.y * (1 - Math.cos(q.roll)) / 2 + bz.x / 2 * Math.abs(Math.sin(q.roll)), q.z); /* the model pivots at its base: lift it so the roof, not the cabin, sits on the dirt */ bm.m.rotation.set(0, q.yaw, q.roll, 'YXZ');
+        if (q.lit) for (let k = 0; k < 2; k++) s.fx.flame(V3(q.x + rnd(-1, 1), 0.5, q.z + rnd(-1.6, 1.6)), rnd(1.1, 1.8));
+      }
+      if (R.hit && !s.ended && Math.abs(car.v) < 1 && car.grounded && R.w?.lit && (R.w.lt = (R.w.lt || 0) + dt) > 1.2) { /* hold the take until the wreck has gone up */ const z = car.pos.z; s.rate('Pulled up', z > XZ + 6 ? 1 : z > XZ - 30 ? 0.65 : 0.35, 0.8); s.wrap(1.8, z > XZ + 6 ? 'Print it. Nobody moves.' : undefined); }
+    });
     const e0 = s.scene.environmentIntensity, h0 = s.hemi.intensity, s0 = s.sun.intensity;
     let close = 0, tot = 0, lost = 0, fin = false, lostF = false, lastNear = 0; const nearT = []; s.rate('Bodywork', 1, 1); car.onHit = () => dock(s, 'Bodywork', 0.15); s.objective('Stay on the BMW'); idleGuard(s, car);
     s.onUpdate(dt => {
       const z = car.pos.z, k = smooth(TZ0 + 12, TZ0 - 30, z) * smooth(TZ1 - 12, TZ1 + 30, z); s.scene.environmentIntensity = lerp(e0, e0 * 0.16, k); s.hemi.intensity = lerp(h0, h0 * 0.2, k); s.sun.intensity = lerp(s0, 0.03, k);
       const lz = clamp(z, TZ1 + 20, TZ0 - 20); l1.position.set(-3.5, 4.6, lz - 4); l2.position.set(-3.5, 4.6, clamp(z - 34, TZ1 + 20, TZ0 - 20)); l1.intensity = l2.intensity = 110 * k;
-      if (!s.started || s.ended) return; const gap = z - bm.z; tot += dt; if (gap < 38) close += dt; lost = gap > 60 ? lost + dt : 0;
+      if (!s.started || s.ended || s.bfin) return; const gap = z - bm.z; tot += dt; if (gap < 38) close += dt; lost = gap > 60 ? lost + dt : 0;
       s.hud.readout('gap', 'BMW (m)', Math.max(0, Math.round(gap)), gap > 60 ? 'warn' : gap < 38 ? 'ok' : ''); s.hud.readout('spd', 'KM/H', Math.round(car.kmh));
       if (gap > 60 && !lostF) s.hud.prompt(`LOSING HER — ${Math.max(0, 3 - lost).toFixed(1)}`); else s.hud.prompt(lostF && gap > 60 ? 'SHE IS WAITING FOR YOU — CATCH UP' : '');
       // lose her and she pulls over and waits (a flub, not a cut)
       if ((lost > 3 || gap > 110) && !lostF) { lostF = true; s.flub('Lost the BMW', { penalty: 0.2, advice: 'Stay within 60 m of the BMW (BMW readout): keep the throttle in through the gaps and only brake for a head-on.' }); }
       if (lostF && gap < 45) lostF = false;
       if (car.stats.near !== lastNear) { lastNear = car.stats.near; nearT.push(s.t); while (nearT.length && s.t - nearT[0] > 2.5) nearT.shift(); s.moment('headlights', { t0: s.t - 1.8, dur: 3, w: nearT.length > 1 ? 1.4 + nearT.length * 0.5 : 0.95 }); }
-      if (z < END && !fin) { fin = true; s.hud.prompt(''); s.rate('On her tail', clamp(close / tot / 0.8), 2); s.rate('Gap at the exit', near(gap, 10, 14, 60), 1); s.wrap(1.3); }
     });
   },
   bot(s, inp, B) {
     const c = s.car, tm = L => { let t = 1e9; for (const e of s.mv.list) { if (!e.alive || !e.sol || e.v >= 0) continue; if (Math.abs(e.m.position.x - L) > 2.6) continue; const dz = c.pos.z - e.z; if (dz > -6) t = Math.min(t, dz / (c.v - e.v + 1)); } return t; };
     B.ln ??= RN_L[0]; const other = B.ln === RN_L[0] ? RN_L[1] : RN_L[0], a = tm(B.ln), b = tm(other); if (a < 2.6 && b > a + 0.9) B.ln = other;
     const gap = c.pos.z - s.rival.z; botDrive(c, inp, B.ln, gap > 24 ? 44 : gap < 13 ? 30 : 36, 0.13);
+    if (s.rnWarn) { botDrive(c, inp, B.ln, 0, 0.13); inp.y = c.v > 0.5 ? -1 : 0; } // the truck's horn: stand on the brakes and pull up in lane
   },
 };
 
@@ -637,7 +734,7 @@ const EXTRA = {
     cine: [{ type: 'wide', pos: [-32, -1.0, -263], fov: 30, lookUp: -1.4, speed: 0.35 }, { type: 'orbit', speed: 0.3 }, { type: 'low', speed: 0.35 }], liveShot: 'wide' },
   speed_bus: { goals: { shot: ['Accelerate past 50 mph — that arms the bomb', 'Stay above 50: weave round the traffic and change lanes early (under 50 starts a 3-second fuse)', 'Hit the ramp at the freeway gap at 68+ mph with the wheels straight', 'Land and keep it above 50 for another 130 m'], cut: ['You stay under 50 mph for 3 seconds — the bomb goes off', 'You come up short at the gap (under 68 mph)'], stars: ['Speed at the gap', 'Landing', 'Clean traffic', 'Average speed'] },
     cine: ['wide', 'low', 'front'] },
-  t2_canal: { goals: { shot: ['Ride off the spillway ledge and land the 7 m drop level (feather W in the air)', 'Ride 900 m down the flood channel with the tow truck behind you', 'Pick your gap at every bridge: one pier = go left or right, two piers = go through the middle', 'Dodge the junk and keep the TRUCK readout above 14 m'], cut: ['The truck runs you down (it backs off once, the first time it gets close)', 'You hit a bridge pier head-on'], stars: ['Drop landing', 'Lead over the truck', 'Clean ride'] },
+  t2_canal: { goals: { shot: ['Ride off the spillway ledge and land the 7 m drop level (feather W in the air)', 'Ride 950 m down the flood channel with the tow truck behind you', 'Pick your gap at every bridge: one pier = go left or right, two piers = go through the middle', 'Dodge the junk and keep the TRUCK readout above 14 m', 'Stay flat out under the LOW CLEARANCE overpass at the end — the truck goes into it behind you and blows', 'Ride out of the fireball, then brake and pull up 30–90 m past the bridge (PAST IT readout)'], cut: ['The truck runs you down (it backs off once, the first time it gets close)', 'You hit a bridge pier head-on', 'You never brake and hit the culvert grate 200 m past the overpass'], stars: ['Drop landing', 'Lead over the truck', 'Clean ride', 'Pulled up'] },
     cine: [{ type: 'wide', pos: [-8.8, 1.1, -34], fov: 44, lookUp: 0.6, speed: 0.4 }, 'low', 'chase'] },
   diamonds: { goals: { shot: ['Weave round the parked cars, then line up on the green stripe on the right', 'Put your right wheels on the ramp at 30–45 mph — she tips onto two wheels', 'In the alley keep the BALANCE needle in the green: D lifts, A lowers (small taps)', 'After the alley let her drop and drive on 60 m'], cut: ['You hit the ramp above 53 mph and roll her', 'The needle goes all the way over (roof) or all the way flat (wedged)', 'You miss the ramp twice (the first miss is a flub — back to one)'], stars: ['Ramp speed', 'Balance', 'Alley exit', 'Clean approach'] },
     cine: [{ type: 'front', pos: [0, 1.1, -232], fov: 12, lookUp: 0.6, speed: 0.6 }, 'low', 'rear'] },
@@ -646,9 +743,9 @@ const EXTRA = {
   gone60: { goals: { shot: ['Thread the gridlock: follow the open lane — it switches sides, so look 50 m ahead', 'After the last gap, take lane 2 (left of centre) flat out to the yellow flatbed', 'Hit the flatbed ramps at 65+ mph and hold W in the air', 'Clear the accident, land in the green zone and drive on'], cut: ['You plough nose-first into the gridlock', 'You come down on the accident scene', '(Missing the flatbed is a flub: you brake and the take ends with no jump)'], stars: ['Clean slalom', 'Slalom pace', 'Take-off speed', 'Landing'] },
     // signature: side-on from off the bridge deck, Eleanor in the air over the wrecks with the cables and the far tower behind
     cine: [{ type: 'wide', pos: [-22, 3, -640], fov: 36, lookUp: 0.3, speed: 0.4 }, 'track', { type: 'front', pos: [-4.2, 1.0, -712], fov: 44, lookUp: 1.2, speed: 0.5, a: 0.2 }], liveShot: 'low' },
-  matrix_freeway: { goals: { shot: ['Ride 1,450 m against five lanes of oncoming traffic', 'Ride the white lines between lanes; look far ahead for lane-changers and trucks', 'Keep above 60 mph — the AGENTS meter fills while you are slower', 'Close passes pay a bonus; a glancing clip costs you'], cut: ['A head-on with a car or truck', 'The AGENTS meter fills up (about 5 s under 60 mph)'], stars: ['Average speed', 'Nerve (close passes)', 'Untouched (clips)', 'Barrier-free'] },
+  matrix_freeway: { goals: { shot: ['Ride 1,500 m against five lanes of oncoming traffic', 'Ride the white lines between lanes; look far ahead for lane-changers and trucks', 'Keep above 60 mph — the AGENTS meter fills while you are slower', 'Close passes pay a bonus; a glancing clip costs you', 'Near the end the traffic clears: a semi with an Agent at the wheel (your way) and a tanker meet head-on in the far-left lane — stay right of centre and ride past the fireball at 60+'], cut: ['A head-on with a car or truck', 'Riding into the trucks in the far-left lane (before or after they collide)', 'The AGENTS meter fills up (about 5 s under 60 mph)'], stars: ['Average speed', 'Nerve (close passes)', 'Untouched (clips)', 'Barrier-free', 'Rode through it'] },
     cine: ['front', 'low', 'track'] },
-  ronin: { goals: { shot: ['Follow the BMW into the tunnel on the LEFT side — against the traffic', 'Stay within 60 m of her (BMW readout); 15–35 m is ideal', 'Switch between the two wrong-way lanes when headlights come at you — never cross the centre pillars', 'Follow her out of the far end of the tunnel'], cut: ['A head-on with an oncoming car', 'Hitting a centre pillar head-on'], stars: ['On her tail', 'Gap at the exit', 'Bodywork'] },
+  ronin: { goals: { shot: ['Follow the BMW into the tunnel on the LEFT side — against the traffic', 'Stay within 60 m of her (BMW readout); 15–35 m is ideal', 'Switch between the two wrong-way lanes when headlights come at you — never cross the centre pillars', 'Follow her out of the far end of the tunnel', 'At the junction a truck T-bones her into the roadworks — when you hear its air horn, brake hard and pull up short of the zebra crossing'], cut: ['A head-on with an oncoming car', 'Hitting a centre pillar head-on', 'Running into the truck at the junction'], stars: ['On her tail', 'In at the kill (15–35 m behind her when she is hit)', 'Pulled up', 'Bodywork'] },
     cine: ['front', 'chase', 'low'] },
   goldeneye_tank: { goals: { shot: ['Chase the grey saloon in the T-55 — keep the TARGET readout under 62 m', 'Smash the brick walls, market stalls, parked cars and the horse statue for bonus pay', 'Start steering the bends early — buildings stop 36 tons dead', 'Follow him 960 m to the end of the street'], cut: ['Nothing short of sitting still — a tank cannot crash (losing him is a flub: he waits)'], stars: ['Kept him in range', 'Destruction (wrecks)', 'Driving (stalls on buildings)'] },
     cine: ['front', 'low', 'wide'] },

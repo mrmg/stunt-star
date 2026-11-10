@@ -357,37 +357,107 @@ const boat = {
 const french = {
   id: 'french_connection', title: 'Under the El', film: 'The French Connection', year: 1971, tier: 2, pay: 4400, mode: 'drive', art: 'bd_brooklyn', music: 'chase',
   role: 'Doubling Popeye — commandeered Pontiac LeMans, Brooklyn',
-  brief: 'The hitman is on the train overhead. You are underneath, in traffic, between the pillars, with no permits and no closed streets. Keep up with that train.',
-  tips: ['Stay level with the <b>elevated train</b> above you.', 'The steel pillars do not move. The traffic does — some of it towards you.', 'Scrapes cost time; a head-on ends the shoot.'],
+  brief: 'The hitman is on the train overhead. You are underneath, in traffic, between the pillars, with no permits and no closed streets. Keep up with that train. He has a gun on the motorman, and at 62nd Street it ploughs into the train standing in the station. Be right behind it when it hits, then pull up underneath the wreck.',
+  tips: ['Stay level with the <b>elevated train</b> above you.', 'The steel pillars do not move. The traffic does — some of it towards you.', 'Scrapes cost time; a head-on ends the shoot.', 'Near the end the train <b>runs away</b> from you into the station. When it hits, <b>brake hard</b> and stop underneath the wreck.'],
   controls: CTL.drive, intro: { r: 9, h: 2.2 },
   assets: { models: ['lemans', 'street_lamp', 'fruit_cart', 'cardboard_boxes', ...TRAFFIC], tex: ['bd_brooklyn', 'tx_asphalt', 'tx_fac_nyc', 'tx_brick', 'tx_concrete', 'tx_roof', 'tx_metal'] },
   build(s) {
     // Bensonhurst, January 1971: flat white winter overcast, the street striped in the El's shadow, cold bleached grain
     s.env('overcast', { backdrop: 'bd_brooklyn', look: 'bleach', fog: 0.0026, amb: 1.4, sunI: 1.4, lookOver: { tint: [0.96, 1.0, 1.04], contrast: 1.18, grain: 0.07 } });
     s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x777777 });
-    const Z1 = -1150; street(s, { z0: 80, z1: Z1 - 80, width: 17, lanes: 4, fac: ['tx_fac_nyc', 'tx_brick'], height: [12, 22], lamps: 0, double: true });
+    // SZ: the back of the train standing in 62nd Street station, where the runaway hits it. ST0..ST1: the open station section.
+    const Z1 = -1150, SZ = -1252, ST0 = SZ + 78, ST1 = SZ - 58, ZE = SZ - 175;
+    street(s, { z0: 80, z1: ZE, width: 17, lanes: 4, fac: ['tx_fac_nyc', 'tx_brick'], height: [12, 22], lamps: 0, double: true });
     const steel = s.mat({ tex: 'tx_metal', color: 0x3d4a44, metal: 0.4, rough: 0.7 });
-    s.box({ x: 0, y: 7.2, z: (80 + Z1 - 80) / 2, w: 10.5, h: 0.9, d: 80 - Z1 + 80, mat: steel, tile: 4 });
-    for (let z = 60; z > Z1 - 60; z -= 22) for (const x of [-4.4, 4.4]) { s.box({ x, y: 0, z, w: 0.55, h: 7.2, d: 0.55, mat: steel, solid: true, sol: { msg: 'Hit an El pillar head-on', hardK: 0.75 } }); }
+    for (const [z0, z1] of [[80, ST0], [ST1, ZE]]) s.box({ x: 0, y: 7.2, z: (z0 + z1) / 2, w: 10.5, h: 0.9, d: z0 - z1, mat: steel, tile: 4 });
+    for (let z = 60; z > ZE + 20; z -= 22) for (const x of [-4.4, 4.4]) { s.box({ x, y: 0, z, w: 0.55, h: 7.2, d: 0.55, mat: steel, solid: true, sol: { msg: 'Hit an El pillar head-on', hardK: 0.75 } }); }
     for (const [x, z] of [[6.6, -210], [-6.8, -520], [6.6, -830]]) s.put('fruit_cart', { x, z, height: 2.4, ry: x > 0 ? -1.57 : 1.57, solid: 'break', sol: { debris: 0xff9020, slow: 0.93, on: () => s.bonus('Fruit cart', 100) } });
     for (const [x, z] of [[-6.7, -330], [6.7, -660], [-6.7, -960]]) s.put('cardboard_boxes', { x, z, height: 2, solid: 'break', sol: { soft: true, debris: 0xb08a55 } });
-    // the train
-    const tr = new THREE.Group(), tm = s.mat({ tex: 'tx_metal', color: 0x8a8f86, metal: 0.5, rough: 0.5 }); for (let i = 0; i < 4; i++) { s.box({ parent: tr, x: 0, y: 0, z: i * 16.4, w: 2.9, h: 3.1, d: 15.8, mat: tm, tile: 3 }); s.box({ parent: tr, x: 0, y: 1.5, z: i * 16.4, w: 2.96, h: 0.9, d: 14.5, mat: s.mat({ color: 0x151a1e, rough: 0.2, metal: 0.8 }), cast: false }); } tr.userData.size = V3(2.9, 3.1, 16);
+    // the trains: each car its own group so they can buckle in the crash
+    const tm = s.mat({ color: 0xa9ada6, metal: 0.25, rough: 0.5 }), dark = s.mat({ color: 0x151a1e, rough: 0.2, metal: 0.8 }), lit = s.mat({ color: 0xd8d0a0, emissive: 0xc8b878, emI: 0.55, rough: 0.4 });
+    const carOf = (par, z, win) => { const g = new THREE.Group(); g.position.z = z; par.add(g); s.box({ parent: g, x: 0, y: 0, z: 0, w: 2.9, h: 3.1, d: 15.8, mat: tm, tile: 3 }); s.box({ parent: g, x: 0, y: 1.5, z: 0, w: 2.96, h: 0.9, d: 14.5, mat: win, cast: false }); return g; };
+    const tr = new THREE.Group(), cars = [0, 1, 2, 3].map(i => carOf(tr, i * 16.4, dark)); tr.userData.size = V3(2.9, 3.1, 16);
+    { const hl = s.mat({ color: 0xfff4d0, emissive: 0xfff0c0, emI: 2.2 }), sg = s.mat({ color: 0x222222, emissive: 0xffe9a0, emI: 0.9 }); for (const x of [-0.85, 0.85]) s.box({ parent: cars[0], x, y: 0.55, z: -7.93, w: 0.32, h: 0.22, d: 0.06, mat: hl, cast: false }); s.box({ parent: cars[0], x: -0.55, y: 2.45, z: -7.93, w: 1.1, h: 0.32, d: 0.06, mat: sg, cast: false }); }
+    const st = new THREE.Group(); st.position.set(0, 8.1, SZ - 7.9); s.scene.add(st); const scars = [0, 1, 2].map(i => carOf(st, -i * 16.4, lit)); // standing in the station, lights on
+    for (const x of [-0.95, 0.95]) s.box({ parent: scars[0], x, y: 0.55, z: 7.93, w: 0.26, h: 0.22, d: 0.06, mat: s.mat({ color: 0xff3020, emissive: 0xff2010, emI: 2 }), cast: false });
     // El cross girders over each pillar pair, shop signs on the facades, pedestrians on the sidewalks (all visual, above or outside the lanes)
-    { srand(71); for (let z = 60; z > Z1 - 60; z -= 22) s.box({ x: 0, y: 6.3, z, w: 9.4, h: 0.9, d: 0.45, mat: steel, cast: false });
+    { srand(71); for (let z = 60; z > ZE + 20; z -= 22) s.box({ x: 0, y: 6.3, z, w: 9.4, h: 0.9, d: 0.45, mat: steel, cast: false });
       const shops = ['DELI', 'PIZZA', 'BAR', 'SHOES', 'PAWN', 'BAKERY', 'HARDWARE', 'LIQUORS', 'DINER', 'BARBER', 'CLEANERS', 'FURNITURE'], cols = ['#7a1a14', '#123a5a', '#1a4a2a', '#5a3a12', '#2a2a2a', '#6a5a1a'];
-      for (let i = 0, z = 40; z > Z1 - 40; z -= sr(28, 60), i++) { const sd = i % 2 ? 1 : -1; sign(s, shops[i % shops.length], { x: sd * 10.7, y: 4.4, z, w: 2.6, ry: 0, bg: cols[i % cols.length], size: 58, glow: 0.62 }); }
-      for (const sd of [-1, 1]) dress.crowd(s, { path: [[sd * 11.4, 60], [sd * 11.4, Z1 + 60]], rows: 1, step: 4.2, gaps: 0.72, side: sd, face: sd * Math.PI / 2, colors: [0x2a2a2a, 0x3a3428, 0x4a3a30, 0x202838, 0x5a4a3a, 0x6a6a6a], seed: 72 + sd }); }
+      for (let i = 0, z = 40; z > ZE + 20; z -= sr(28, 60), i++) { const sd = i % 2 ? 1 : -1; sign(s, shops[i % shops.length], { x: sd * 10.7, y: 4.4, z, w: 2.6, ry: 0, bg: cols[i % cols.length], size: 58, glow: 0.62 }); }
+      for (const sd of [-1, 1]) dress.crowd(s, { path: [[sd * 11.4, 60], [sd * 11.4, ZE + 30]], rows: 1, step: 4.2, gaps: 0.72, side: sd, face: sd * Math.PI / 2, colors: [0x2a2a2a, 0x3a3428, 0x4a3a30, 0x202838, 0x5a4a3a, 0x6a6a6a], seed: 72 + sd }); }
+    // 62nd Street station: an open trackbed you can see the train from (left side), one side platform with a canopy (right), stairs down to the street
+    { const conc = s.mat({ tex: 'tx_concrete', color: 0x9a9a94 }), roof = s.mat({ tex: 'tx_roof', color: 0x6a6a64 }), mid = (ST0 + ST1) / 2, len = ST0 - ST1;
+      s.box({ x: 0, y: 7.2, z: mid, w: 3.0, h: 0.9, d: len, mat: steel, tile: 4 }); for (const x of [-0.75, 0.75]) s.box({ x, y: 8.1, z: mid, w: 0.12, h: 0.16, d: len, mat: s.mat({ color: 0x5a5048, metal: 0.6, rough: 0.5 }), cast: false });
+      s.box({ x: 3.4, y: 7.2, z: mid, w: 3.7, h: 1.7, d: len, mat: conc, tile: 3 }); s.box({ x: -1.62, y: 8.1, z: mid, w: 0.08, h: 1.0, d: len, mat: steel, cast: false });
+      for (let z = ST0 - 6; z > ST1 + 4; z -= 9) s.box({ x: 4.8, y: 8.9, z, w: 0.22, h: 3.4, d: 0.22, mat: steel });
+      s.box({ x: 3.7, y: 12.3, z: mid, w: 4.3, h: 0.22, d: len - 8, mat: roof, tile: 4 }); s.box({ x: 1.6, y: 11.75, z: mid, w: 0.1, h: 0.55, d: len - 8, mat: steel, cast: false });
+      for (const z of [SZ + 52, SZ + 4, SZ - 40]) sign(s, '62 ST', { x: 1.53, y: 11.98, z, w: 2.2, ry: -Math.PI / 2, bg: '#111', fg: '#fff', size: 70, glow: 0.8 });
+      s.box({ x: 7.9, y: 8.4, z: SZ + 52, w: 5.4, h: 0.5, d: 2.6, mat: conc }); s.box({ x: 9.8, y: 8.4, z: SZ + 52, w: 1.9, h: 3.2, d: 2.6, mat: s.mat({ tex: 'tx_brick', color: 0x9a7a6a }) });
+      const rise = 8.6, run = 13, sl = Math.hypot(rise, run); s.box({ x: 9.8, y: rise / 2 - 0.15, z: SZ + 53.3 + run / 2, w: 1.8, h: 0.3, d: sl, rx: Math.atan2(rise, run), mat: conc, cast: false });
+      for (const x of [8.85, 10.75]) s.box({ x, y: rise / 2 + 0.5, z: SZ + 53.3 + run / 2, w: 0.08, h: 0.08, d: sl, rx: Math.atan2(rise, run), mat: steel, cast: false });
+      dress.crowd(s, { path: [[4.3, ST0 - 8], [4.3, SZ - 30]], rows: 1, step: 3.4, gaps: 0.55, side: 1, face: Math.PI / 2, y: 8.9, colors: [0x2a2a2a, 0x3a3428, 0x4a3a30, 0x202838, 0x6a6a6a], seed: 77 }); }
     s.crew({ x: 7.6, z: 26, ry: 0.9 });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'lemans', x: -2.2, z: 30, crashV: 14 });
-    const mv = new Movers(s, car); const train = mv.add({ obj: tr, x: 0, y: 8.1, z: 10, v: 0, solid: false, nearMiss: false, ai: (e, dt) => { if (s.started) { const gap = car.pos.z - e.z; e.v += ((gap > 160 ? 6 : 19) - e.v) * Math.min(1, dt * 0.5); } } });
-    traffic(s, mv, { lanes: [[-6.4, 1], [-2.2, 1], [2.2, -1], [6.4, -1]], n: 13, z0: -70, z1: Z1, speed: [9, 13], ahead: [200, 420], zEnd: Z1 - 40 });
+    const mv = new Movers(s, car);
+    // the train keeps pace with you; on the run-in to the station it pulls away and settles ~30 m ahead, then never brakes
+    const train = mv.add({ obj: tr, x: 0, y: 8.1, z: 10, v: 0, solid: false, nearMiss: false, ai: (e, dt) => {
+      if (!s.started) return; if (s.fcrash) { e.v = 0; return; } const gap = car.pos.z - e.z;
+      let want = gap > 160 ? 6 : gap < 0 ? 19 + Math.min(13, -gap * 0.25) : 19, k = 0.5;
+      if (s.fapp) { want = clamp(car.v + 3 + (20 - gap) * 0.3, 10, 34); k = 0.9; }
+      e.v += (want - e.v) * Math.min(1, dt * k); } });
+    const traf = traffic(s, mv, { lanes: [[-6.4, 1], [-2.2, 1], [2.2, -1], [6.4, -1]], n: 13, z0: -70, z1: Z1, speed: [9, 13], ahead: [200, 420], zEnd: Z1 - 40 });
+    const fo = new THREE.Group(); s.scene.add(fo); // replay subject: the nose of the runaway, then the point of impact
     s.rate('Bodywork', 1); car.onHit = () => s.rate('Bodywork', (s.scores.get('Bodywork')?.v ?? 1) - 0.14); s.objective('Keep up with the train');
-    s.onUpdate(() => { if (!s.started || s.ended) return; const gap = car.pos.z - train.z; s.hud.readout('gap', gap > 0 ? 'Behind train (m)' : 'Ahead (m)', Math.abs(Math.round(gap)), gap > 60 ? 'warn' : 'ok'); s.hud.readout('spd', 'MPH', Math.round(car.mph)); if (gap > 200 && !s.lost) { s.lost = true; s.flub('The train got away', { penalty: 0.2, advice: 'Stay under the train. Change lanes between the pillar rows and keep the speed up through the gaps.' }); } if (gap < 120) s.lost = false; if (car.pos.z < Z1) { s.rate('Kept up with the train', near(Math.max(0, gap), 0, 12, 150), 2); s.wrap(1.2); } });
+    let tI = 0; const P = V3(0, 9.4, SZ);
+    s.onUpdate(dt => {
+      if (!s.fcrash) fo.position.set(0, 9.6, train.z - 7.9);
+      if (s.fcrash) {
+        // the pile-up: the lead car rides up onto the roof of the standing train, the rest concertina in behind it
+        const u = s.t - tI, k = smooth(0, 0.5, u), b = Math.sin(clamp(u / 0.9) * Math.PI) * 0.03 * (1 - k * 0.5);
+        const th = 0.25 * k + b; cars[0].rotation.set(th, 0.04 * k, -0.06 * k); cars[0].position.set(-0.2 * k, 7.9 * Math.sin(th), -3.4 * k);
+        cars[1].rotation.set(-0.03 * k, -0.11 * k, 0.05 * k); cars[1].position.set(-0.55 * k, 0.15 * k, 16.4 - 2.7 * k);
+        cars[2].rotation.set(0.01 * k, 0.15 * k, -0.07 * k); cars[2].position.set(-1.05 * k, 0, 32.8 - 1.8 * k);
+        cars[3].rotation.set(0, -0.05 * k, 0.02 * k); cars[3].position.set(-0.3 * k, 0, 49.2 - 1.0 * k);
+        st.position.z = SZ - 7.9 - 1.6 * k; scars[0].rotation.set(0.045 * k, -0.02 * k, 0.05 * k); scars[0].position.y = -0.25 * k;
+        fo.position.set(0, 10.4 + 1.6 * k, SZ - 1.4 * k);
+        // sparks and wreckage rain down through the girders onto the street; the third rail arcs
+        if (u < 4.5) { const n = u < 0.8 ? 7 : u < 2.2 ? 4 : 1; for (let i = 0; i < n; i++) s.fx.fire.emit(rnd(-1.6, 1.6), rnd(7.3, 8.3), SZ + rnd(-4, 6), rnd(-1.6, 1.6), rnd(-1, 2.5), rnd(-1.6, 1.6), { life: rnd(1.0, 1.7), s0: 0.24, s1: 0.07, c0: [1, 0.92, 0.65], c1: [1, 0.35, 0.05], a: 1, drag: 0.5, grav: 12, fin: 0.02, floor: 0.06 }); }
+        if (u < 2.6 && Math.random() < dt * 5) { const q = V3(rnd(-1.4, 1.4), 8.2, SZ + rnd(-2, 4)); s.fx.sparks(q, 22, { speed: 7, color: [0.75, 0.88, 1] }); s.fx.light(q, 0xa8c4ff, 70, 0.12, 26); }
+        if (u < 5 && Math.random() < dt * 6) s.fx.smokePuff(V3(rnd(-1, 1), 10.5, SZ + rnd(-2, 3)), 1, { color: [0.3, 0.3, 0.31], size: 2.4, a: 0.4, up: 2.2, life: 3 });
+        if (u < 1.6 && Math.random() < dt * 4) s.fx.debris(V3(rnd(-1.2, 1.2), 8.6, SZ + rnd(-2, 4)), 4, { color: 0x4a4e4a, speed: 3, size: 0.3, floor: 0.05 });
+        for (const e of traf) e.v *= Math.exp(-2.2 * dt); // the whole street stops
+        if (s.cam.mode === 'follow') { const o = s.cam.o, q = Math.min(1, dt * 2); o.up += (5.5 - o.up) * q; o.height += (3.4 - o.height) * q; } // look up at it
+      }
+      if (!s.started || s.ended) return; const gap = car.pos.z - train.z;
+      if (!s.fcrash) { s.hud.readout('gap', gap > 0 ? 'Behind train (m)' : 'Ahead (m)', Math.abs(Math.round(gap)), gap > 60 ? 'warn' : 'ok'); if (gap > 200 && !s.lost) { s.lost = true; s.flub('The train got away', { penalty: 0.2, advice: 'Stay under the train. Change lanes between the pillar rows and keep the speed up through the gaps.' }); } if (gap < 120) s.lost = false; }
+      s.hud.readout('spd', 'MPH', Math.round(car.mph));
+      // the run-in: the train pulls away for the station; traffic up ahead is held back so the street is clear for the finale
+      if (!s.fapp && (car.pos.z < SZ + 340 || train.z < SZ + 300)) {
+        s.fapp = true; s.rate('Kept up with the train', near(Math.max(0, gap), 0, 12, 150), 2); s.objective('He is running for the station — stay on him');
+        for (const e of traf) { e.o.recycle = null; if (e.z < car.pos.z - 150) { e.alive = false; e.m.visible = false; } }
+      }
+      if (!s.fcrash && train.z - 7.9 <= SZ) crash();
+      if (s.fcrash) {
+        if (Math.abs(car.v) < 1 && car.grounded) { s.rate('Pulled up underneath', near(car.pos.z - SZ, 10, 24, 110), 0.8); s.wrap(2.4, 'Print it. That is the shot — Popeye under the El, the train hanging off the station.'); }
+        else if (car.pos.z < SZ - 140) { s.rate('Pulled up underneath', 0, 0.8); s.wrap(1.4); }
+      }
+    });
+    const crash = () => {
+      s.fcrash = true; tI = s.t; train.v = 0; train.z = SZ + 7.9; train.m.position.z = train.z;
+      s.fx.sparks(P, 90, { speed: 15 }); s.fx.fireBurst(P, 20, { size: 1.5, speed: 6, life: 0.5 }); s.fx.smokePuff(P.clone().setY(10.5), 16, { color: [0.3, 0.3, 0.32], size: 3, a: 0.5, up: 3, spread: 2 });
+      s.fx.debris(P, 46, { color: 0x50544f, speed: 8, size: 0.4, floor: 0.05 }); s.fx.debris(P.clone().setY(10.2), 30, { color: 0xcfe8ef, speed: 6, size: 0.16, flat: true, floor: 0.05 }); s.fx.light(P, 0xcfe0ff, 150, 0.7, 60);
+      s.audio.crash(); s.audio.metal(1); s.after(0.15, () => s.audio.impact(1)); s.after(0.35, () => s.audio.metal(0.8)); s.after(0.6, () => s.audio.glass()); s.engine.addShake(1.0); s.slowmo(0.45, 1.4); s.msg('TRAIN WRECK!', 'huge good');
+      s.rate('In at the crash', near(car.pos.z - SZ, 34, 26, 150), 1); s.objective('Brake! Pull up under the station');
+      s.moment('the train wreck', { t0: s.t - 1.6, dur: 5.5, w: 12, subject: fo, shots: [
+        { type: 'low', pos: [-9.8, 1.0, SZ + 16], fov: 56, lookUp: 0, a: 0.22, b: 0.69, speed: 0.4 }, // the famous one: from the street, looking up at the car reared over the standing train
+        { type: 'front', pos: [0.2, 13.2, SZ - 22], fov: 40, lookUp: -0.6, a: 0.12, b: 0.62, speed: 0.45 }, // over the standing train's roof as the runaway climbs it
+        { type: 'wide', pos: [-11.6, 9.5, SZ + 12], fov: 60, lookUp: -0.8, a: 0.3, b: 0.9, speed: 0.55 }] }); // off a fire escape across the street: the car hanging off the station
+    };
   },
   bot(s, inp, B) {
     const c = s.car, z = c.pos.z; const ahead = L => { let d = 1e9; for (const sol of s.course.solids) { if (sol.dead || !sol.mover || (sol.vz || 0) > 0) continue; if (sol.x0 < L + 1.4 && sol.x1 > L - 1.4) { const dz = z - sol.z1; if (dz > -7 && dz < d) d = dz; } } return d; };
     const cur = B.lane ?? -2.2, other = cur === -2.2 ? -6.4 : -2.2; const pil = ((60 - z) % 22 + 22) % 22; // metres past the last pillar row
+    if (s.fcrash) { botDrive(c, inp, cur, 0, 0.16); inp.y = c.v > 1 ? -1 : 0; return; } // the train has hit: stand on the brakes
     if (!B.chg && ahead(cur) < 50 && ahead(other) > ahead(cur) + 25 && pil > 1 && pil < 4) { B.lane = other; B.chg = 1; } if (B.chg && Math.abs(c.pos.x - (B.lane ?? cur)) < 0.5) B.chg = 0;
     const L = B.lane ?? cur; botDrive(c, inp, L, ahead(L) < 14 && !B.chg ? 10 : 26, 0.16);
   },
@@ -403,6 +473,6 @@ const EXTRA = {
   bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic', 'At the bottom he loses it at the gas station: brake and pull up before the bay'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving', 'In at the kill'] }, cine: ['track', 'wide', { type: 'low', side: -1 }] },
   blues_brothers: { goals: { shot: ['Drive at the drawbridge as it starts to rise', 'The longer you wait, the steeper it gets — and the more you earn', 'Hold W in the air and land on the far side'], cut: ['You drop into the river'], stars: ['Nerve (bridge angle)', 'Landing'] }, cine: [{ type: 'wide', pos: [42, 7, -318], fov: 26, lookUp: 0.3, a: -0.12, b: 0.62, speed: 0.45 }, 'low', 'front'] },
   boat_jump: { goals: { shot: ['Follow the bayou channel at full throttle', 'Hit the earth ramp in the middle of the river', 'Jump the levee road — the record is 110 feet'], cut: ['You crash into the Sheriff'], stars: ['Jump distance vs the record', 'Landing', 'Staying off the banks'] }, cine: [{ type: 'wide', pos: [rcx(-696) + 11, 0.9, -715], fov: 46, lookUp: 0.3, a: 0.08, b: 0.8, speed: 0.4 }, { type: 'wide', side: -1 }, 'track'] },
-  french_connection: { goals: { shot: ['Drive under the elevated railway, chasing the train above', 'Weave through the traffic and between the steel pillars', 'Stay level with the train to the end of the line'], cut: ['You hit a pillar or a car head-on'], stars: ['Keeping up with the train', 'Bodywork'] }, cine: [{ type: 'front', pos: [-7.9, 0.6, -1186], fov: 24, lookUp: 0.4, a: 0.45, b: 1.05, speed: 0.55 }, 'track', 'rear'] },
+  french_connection: { goals: { shot: ['Drive under the elevated railway, chasing the train above', 'Weave through the traffic and between the steel pillars', 'Stay level with the train — near the end it runs away from you into 62nd Street station', 'It ploughs into the train standing in the station: be close behind when it hits', 'Brake and pull up underneath the wreck'], cut: ['You hit a pillar or a car head-on'], stars: ['Keeping up with the train', 'Bodywork', 'In at the crash', 'Pulling up underneath'] }, cine: [{ type: 'front', pos: [-7.9, 0.6, -1186], fov: 24, lookUp: 0.4, a: 0.45, b: 1.05, speed: 0.55 }, 'track', 'rear'] },
 };
 export default [italian, greatEscape, smokey, generalLee, bttf, bullitt, blues, boat, french].map(d => Object.assign(d, EXTRA[d.id]));

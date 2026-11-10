@@ -359,8 +359,8 @@ const deathProof = {
 const furyRoad = {
   id: 'fury_road', title: 'Polecat', film: 'Mad Max: Fury Road', year: 2015, tier: 5, pay: 27000, mode: 'grip', art: 'bd_wasteland', music: 'chase',
   role: 'Polecat — on top of a thirty-foot pole swinging over the War Rig',
-  brief: 'The pole is a metronome with you on the end of it. It swings out over the rig, you take a fuel pod off the rack, it swings you home. All of it for real, at fifty miles an hour, in the Namib. Three pods. Go.',
-  tips: ['The pole swings by itself. <b>Tap E as the marker crosses the gold</b> — that is the bottom of the swing, right over the rig.', 'Grab at the wrong moment and you snatch air and nearly come off. <b>Three pods</b> to take.', 'Explosions and collisions are called a moment ahead: <b>hold SPACE</b>. You cannot grab while braced, so pick your swing.'],
+  brief: 'The pole is a metronome with you on the end of it. It swings out over the rig, you take a fuel pod off the rack, it swings you home. All of it for real, at fifty miles an hour, in the Namib. Three pods. Then the war car on the far flank rams the rig, goes under its wheels and up in a fireball right beside you — hold on through that and we wrap.',
+  tips: ['The pole swings by itself. <b>Tap E as the marker crosses the gold</b> — that is the bottom of the swing, right over the rig.', 'Grab at the wrong moment and you snatch air and nearly come off. <b>Three pods</b> to take.', 'Explosions and collisions are called a moment ahead: <b>hold SPACE</b>. You cannot grab while braced, so pick your swing.', 'After the last pod the war car rams the rig and flips. When <b>HOLD ON!</b> is called, <b>hold SPACE</b> through the blast.'],
   controls: `${K('E')} snatch at the bottom of the swing &nbsp; hold ${K('SPACE')} brace`, intro: { r: 19, h: 6, a0: 0.9, speed: 0.07, up: 3, fov: 50 },
   assets: { models: ['tanker', 'charger_black', 'charger_dom', 'ch_roadwarrior', 'ch_goon', 'rock_desert'], tex: ['bd_wasteland', 'tx_sand', 'tx_metal', 'tx_dirt'] },
   build(s) {
@@ -387,8 +387,8 @@ const furyRoad = {
       shoveV += (-shove * 30 - shoveV * 5) * dt; shove += shoveV * dt;
       const tz = won ? 7 : pods[Math.min(n, 2)].z + 0.05; pc.position.z = damp(pc.position.z, tz, 0.9, dt); pc.position.x = PX + shove + (won ? -Math.min(2.5, (t - wonT) * 2) : 0) + Math.sin(s.t * 1.3) * 0.12; armed = !won && t > 6 && Math.abs(pc.position.z - tz) < 0.5 && cool <= 0; cool -= dt;
       th = TH * Math.sin(ph * 2 * Math.PI) * (s.started ? smooth(0, 2.5, t) * 0.25 + 0.75 : 0.5); piv.rotation.z = -th;
-      esc.position.x = 9.5 + Math.sin(s.t * 0.7) * 1.2; esc.position.z = 6 + Math.sin(s.t * 0.4) * 5; rear.position.x = -2 + Math.sin(s.t * 0.5 + 2) * 2.5; rig.rotation.z = Math.sin(s.t * 2.1) * 0.006;
-      if (v > 5) for (const [o, dz, k] of [[rig, 7, 3], [pc, 2.3, 1], [esc, 2.3, 1], [rear, 2.3, 1]]) if (Math.random() < 0.5 * k) s.fx.dust(P.set(cv.position.x + o.position.x + rnd(-1, 1), 0.2, cv.position.z + o.position.z + dz), 1, { color: [0.85, 0.58, 0.32], size: 2.6 * (k > 1 ? 1.6 : 1), a: 0.3, up: 2.5 });
+      if (!s.ffin) { esc.position.x = 9.5 + Math.sin(s.t * 0.7) * 1.2; esc.position.z = 6 + Math.sin(s.t * 0.4) * 5; } rear.position.x = -2 + Math.sin(s.t * 0.5 + 2) * 2.5; rig.rotation.z = Math.sin(s.t * 2.1) * 0.006;
+      if (v > 5) for (const [o, dz, k] of [[rig, 7, 3], [pc, 2.3, 1], ...(esc.visible ? [[esc, 2.3, 1]] : []), [rear, 2.3, 1]]) if (Math.random() < 0.5 * k) s.fx.dust(P.set(cv.position.x + o.position.x + rnd(-1, 1), 0.2, cv.position.z + o.position.z + dz), 1, { color: [0.85, 0.58, 0.32], size: 2.6 * (k > 1 ? 1.6 : 1), a: 0.3, up: 2.5 });
       s.audio.set('eng', 'engine', 0.6 + v / SPD * 0.5, 0.55); s.audio.set('rm', 'rumble', 1, 0.4); if (v > 5) s.engine.addShake(0.025);
     });
     let wonT = 0;
@@ -401,7 +401,7 @@ const furyRoad = {
     const reach = { ...POSES.cling, sp: [0.6, 0.5, 0.3], aR: [0.9, -0.5, 0.5, 0.8, -0.8, 0.4] }, LIMIT = 50;
     s.objective('Snatch 3 fuel pods off the War Rig');
     s.onUpdate(dt => {
-      if (!s.started || s.ended) { if (s.ended) s.hud.hideBar(); return; } const m = (ph + 0.25) % 1; s.bar = m;
+      if (!s.started || s.ended) { if (s.ended) s.hud.hideBar(); return; } if (won) { g.promptText = ''; s.hud.readout('pods', 'PODS', n + ' / 3', ''); return; } const m = (ph + 0.25) % 1; s.bar = m;
       s.hud.bar(m, [0.43, 0.57], [0.478, 0.522]); s.hud.readout('pods', 'PODS', n + ' / 3', ''); s.hud.readout('tm', 'TIME', Math.max(0, LIMIT - t).toFixed(0), t > LIMIT - 10 ? 'warn' : '');
       g.promptText = armed ? `${K('E')} snatch on the gold` : '<span style="opacity:.6">lining up on the next pod…</span>';
       if (s.input.hit('x') && armed && !g.braced) {
@@ -409,11 +409,42 @@ const furyRoad = {
         if (d <= 0.07) { const acc = near(d, 0, 0.022, 0.075); sumAcc += acc; const pd = pods[n]; pd.pod.visible = false; n++; cool = 6.5; s.audio.good(); s.fx.sparks(tip.getWorldPosition(P), 16, { color: [1, 0.6, 0.2] }); s.msg(acc > 0.9 ? 'PERFECT SNATCH!' : 'GOT ONE!', 'good'); s.slowmo(n >= 3 ? 0.3 : 0.45, n >= 3 ? 1.2 : 0.6);
           // replay B (signature): low and side-on from the sand, the pole arcing over the War Rig against the sky
           s.moment(n >= 3 ? 'The last pod' : 'Pod ' + n, { t0: s.t - 2.4, t1: s.t + 1.5, w: 2 + n * 0.3, shots: [{ type: 'track', a: -0.05, b: 0.5, speed: 0.75, fov: 38 }, { type: 'wide', pos: [cv.position.x - 30, 2, g.world.z - v * 0.2], fov: 30, lookUp: -2, a: 0.3, b: 0.85, speed: 0.4 }, { type: 'wide', a: 0.6, b: 1.05, speed: 0.8 }] }); g.c.setPose(reach, 0.06); g._slipT = 0.5; s.bonus('Fuel pods', 600);
-          if (n >= 3) { won = true; wonT = t; g.done = true; s.hud.prompt(''); s.hud.hideBar(); s.rate('Pods taken (3 / 3)', 1, 2.5); s.rate('Snatch timing', 0.45 + 0.55 * sumAcc / 3, 1); gripScores(s, g, { time: [28, 6, 20] }); s.rate('Clean hands', 1 - misses * 0.3, 1); s.msg('WITNESS!', 'huge'); s.wrap(2.2); } }
+          if (n >= 3) { won = true; wonT = t; s.hud.prompt(''); s.hud.hideBar(); s.rate('Pods taken (3 / 3)', 1, 2.5); s.rate('Snatch timing', 0.45 + 0.55 * sumAcc / 3, 1); gripScores(s, g, { time: [28, 6, 20] }); s.rate('Clean hands', 1 - misses * 0.3, 1); s.msg('WITNESS!', 'huge'); finale(); } }
         else { misses++; cool = 0.8; g.c.setPose(reach, 0.06); g.lose(0.2, 'SNATCHED AIR!', 'Wait for the marker to sit inside the gold band — that is the bottom of the swing, right over the pod. Early or late and you grab air.'); }
       }
-      if (t > LIMIT && !won) { won = true; wonT = t; g.done = true; s.hud.prompt(''); s.hud.hideBar(); s.flub('The War Rig pulled away with ' + (3 - n) + ' pod' + (n === 2 ? '' : 's') + ' left', { penalty: 0.15, advice: 'You get one chance per swing (4.4 s). Press E only while the marker is in the gold band and do not hold SPACE when nothing is called — braced, you cannot snatch.' });
-        s.rate('Pods taken (' + n + ' / 3)', n / 3, 2.5); s.rate('Snatch timing', n ? 0.45 + 0.55 * sumAcc / n : 0, 1); gripScores(s, g); s.rate('Clean hands', 1 - misses * 0.3, 1); s.wrap(1.8, 'The rig got away.'); }
+      if (t > LIMIT && !won) { won = true; wonT = t; s.hud.prompt(''); s.hud.hideBar(); s.flub('The War Rig pulled away with ' + (3 - n) + ' pod' + (n === 2 ? '' : 's') + ' left', { penalty: 0.15, advice: 'You get one chance per swing (4.4 s). Press E only while the marker is in the gold band and do not hold SPACE when nothing is called — braced, you cannot snatch.' });
+        s.rate('Pods taken (' + n + ' / 3)', n / 3, 2.5); s.rate('Snatch timing', n ? 0.45 + 0.55 * sumAcc / n : 0, 1); gripScores(s, g); s.rate('Clean hands', 1 - misses * 0.3, 1); finale('The rig got away.'); }
+    });
+    // --- the finale: the war car on the far flank rams the rig, goes under its front wheels, flips and goes up beside you
+    // the war car becomes a free world-space wreck at the hit (a twin model swapped in, so the replay never blends convoy and world coordinates);
+    // fs is the replay subject: it rides with the war car, then the wreck
+    const wr = grp(s.scene), fs = grp(s.scene); s.put('charger_dom', { parent: wr }).position.y = -0.7; wr.visible = false;
+    const wv = V3(), ww = V3(), wp = V3(); let fT = 1e9, hitT = 0, boomed = false, landed = false, restZ = 0, note;
+    const finale = (nt) => {
+      s.ffin = true; note = nt; fT = s.t; s.objective('Hold on — he is going for the rig!');
+      for (const e of g.events) if (!e.fired) { e.fired = true; e.done = true; } // no more calls: the next one is the big one
+      g.gust(2.6, { label: 'HOLD ON!', power: 0.4, sfx: 'crash', shake: 1.6, on: ram, failLabel: 'NEARLY SHAKEN OFF!', kick: [-0.25, 0.15, 0], advice: 'When HOLD ON! is called after the last pod, hold SPACE until the war car has gone up.' });
+    };
+    const ram = () => {
+      hitT = s.t; cv.updateMatrixWorld(true); const c = esc.getWorldPosition(V3()); esc.getWorldQuaternion(wr.quaternion); wr.position.copy(c).y += 0.7; wr.visible = true; esc.visible = false; // pivot about its middle
+      wv.set(7, 8, -v * 0.72); ww.set(1.2, 0.6, -6.5); shoveV = 8;
+      s.fx.sparks(P.set(c.x - 1.2, 1.1, c.z), 70, { speed: 12 }); s.fx.debris(P, 12, { color: 0x3a3430, speed: 9, size: 0.3, floor: 0.05 }); s.fx.dust(P.setY(0.3), 12, { color: [0.85, 0.58, 0.32], size: 3, a: 0.45, up: 3, spread: 2 });
+      s.audio.metal(1); s.msg('HE HIT THE RIG!', 'big');
+      s.moment('The war car', { t0: s.t - 1.8, dur: 5, w: 11, subject: fs, shots: [
+        { type: 'low', pos: [c.x + 9, 0.9, c.z - 52], fov: 36, lookUp: 0, a: 0.15, b: 0.75, speed: 0.45 }, // from the sand ahead: the war car cartwheeling off the War Rig's flank into its own fireball
+        { type: 'front', pos: [c.x + 13, 2.4, c.z - 46], fov: 30, lookUp: 0.3, a: 0.15, b: 0.7, speed: 0.5 }, // long lens ahead of the convoy as he swerves in and hits
+        { type: 'wide', pos: [c.x - 27, 9, c.z + 15], fov: 42, lookUp: 0, a: 0.3, b: 0.95, speed: 0.55 }] }); // high across the convoy past the polecat pole
+    };
+    s.onUpdate(dt => {
+      const f = s.t - fT; if (f < 0) return;
+      if (!hitT) { const k = smooth(0.4, 2.6, f); esc.position.x = lerp(9.5 + Math.sin(fT * 0.7) * 1.2, 5.7, k * k); esc.position.z = lerp(6 + Math.sin(fT * 0.4) * 5, -6.2, k); esc.rotation.y = 0.18 * Math.sin(k * Math.PI); cv.updateMatrixWorld(true); esc.getWorldPosition(fs.position).y += 0.7; return; } // he floors it up the flank and turns in
+      const u = s.t - hitT; wp.copy(wr.position); fs.position.copy(wp);
+      if (!landed) { wv.y -= 9.8 * dt; wv.multiplyScalar(Math.exp(-0.25 * dt)); wr.position.addScaledVector(wv, dt); wr.rotation.x += ww.x * dt; wr.rotation.y += ww.y * dt; wr.rotation.z += ww.z * dt;
+        if (!boomed && u > 0.42) { boomed = true; s.fx.explosion(wp, 1.5); s.after(0.18, () => s.fx.explosion(wr.getWorldPosition(V3()).add(V3(1, 0.5, 0)), 1.1)); s.fx.debris(wp, 16, { color: 0x4a3a30, speed: 12, size: 0.4, floor: 0.05 }); s.fx.debris(wp, 8, { color: 0xff8030, speed: 10, size: 0.2, floor: 0.05 }); s.audio.explosion(1); s.after(0.25, () => s.audio.explosion(0.7)); s.engine.addShake(1.3); s.slowmo(0.4, 1.4); s.msg('WHAT A LOVELY DAY!', 'huge good'); }
+        if (u > 0.3 && wr.position.y < 1.0 && wv.y < 0) { landed = true; wr.position.y = 0.9; restZ = Math.round(wr.rotation.z / Math.PI) * Math.PI; wv.set(wv.x * 0.3, 0, wv.z * 0.35); s.fx.explosion(wp.setY(0.8), 1.0); s.fx.dust(wp.setY(0.3), 16, { color: [0.85, 0.58, 0.32], size: 4, a: 0.5, up: 3, spread: 3 }); s.audio.explosion(0.6); } }
+      else { wv.multiplyScalar(Math.exp(-2.2 * dt)); wr.position.addScaledVector(wv, dt); const q = 1 - Math.exp(-5 * dt); wr.rotation.z += (restZ + 0.12 - wr.rotation.z) * q; wr.rotation.x += (0.06 - wr.rotation.x) * q; wr.position.y += (0.75 - wr.position.y) * q; } // skids to rest on its roof or wheels
+      if (boomed) { for (let i = 0; i < 2; i++) s.fx.flame(V3(wp.x + rnd(-1.2, 1.2), Math.max(0.3, wp.y - 0.3), wp.z + rnd(-1.5, 1.5)), rnd(1.4, 2.4)); if (Math.random() < dt * 8) s.fx.smokePuff(wp, 1, { color: [0.09, 0.08, 0.08], size: 3, a: 0.5, up: 5, life: 3.5 }); }
+      if (!s.ended && hitT && u > 2.8) { const e = g.events.find(e => e.on === ram); s.rate('Held on through the crash', e?.ok ? 1 : 0.35, 1); g.done = true; s.wrap(2.2, note); }
     });
     let misses = 0; s.dbg = () => ({ t: +t.toFixed(1), n, grip: +g.grip.toFixed(2), stam: +g.stam.toFixed(2), armed }); s.armed = () => armed;
   },
@@ -597,8 +628,8 @@ const EXTRA = {
     shot: ['Lie on the bonnet for about 38 s. The bar under you is your position: tap A/D against each swerve to stay in the middle', 'Hold SPACE when RAM! is called (9 rams), then let go — braced you cannot shuffle', 'Stay off the edges: every second on an edge costs a third of your grip'],
     cut: [GRIP_CUT + ' off the bonnet'], stars: ['Bracing the rams', 'Middle of the bonnet', 'Staying off the edges', 'Grip left'] } },
   fury_road: { cine: [{ type: 'track', fov: 38 }, 'low', 'wide'], goals: {
-    shot: ['The pole swings by itself (one swing every 4.4 s): press E as the marker crosses the gold band — the bottom of the swing, over a fuel pod', 'Take 3 pods within 50 s; after each one the pole car lines up on the next pod (about 6 s)', 'Hold SPACE when EXPLOSION! or COLLISION! is called — braced you cannot snatch'],
-    cut: [GRIP_CUT + ' under the wheels', 'At 50 s the War Rig pulls away (you keep the pods you took)'], stars: ['Pods taken', 'Snatch timing', 'Bracing', 'Clean hands (no grabs at air)'] } },
+    shot: ['The pole swings by itself (one swing every 4.4 s): press E as the marker crosses the gold band — the bottom of the swing, over a fuel pod', 'Take 3 pods within 50 s; after each one the pole car lines up on the next pod (about 6 s)', 'Hold SPACE when EXPLOSION! or COLLISION! is called — braced you cannot snatch', 'Then the war car rams the rig and goes up beside you: hold SPACE on HOLD ON! until the blast has passed'],
+    cut: [GRIP_CUT + ' under the wheels', 'At 50 s the War Rig pulls away (you keep the pods you took)'], stars: ['Pods taken', 'Snatch timing', 'Bracing', 'Clean hands (no grabs at air)', 'Holding on through the crash'] } },
   police_story: { cine: ['wide', { type: 'track', fov: 58, heading: Math.PI / 2 }, { type: 'low', at: 0.55 }], goals: {
     shot: ['For 7.5 s keep your balance on the railing: tap A/D against the lean to keep the marker in the green', 'Hold SPACE to wind up the leap and release on the gold band (about two thirds)', 'On the pole hold SPACE to brake, but let go at each of the 4 blue junction boxes', 'Reach the kiosk roof slowly — about 8 mph is perfect, over 17 mph is the hospital'],
     cut: ['You wobble off the railing twice, release the leap under a third, burn your hands twice, or hit the kiosk over 17 mph'], stars: ['Balance', 'Leap', 'Landing speed', 'Hands (heat)', 'Pace (about 9 s on the pole)', 'Junction boxes avoided'] } },
