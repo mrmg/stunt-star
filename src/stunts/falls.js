@@ -5,6 +5,7 @@ import { clamp, near, smooth, V3, rnd, sr, srand, lerp, damp } from '../world/st
 import { POSES } from '../world/character.js';
 import { K, CTL, botDrive, sign } from './common.js';
 import { model } from '../core/assets.js';
+import * as dress from '../world/dress.js';
 
 const ftOf = m => Math.round(m * 3.281);
 const G = 9.81;
@@ -17,9 +18,13 @@ function rope(s, color = 0x1a1a1a, r = 0.035) {
 function disc(s, x, y, z, r, color, op = 0.6) { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); s.scene.add(m); return m; }
 // bot: steer a Fall (yaw 0) toward a world x/z, compensating for wind
 function botSteer(f, inp, tx, tz, g = 0.6) { const st = f.o.steer * (f.chute ? 0.55 : 1) || 1; inp.x = clamp((tx - f.pos.x - f.carry.x * 0.6) * g - (f.windX || 0) / st, -1, 1); inp.y = clamp((f.pos.z + f.carry.z * 0.6 - tz) * g + (f.windZ || 0) / st, -1, 1); }
+// instanced trees / rocks at explicit heights (on top of set boxes that are not course pieces): pts = [[x, z, y], ...]
+const treesAt = (s, kind, pts, o) => pts.length && s.trees(kind, pts.length, (_, i) => pts[i], o);
+const rocksAt = (s, pts, o) => pts.length && s.forest('rock_grey', pts.length, (_, i) => pts[i], o);
 const PENCIL = { ...POSES.stand, hd: [0.25, 0, 0], aR: [0.08, -1, 0.12, -0.3, -0.2, 0.5], aL: [0.08, -1, 0.12, -0.3, -0.2, 0.5], lR: [0.03, -1, 0, 0.02, -1, 0], lL: [0.03, -1, 0, 0.02, -1, 0] };
 
 // ---------------------------------------------------------------------------------------------
+const SIG_BUTCH = [-26, 139.5, -77.3]; // across the gorge, right on the far lip so the whole fall stays in view
 const butch = {
   id: 'butch_cliff', title: 'Canyon Leap', film: 'Butch Cassidy and the Sundance Kid', year: 1969, tier: 1, pay: 2000, mode: 'fall', art: 'bd_river_gorge', music: 'western',
   role: 'Doubling the outlaw — boots, hat and a very long way down',
@@ -28,7 +33,8 @@ const butch = {
   controls: `${K('W')} sprint &nbsp; ${K('SPACE')} jump &nbsp; in the air: ${K('W')}${K('A')}${K('S')}${K('D')} steer &nbsp; hold ${K('SPACE')} straighten up`, intro: { r: 9, h: 3 },
   assets: { models: ['ch_adventurer', 'rock_grey', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt'], tex: ['bd_river_gorge', 'tx_rock', 'tx_dirt', 'tx_redrock'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_river_gorge', look: 'warm60s', fog: 0.0011, hz: 0.5 });
+    // Animas gorge, Colorado, summer afternoon: sun high over the far rim lights the face you fall down, the river runs in the canyon's shade
+    s.env('day', { backdrop: 'bd_river_gorge', look: 'warm60s', fog: 0.0019, hz: 0.5, sun: [58, 200], sunI: 3.6, amb: 1.25, lookOver: { contrast: 1.1, sat: 1.02, vignette: 0.42 } });
     const H = 130, CX = 9, CZ = -30, R = 7.5, inp = s.input;
     s.ground({ tex: 'tx_rock', tile: 16, y: -3, color: 0x7d7262 }); s.water({ y: 0, color: 0x2c6e62, w: 1400, d: 80, z: -38, opacity: 0.88 }); s.course.addPiece({ x0: -700, x1: 700, z0: -78, z1: -1.2, fn: () => 0, step: 1e9 }); // river surface (keeps replay cameras above the water)
     const rock = s.mat({ tex: 'tx_rock', color: 0xc2a27e }), dirt = s.mat({ tex: 'tx_dirt', color: 0xc9a77c }), mats = [rock, rock, dirt, dirt, rock, rock];
@@ -37,6 +43,27 @@ const butch = {
     srand(7); for (let i = 0; i < 16; i++) { const sd = i % 2 ? -1 : 1, x = sd * (34 + Math.floor(i / 2) * 46 + sr(20)), far = i % 4 > 1; const d = sr(8, 20), h = H * sr(0.3, 0.95) + (far ? 20 : 0); s.box({ x: far ? x * 0.7 : x, y: -3, z: far ? -78 + d / 2 - 1 : -d / 2 + 1, w: sr(18, 40), h, d, mats, tile: 26, tileTop: 9, top: true }); }
     const rocks = []; srand(3); for (let i = 0; i < 26; i++) { const x = sr(-70, 80), z = sr(-72, -5); if (Math.hypot(x - CX, z - CZ) < R + 4) continue; const h = sr(2, 5.5); s.put('rock_grey', { x, y: -1.2, z, height: h, ry: sr(6) }); rocks.push([x, z, h * 0.5]); }
     disc(s, CX, 0.04, CZ, R, 0x0b2f3a, 0.75); s.mark({ x: CX, z: CZ, y: 0.02, r: R, color: 0xffe14a }); for (let a = 0; a < 6.2; a += 0.785) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), s.mat({ color: 0xff5a10, rough: 0.5 })); b.position.set(CX + Math.cos(a) * R, 0.1, CZ + Math.sin(a) * R); s.scene.add(b); }
+    // rock variety: granite slabs and buttresses standing proud of both faces, darker strata ledges with scrub, talus at the foot
+    const gran = s.mat({ tex: 'tx_rock', color: 0xa89884 }), red = s.mat({ tex: 'tx_redrock', color: 0xc8a890 }), strat = s.mat({ tex: 'tx_rock', color: 0x7c705f }), slabM = [rock, gran, red, gran];
+    const clearN = (x, pad = 0) => x > -18 - pad && x < 28 + pad, clearF = (x, pad = 0) => x > -45 - pad && x < 15 + pad; // the fall line on the near face and the signature camera's patch of the far lip stay bare
+    srand(21); for (let i = 0; i < 46; i++) { const near = i % 2 === 0, x = sr(-420, 420), w = sr(12, 40); if (near ? clearN(x, w / 2 + 2) : clearF(x, w / 2)) continue; const h = sr(20, 75), d = sr(2.5, 7), y = sr(-3, H - h - 6); s.box({ x, y, z: near ? -d / 2 + 0.6 : -78 + d / 2 - 0.6, w, h, d, mat: slabM[i % 4], tile: 26 }); }
+    s.box({ x: -45, y: -3, z: -14, w: 14, h: 90, d: 28, mats: [gran, gran, rock, rock, gran, gran], tile: 26, tileTop: 9 }); treesAt(s, 'pine', [[-48, -4, 87], [-41, -8, 87], [-50, -12, 87]], { h: [5, 9], seedv: 36 }); // granite spur down-canyon: the profile camera stands on it
+    const scrub = [], ledgeRocks = [];
+    for (const [near, ys] of [[true, [34, 66, 98]], [false, [28, 61, 92, 118]]]) for (const yb of ys) { srand(yb * 3 + (near ? 1 : 2)); for (let x = -460; x < 460;) { const L = sr(16, 60), d = sr(1.4, 3), y = yb + sr(-5, 5), cx = x + L / 2; x += L + sr(6, 40); if (near ? clearN(cx, L / 2) : clearF(cx, L / 2)) continue; s.box({ x: cx, y, z: near ? -d / 2 : -78 + d / 2, w: L, h: sr(1.2, 2.6), d, mat: strat, tile: 14, cast: true }); for (let k = 0; k < L / 9; k++) if (sr() < 0.7) scrub.push([cx + sr(-L / 2, L / 2), near ? -d * 0.6 : -78 + d * 0.6, y + 2.2]); } }
+    treesAt(s, 'bush', scrub, { h: [1.4, 3.2], seedv: 23, wide: 1.3 }); treesAt(s, 'pine', scrub.filter((_, i) => i % 3 === 0).map(([x, z, y]) => [x + 1, z, y]), { h: [3.5, 7], seedv: 24 });
+    srand(25); for (let i = 0; i < 110; i++) { const near = i % 2 === 0, x = sr(-360, 360); if (near && clearN(x, -4)) continue; ledgeRocks.push([x, near ? sr(-9, -1.5) : sr(-76.5, -69), sr(-2.2, -1)]); }
+    rocksAt(s, ledgeRocks, { h: [3, 9], seedv: 26 });
+    // the river: gravel bars along both feet, white water streaming off the boulders, darker eddies
+    const grav = s.mat({ tex: 'tx_dirt', color: 0xb8ab94 }); srand(27); for (let x = -500; x < 500;) { const L = sr(20, 70), cx = x + L / 2; x += L + sr(10, 50); for (const near of [true, false]) { if (near && cx > -6 - L / 2 && cx < 22 + L / 2) continue; const d = sr(3, 7); s.box({ x: cx, y: -0.9, z: near ? -d / 2 : -78 + d / 2, w: L, h: 1.15, d, mat: grav, tile: 8, cast: false }); } }
+    const foamG = new THREE.CircleGeometry(1, 20), foamM = new THREE.MeshBasicMaterial({ color: 0xe8f0ec, transparent: true, opacity: 0.3, depthWrite: false }), eddyM = new THREE.MeshBasicMaterial({ color: 0x0c3a36, transparent: true, opacity: 0.35, depthWrite: false });
+    const sheet = (x, z, sx, sz, m, y = 0.05, ry = 0) => { const q = new THREE.Mesh(foamG, m); q.rotation.set(-Math.PI / 2, 0, ry); q.position.set(x, y, z); q.scale.set(sx, sz, 1); s.scene.add(q); };
+    srand(29); for (const [x, z, r] of rocks) { if (Math.hypot(x - CX, z - CZ) < R + 3) continue; sheet(x + r * 2.4, z, r * 3, r * 0.7, foamM); sheet(x + r * 6, z + sr(-1, 1), r * 2.4, r * 0.32, foamM, 0.06); sheet(x + r * 9, z + sr(-1.5, 1.5), r * 2, r * 0.22, foamM, 0.065); }
+    for (let i = 0; i < 40; i++) { const x = sr(-400, 400), z = sr(-74, -4); if (Math.hypot(x - CX, z - CZ) < R + 6) continue; sheet(x, z, sr(5, 16), sr(0.25, 0.8), i % 3 ? foamM : eddyM, 0.04 + i * 0.0004, sr(-0.15, 0.15)); }
+    // pines along both rims (the far rim is not a course piece, so heights are explicit) and on the near rim either side of the run-up
+    srand(31); const farP = [], nearP = []; for (let i = 0; i < 420; i++) { const x = sr(-520, 520), z = -80 - Math.pow(sr(), 1.6) * 260; if (x > -40 && x < -12 && z > -100) continue; farP.push([x, z, H + 6]); }
+    for (let i = 0; i < 260; i++) { const x = sr(-480, 480), z = 4 + Math.pow(sr(), 1.3) * 240; if (x > -14 && x < 16 && z < 120) continue; nearP.push([x, z]); }
+    treesAt(s, 'pine', farP, { h: [9, 19], seedv: 32 }); treesAt(s, 'bush', farP.filter((_, i) => i % 3 === 0).map(([x, z, y]) => [x + 2, z + 1, y]), { h: [1.2, 2.5], seedv: 33 }); s.trees('pine', nearP.length, (_, i) => nearP[i], { h: [8, 17], seedv: 34 });
+    s.trees('bush', 80, r => { const x = sr(-120, 120); return Math.abs(x) < 12 ? null : [x, sr(3, 90)]; }, { h: [0.8, 2], seedv: 35, wide: 1.4 });
     s.crew({ x: 7.5, y: H, z: 26, ry: 0.9 }); s.crew({ x: -40, y: -1.4, z: -62, ry: 2.4, people: false }); s.forest('tree:dead', 14, r => [r() * 160 - 80, 12 + r() * 90], { h: [3, 6], seedv: 5 }); s.forest('rock_grey', 18, r => [r() * 200 - 100, 8 + r() * 120], { h: [0.5, 1.6], seedv: 8 });
     const f = s.fall = new Fall(s, { char: 'ch_adventurer', x: 0, y: H, z: 40, frozen: true, pose: 'ready', spread: 52, steer: 7.5, canTuck: false, waterY: 0, aim: { r: 1.3 }, cam: { dist: 6, height: 3, up: 1.1, ahead: 3, fov: 60 }, bounds: p => { if (p.y < H - 0.3 && p.z > -1.2) p.z = -1.2; } });
     const pal = f.addBody('ch_adventurer', { x: 1.9, y: H, z: 41.2, pose: 'ready', frozen: true, vy: 0 });
@@ -49,7 +76,7 @@ const butch = {
       if (!clean) s.flub('Stumbled off the edge', { penalty: 0.15, advice: 'Press SPACE when the EDGE readout turns green (under 10 ft) — run off the rim without jumping and you tumble.' });
       f.launch(0, clean ? 4.2 : 0, -(v + (clean ? 2 : -3))); f.poseLock = true; f.c.setCycle('flail', 0.75); f.view('top', { dist: 5, height: 10.5, ahead: 4, up: -6, fov: 66 });
       pal.frozen = false; pal.vy = 3.6; pal.vz = -(v + 1); pal.c.setCycle('flail', 0.8); s.objective('Hit the deep channel — hold SPACE to go in feet first');
-      leapM = s.moment('the leap', { t0: s.t - 1.6, dur: 8, w: 3 }); f.cine('front', 1.1, { pos: [-26, 139.5, -84], fov: 16 }); // a beat from across the canyon, then back to you
+      leapM = s.moment('the leap', { t0: s.t - 1.6, dur: 8, w: 3 }); f.cine('front', 1.1, { pos: SIG_BUTCH, fov: 16 }); // a beat from across the canyon, then back to you
     };
     s.onUpdate((dt, t) => {
       if (!s.started || s.ended) return;
@@ -90,7 +117,8 @@ const lethal = {
   controls: `${K('A')}${K('D')} line up &nbsp; ${K('SPACE')} jump &nbsp; ${K('W')}${K('A')}${K('S')}${K('D')} steer &nbsp; ${K('E')} roll onto your back`, intro: { r: 9, h: 2.5, a0: 2.6 },
   assets: { models: ['ch_cop', 'airbag', 'police_car', 'sedan_grey', 'taxi', 'van_white', 'street_lamp', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt', 'ch_goon'], tex: ['bd_la', 'tx_asphalt', 'tx_fac_office', 'tx_concrete', 'tx_roof', 'tx_fac_mall'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_la', look: 'teal_orange', fog: 0.001, hz: 0.5 });
+    // downtown LA, 1987: hazy smog-white afternoon sun raking down the boulevard, warm grade
+    s.env('day', { backdrop: 'bd_la', look: 'teal_orange', fog: 0.0021, fogMix: 0.6, hz: 0.5, sun: [46, 118], sunCol: 0xffe2b8, sunI: 3.5, amb: 0.95, lookOver: { sat: 1.05, contrast: 1.1, tint: [1.08, 1.0, 0.9] } });
     const H = 84, BX = 4, BZ = -15, inp = s.input; s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x8a8a8a });
     s.building({ x: 0, z: 23, w: 48, d: 44, h: H, fac: 'tx_fac_office', top: true, facTile: 14, sol: { msg: 'Drifted back into the building' } });
     s.box({ x: 0, y: H, z: 1.5, w: 48, h: 0.9, d: 1, mat: { tex: 'tx_concrete', color: 0xb8b2a6 }, top: true, step: 2 });
@@ -103,6 +131,17 @@ const lethal = {
     const red = s.mat({ color: 0xd01818, rough: 0.6 }); for (const ry of [0.785, -0.785]) s.box({ parent: bag, x: 0, y: top + 0.01, z: 0, w: 0.5, h: 0.05, d: Math.min(bs.x, bs.z) * 0.8, ry, mat: red, cast: false });
     s.put('police_car', { x: -12, z: -9, ry: 0.5 }); s.put('police_car', { x: 19, z: -21, ry: -2.2 }); s.put('taxi', { x: 34, z: -8, ry: Math.PI / 2 }); s.put('sedan_grey', { x: -30, z: -24, ry: -Math.PI / 2 }); s.put('van_white', { x: -24, z: -7, ry: Math.PI / 2 + 0.1 });
     s.crew({ x: BX + 12, z: BZ - 6, ry: 0.9 }); s.crew({ x: -5, z: -24, ry: 3.4, people: false }); s.crew({ x: 9, y: H, z: 9, ry: 0.5 });
+    // the circus round the bag: LAFD engines either side, the street taped off, crowds pressed against the barriers on both sidewalks
+    const redP = s.mat({ color: 0xb01212, rough: 0.45, metal: 0.3 }), chrome = s.mat({ color: 0xc8c8c8, metal: 0.8, rough: 0.3 }), tyre = s.mat({ color: 0x1a1a1a, rough: 0.9 }), glassD = s.mat({ color: 0x223040, rough: 0.2, metal: 0.5 }), lite = s.mat({ color: 0xff2020, emissive: 0xff2020, emI: 2 });
+    const engine = (x, z, ry) => { const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; s.scene.add(g); s.box({ parent: g, x: 0, y: 0.55, z: -1, w: 2.5, h: 2.2, d: 7, mat: redP }); s.box({ parent: g, x: 0, y: 0.55, z: 3.6, w: 2.5, h: 2.5, d: 2.4, mat: redP }); s.box({ parent: g, x: 0, y: 1.9, z: 4.85, w: 2.3, h: 0.9, d: 0.06, mat: glassD });
+      s.box({ parent: g, x: 0, y: 2.8, z: -1.2, w: 1.1, h: 0.35, d: 7.6, mat: chrome }); s.box({ parent: g, x: 0, y: 3.05, z: 3.6, w: 1.8, h: 0.18, d: 0.4, mat: lite }); for (const [wx, wz] of [[-1.2, 3.4], [1.2, 3.4], [-1.2, -2.6], [1.2, -2.6], [-1.2, -3.9], [1.2, -3.9]]) s.cyl({ parent: g, x: wx, y: 0.5, z: wz, r: 0.5, h: 0.4, rz: Math.PI / 2, mat: tyre }); };
+    engine(-20, -17.5, Math.PI / 2 + 0.12); engine(31, -19, -Math.PI / 2 - 0.08);
+    dress.fence(s, { path: [[-48, -27.6], [58, -27.6]], kind: 'barrier' }); dress.crowd(s, { path: [[-46, -28.4], [56, -28.4]], side: 1, rows: 3, step: 0.85, face: Math.PI, seed: 3 });
+    for (const [a, b] of [[-52, -12], [20, 60]]) { dress.fence(s, { path: [[a, -4.4], [b, -4.4]], kind: 'barrier' }); dress.crowd(s, { path: [[a, -3.6], [b, -3.6]], side: -1, rows: 2, step: 0.9, face: 0, seed: 4 + a }); }
+    const tape = s.mat({ color: 0xffd400, rough: 0.6 }); for (const [x0, z0, x1, z1] of [[-12, -6, -12, -26], [21, -6, 21, -26]]) s.box({ x: (x0 + x1) / 2, y: 0.95, z: (z0 + z1) / 2, w: 0.04, h: 0.08, d: Math.abs(z1 - z0), mat: tape, cast: false });
+    // rooftop clutter behind the ledge: AC units, a water tank, a stair housing
+    const roofM = s.mat({ tex: 'tx_concrete', color: 0x9a968e }), acM = s.mat({ color: 0x8a8c8e, metal: 0.4, rough: 0.5 });
+    for (const [x, z, w, d, h] of [[-16, 14, 4, 3, 1.8], [-10, 30, 3, 3, 1.6], [17, 24, 5, 3, 2], [20, 36, 3, 2.5, 1.5]]) s.box({ x, y: H, z, w, h, d, mat: acM }); s.box({ x: -4, y: H, z: 34, w: 6, h: 4.2, d: 5, mat: roofM }); s.box({ x: 6, y: H + 3.5, z: 30, w: 4, h: 4, d: 4, mat: s.mat({ tex: 'tx_roof', color: 0x6a5a4a }) }); for (const [dx, dz] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) s.box({ x: 6 + dx, y: H, z: 30 + dz, w: 0.2, h: 3.5, d: 0.2, mat: acM });
     srand(5); for (let i = 0; i < 7; i++) s.char(i % 2 ? 'ch_goon' : 'ch_stunt', { x: -9 + sr(-3, 3) + (i > 3 ? 26 : 0), z: -26 + sr(-2, 1.5), heading: Math.PI + sr(-0.5, 0.5) }).setCycle(i % 3 ? 'idle' : 'cheer', 1);
     const f = s.fall = new Fall(s, { char: 'ch_cop', x: -5, y: H + 0.9, z: 1.3, frozen: true, pose: 'ready', spread: 40, steer: 9, canTuck: false, aim: { r: 0.9, ref: 30, max: 3 }, cam: { dist: 5.5, height: 3.4, up: -1.6, ahead: 5, fov: 64 } });
     const wind = t => 4.2 * Math.sin(t * 0.8 + 1) + 2.8 * Math.sin(t * 2.1);
@@ -153,18 +192,31 @@ const dam = {
   controls: `${K('SPACE')} dive &nbsp; ${K('A')} away from the wall &nbsp; ${K('D')} toward the wall &nbsp; ${K('E')} fire piton gun`, intro: { r: 12, h: 4, a0: 3.9 },
   assets: { models: ['ch_agent', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt', 'ww2_truck', 'rock_grey'], tex: ['bd_dam', 'tx_concrete', 'tx_rock', 'tx_roof', 'tx_metal'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_dam', look: 'cold', fog: 0.0008, hz: 0.5, sun: [48, 205], amb: 1.15 });
+    // Verzasca, high summer: sun low across the valley so it rakes the concrete and picks out every seam, cool Alpine haze down the gorge
+    s.env('day', { backdrop: 'bd_dam', look: 'cold', fog: 0.0015, hz: 0.5, sun: [36, 115], sunI: 3.3, amb: 0.95, lookOver: { contrast: 1.12, sat: 0.95 } });
     const H = 220, SL = 0.07, A = 24, inp = s.input, zf = y => -(H - clamp(y, 0, H)) * SL, X0 = -170, X1 = 440, XC = (X0 + X1) / 2, W = X1 - X0;
     s.ground({ tex: 'tx_rock', tile: 30, color: 0x7f8580 });
-    const conc = s.mat({ tex: 'tx_concrete', color: 0xd2ccbe }), dark = s.mat({ color: 0x6e6a62, rough: 1 }), rock = s.mat({ tex: 'tx_rock', color: 0x8d8f88 });
+    const conc = s.mat({ tex: 'tx_concrete', color: 0xc6c0b4 }), dark = s.mat({ color: 0x6e6a62, rough: 1 }), rock = s.mat({ tex: 'tx_rock', color: 0x8d8f88 });
     s.box({ x: XC, y: 0, z: 13, w: W, h: H, d: 26, mat: conc, tile: 34, top: true });
-    s.slope({ x: XC, w: W, z0: -H * SL, z1: 0, y0: 0, y1: H, mat: { tex: 'tx_concrete', rep: 0.03, color: 0xd2ccbe } });
+    s.slope({ x: XC, w: W, z0: -H * SL, z1: 0, y0: 0, y1: H, mat: { tex: 'tx_concrete', rep: 0.03, color: 0xc6c0b4 } });
     for (let y = 20; y < H; y += 20) s.box({ x: XC, y, z: zf(y) - 0.2, w: W, h: 0.45, d: 0.6, mat: dark, cast: false }); for (let x = X0 + 30; x < X1; x += 60) s.box({ x, y: 0, z: -H * SL - 1, w: 5, h: 26, d: 6, mat: conc, tile: 20 });
     for (const sd of [-1, 1]) s.box({ x: XC, y: H, z: sd < 0 ? 0.6 : 25.4, w: W, h: 1.1, d: 0.5, mat: conc, tile: 20, top: sd < 0, step: 2 });
     s.box({ x: X0 - 200, y: 0, z: 0, w: 400, h: H + 70, d: 900, mat: rock, tile: 40 }); s.box({ x: X1 + 200, y: 0, z: 0, w: 400, h: H + 90, d: 900, mat: rock, tile: 40 }); s.box({ x: XC, y: 0, z: 26 + 200, w: W, h: H - 8, d: 400, mat: rock, tile: 40 });
     s.water({ y: H - 7, color: 0x1f5560, w: W, d: 400, z: 226, x: XC, size: 800 }); s.water({ y: 0.3, color: 0x2a5d5a, w: 34, d: 600, z: -330, x: 160, size: 600 });
     s.box({ x: XC, y: 0, z: -40, w: W, h: 0.5, d: 50, mat: conc, tile: 20, cast: false }); for (const [x, z, w, d, h] of [[60, -44, 40, 18, 9], [112, -52, 26, 30, 14], [-60, -40, 30, 16, 7], [200, -46, 60, 20, 11]]) s.building({ x, z, w, d, h, fac: 'tx_concrete', roofMat: { tex: 'tx_roof', color: 0x777777 }, solid: false, facTile: 10 });
     s.forest('tree:pine', 160, r => { const x = X0 + r() * W, z = -70 - r() * 380; return Math.abs(x - 160) < 22 ? null : [x, z]; }, { h: [8, 16], seedv: 3 });
+    // the face: pour joints and rust/water stains running down from the crest (flat on the concrete, nothing proud of it)
+    const seamM = s.mat({ color: 0x5a5852, rough: 1 }), stainM = s.mat({ color: 0x3e3a32, opacity: 0.16 }), tilt = Math.atan(SL), FL = Math.hypot(H, H * SL);
+    for (let x = X0 + 15; x < X1; x += 15) if (Math.abs(x) > 4) s.box({ x, y: H / 2 - FL / 2, z: zf(H / 2) - 0.1, w: 0.22, h: FL, d: 0.2, rx: tilt, mat: seamM, cast: false });
+    srand(41); for (let i = 0; i < 44; i++) { const x = sr(X0 + 10, X1 - 10), h = sr(25, 150), yc = H - 3 - h / 2; if (Math.abs(x) < 3) continue; s.box({ x, y: yc - h / 2, z: zf(yc) - 0.13 - i * 0.002, w: sr(2, 9), h, d: 0.04, rx: tilt, mat: stainM, cast: false }); }
+    // the gorge below: rock buttresses on both valley walls, pines on their tops and along the river, boulders in the riverbed, mountains closing the valley
+    const rock2 = s.mat({ tex: 'tx_rock', color: 0x767a72 }); srand(43);
+    for (let i = 0; i < 26; i++) { const L = i % 2 === 0, d = sr(4, 14), w = sr(25, 70), h = sr(60, 240), z = sr(-440, -30); s.box({ x: L ? X0 + d / 2 - 1 : X1 - d / 2 + 1, y: 0, z, w: d, h, d: w, mat: i % 3 ? rock : rock2, tile: 40 }); }
+    const tops = []; for (let i = 0; i < 300; i++) { const L = i % 2 === 0; tops.push([L ? X0 - sr(2, 190) : X1 + sr(2, 190), sr(-440, 300), L ? H + 70 : H + 90]); } treesAt(s, 'pine', tops, { h: [12, 22], seedv: 44 });
+    s.forest('tree:pine', 280, r => { const L = r() < 0.5, x = L ? X0 + 4 + r() * 70 : X1 - 4 - r() * 70, z = -20 - r() * 430; return [x, z]; }, { h: [10, 20], seedv: 45 });
+    s.trees('bush', 120, r => { const x = 160 + (r() < 0.5 ? -1 : 1) * (18 + r() * 12); return [x, -60 - r() * 520]; }, { h: [1.2, 3], seedv: 46, wide: 1.4 });
+    srand(47); const bould = []; for (let i = 0; i < 70; i++) bould.push([160 + sr(-20, 20), sr(-70, -620), sr(-1, 0)]); rocksAt(s, bould, { h: [1.5, 5], seedv: 48 });
+    dress.hills(s, { x: 135, z: -60, r: 820, a0: Math.PI * 0.62, a1: Math.PI * 1.38, h: 260, depth: 300, color: 0x4f5e48, trees: 'pine', nTrees: 260, seed: 5 });
     s.put('ww2_truck', { x: -14, y: H, z: 14, ry: Math.PI / 2 }); s.crew({ x: 7, y: H, z: 9, ry: 0.7 }); s.crew({ x: 14, y: 0.5, z: -30, ry: 3.3, people: false });
     const f = s.fall = new Fall(s, { char: 'ch_agent', x: 0, y: H + 1.1, z: 0.6, heading: 0, yaw: -Math.PI / 2, frozen: true, pose: 'ready', spread: 60, steer: 8, canTuck: false, cam: { dist: 11.5, height: 2.5, side: -5, up: -2.5, ahead: 0, fov: 62 } });
     f.poseLock = true; const anchor = V3(0, H + 1.1, 1.0), cord = rope(s, 0x202020, 0.045), pit = rope(s, 0xdddddd, 0.02); pit.m.visible = false; const hip = V3(), gp = V3();
@@ -230,8 +282,11 @@ const pointBreak = {
   controls: `${K('W')}${K('A')}${K('S')}${K('D')} steer &nbsp; hold ${K('SPACE')} dive &nbsp; hold ${K('E')} grab and hang on`, intro: { r: 9, h: 2.5, up: 0.5 },
   assets: { models: ['ch_skydiver', 'a400m', 'parachute'], tex: ['bd_clouds', 'tx_grass', 'tx_sand'] },
   build(s) {
-    s.env('high', { backdrop: 'bd_clouds', look: 'teal_orange', fog: 0.00015, hz: 0.5 });
-    s.ground({ tex: 'tx_grass', tile: 240, size: 14000, color: 0x9fb37c }); farmland(s, 4); s.water({ y: 0.3, color: 0x2a5f78, w: 150, d: 9000, x: -1200, size: 9000 });
+    // southern California from two miles up: late golden sun, dry patchwork fields, aerial haze that swallows the horizon
+    s.env('high', { backdrop: 'bd_clouds', look: 'teal_orange', fog: 0.00024, hz: 0.5, sun: [30, 215], sunCol: 0xffe0b0, sunI: 3.6, lookOver: { sat: 1.05, contrast: 1.08 } });
+    s.ground({ tex: 'tx_grass', tile: 240, size: 14000, color: 0xa8a070, vary: { tint: 0xb8a878 } }); farmland(s, 4, [0xa89a68, 0xc4ae7a, 0x7d8450, 0xb8a070, 0x6f7a48, 0xd0bc8a, 0x8a7a58]);
+    srand(51); for (let i = 0; i < 22; i++) s.box({ x: sr(-2600, 2600), y: -0.1, z: sr(-2600, 2600), w: sr(80, 260), d: sr(80, 260), h: 0.7, ry: 0.3, mat: s.mat({ color: 0x4a5634, rough: 1 }), cast: false }); // orchards and creek woods
+    dress.hills(s, { r: 2900, depth: 1300, h: 520, color: 0x8a7e66, tex: 'tx_sand', seed: 9 }); s.water({ y: 0.3, color: 0x2a5f78, w: 150, d: 9000, x: -1200, size: 9000 });
     const DECK = 600, T = 2.2, inp = s.input;
     const f = s.fall = new Fall(s, { char: 'ch_skydiver', x: 0, y: 2600, z: 0, vy0: 25, view: 'top', clouds: true, cloudBase: 900, spread: 52, tuck: 88, steer: 15, cam: { height: 11, dist: 4.5, up: -5, ahead: 3 } });
     const plane = s.put('a400m', { x: -9, y: 2606, z: -16 });
@@ -268,7 +323,7 @@ const pointBreak = {
         f.termK = clamp(-tg.vy / f.o.spread, 0.8, 1.3); f.pos.y = damp(f.pos.y, tg.pos.y, 5, dt); hold += dt; s.hud.meter('grip', 'GRIP', hold / T, { color: '#4f8' }); s.hud.prompt(`Hold ${K('E')}`); s.engine.addShake(0.03);
         if (!inp.xk || dh > 2.3) { phase = 'chase'; slips++; cd = 0.5; f.termK = 1; f.o.canTuck = true; s.msg(inp.xk ? 'SHAKEN OFF!' : 'LET GO!', 'bad'); s.audio.whoosh(); s.objective('Get back on him — hold E'); }
         else if (hold >= T) {
-          phase = 'open'; lockAlt = alt; f.frozen = true; s.moment('one canopy, two passengers', { t0: Math.max(tGrip, t - 3) - 0.8, dur: 6.5, w: 3 }); s.slowmo(0.45, 1.3);
+          phase = 'open'; lockAlt = alt; f.frozen = true; const P = tg.pos; s.moment('one canopy, two passengers', { t0: Math.max(tGrip, t - 3) - 0.8, dur: 6.5, w: 3, shots: [{ type: 'orbit', a: -0.05, b: 0.52, speed: 0.75 }, { type: 'top', pos: [P.x + 8, P.y + 9, P.z + 12], fov: 34, lookUp: 0.4, a: 0.5, b: 1.0, speed: 0.6 }, { type: 'wide', dist: 1.2, a: 0.62, b: 1.05, speed: 0.8 }] }); /* signature: from the camera flyer above, the canopy blooms over the fields */ s.slowmo(0.45, 1.3);
           { const pts = []; let y = tg.pos.y, v = -tg.vy; for (let k = 0; k <= 40; k++) { pts.push({ t: t + k * 0.1, p: V3(tg.pos.x + 0.42, y - 0.75, tg.pos.z - 0.28) }); v = 7 + (v - 7) * Math.exp(-1.7 * 0.1); y -= v * 0.1; } s.cut(pts, 'orbit', { fov: 46 }); } f.poseLock = true; f.c.setPose('cling', 0.3); f.c.heading = 0; tg.c.setPose('hang', 0.3); tg.c.cur.body[1] = 0; tg.c.heading = 0; s.hud.prompt(''); f.view('chase', { dist: 9, height: 2, up: 3, fov: 60 });
           can = model('parachute', { height: 7 }); can.position.y = 1.5; can.scale.setScalar(0.05); tg.c.root.add(can); s.audio.whoosh(1.4); s.audio.thud(); s.engine.addShake(0.8); s.audio.set('wind', 'wind', 0.3, 0.1); s.engine.fx.uBlur.value = 0; s.cam.fovKick = 0;
           s.rate('Hook-up height (' + Math.round(alt) + ' m)', near(alt, 2600, 1100, 2000), 1.4); s.rate('Docking speed', near(grabRv, 0, 5.5, 9.5), 1); s.rate('Clean catch', 1 - bounces * 0.3 - slips * 0.22, 1.2); s.bonus('Seconds without a parachute', Math.round((t - s.t0) * 60)); s.msg('CANOPY!', 'huge good'); s.wrap(2.8, 'Vaya con Dios.');
@@ -293,14 +348,19 @@ const halo = {
   controls: `${K('W')}${K('A')}${K('S')}${K('D')} steer &nbsp; hold ${K('SPACE')} dive &nbsp; hold ${K('E')} clip on &nbsp; ${K('E')} pull`, intro: { r: 9, h: 2.5, up: 0.5 },
   assets: { models: ['ch_agent', 'ch_skydiver', 'a400m', 'parachute'], tex: ['bd_storm', 'tx_asphalt', 'tx_fac_paris', 'tx_roof', 'tx_concrete', 'tx_cobble'] },
   build(s) {
-    s.env('storm', { backdrop: 'bd_storm', look: 'cold', fog: 0.00045, amb: 1.6, sunI: 3.2, hz: 0.5, shadows: false, lookOver: { bloom: 0.8, lift: [0.02, 0.035, 0.07], vignette: 0.3 } });
+    // dusk over Paris: the last orange light on the horizon behind the storm, blue-black cloud above, the city lit up below
+    s.env('storm', { backdrop: 'bd_storm', look: 'cold', fog: 0.00045, amb: 1.6, sunI: 3.2, hz: 0.5, sun: [7, 250], sunCol: 0xffa060, shadows: false, lookOver: { bloom: 0.65, lift: [0.02, 0.035, 0.07], vignette: 0.38, contrast: 1.12 } });
     const M = 3.281, LX = 130, LZ = -240, RY = 34, HARD = 305, FATAL = 122, MISS = 560, inp = s.input;
     s.ground({ tex: 'tx_asphalt', tile: 60, size: 9000, color: 0x5d6878 }); s.water({ y: 0.4, color: 0x18303c, w: 9000, d: 110, z: LZ + 190, size: 9000 });
     // Paris: lit blocks around a big glass-roofed hall
     const glass = s.mat({ color: 0x9fd8d0, emissive: 0x4fa89a, emI: 0.9, rough: 0.3, metal: 0.4 });
     s.building({ x: LX, z: LZ, w: 96, d: 56, h: RY - 4, fac: 'tx_fac_paris', lit: 0.8, facTile: 16 }); s.box({ x: LX, y: RY - 4, z: LZ, w: 84, h: 4, d: 46, mat: glass, top: true, step: 1e9 }); s.mark({ x: LX, z: LZ, y: RY, r: 13, color: 0x60ffb0 }); s.mark({ x: LX, z: LZ, y: RY, r: 4, color: 0xffffff });
     for (const [dx, dz] of [[-38, -20], [38, -20], [-38, 20], [38, 20]]) s.light({ x: LX + dx, y: RY + 2.5, z: LZ + dz, color: 0x9fffe0, i: 500, dist: 80, r: 0.6 });
-    srand(9); for (let gx = -4; gx <= 4; gx++) for (let gz = -4; gz <= 3; gz++) { const x = LX + gx * 150, z = LZ - 60 + gz * 130; if ((gx === 0 && (gz === 0 || gz === 1)) || Math.abs(z - (LZ + 190)) < 90) continue; const w = sr(70, 120), d = sr(60, 100); s.building({ x: x + sr(-10, 10), z: z + sr(-10, 10), w, d, h: sr(18, 30), fac: 'tx_fac_paris', lit: sr(0.5, 1.1), solid: false, facTile: 16, top: true }); }
+    srand(9); for (let gx = -4; gx <= 4; gx++) for (let gz = -4; gz <= 3; gz++) { const x = LX + gx * 150, z = LZ - 60 + gz * 130; if ((gx === 0 && (gz === 0 || gz === 1)) || Math.abs(z - (LZ + 190)) < 90) continue; const w = sr(70, 120), d = sr(60, 100); s.building({ x: x + sr(-10, 10), z: z + sr(-10, 10), w, d, h: sr(18, 30), fac: 'tx_fac_paris', lit: sr(0.5, 1.1), solid: false, facTile: 16, top: true, roofMat: { tex: 'tx_roof', color: 0x4c5662 } }); }
+    // street lights: thousands of sodium dots along the boulevards between the blocks (one instanced mesh), brighter round the landing hall
+    { const pts = []; srand(19); for (let gx = -5; gx <= 4; gx++) for (let z = LZ - 600; z < LZ + 470; z += 13) for (const o of [-6, 6]) pts.push([LX + gx * 150 + 75 + o, z]); for (let gz = -5; gz <= 3; gz++) for (let x = LX - 680; x < LX + 680; x += 13) for (const o of [-6, 6]) pts.push([x, LZ - 60 + gz * 130 + 65 + o]);
+      const im = new THREE.InstancedMesh(new THREE.SphereGeometry(0.9, 6, 4), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffa040).multiplyScalar(2.2) }), pts.length), M = new THREE.Matrix4(); pts.forEach(([x, z], i) => im.setMatrixAt(i, M.makeTranslation(x + sr(-1, 1), 6, z))); im.frustumCulled = false; im.userData.noRec = true; s.scene.add(im); }
+    s.water({ y: 0.6, color: 0x0e2230, w: 9000, d: 70, z: LZ + 190, size: 9000, opacity: 0.85 }); // the Seine, darker down the middle
     const f = s.fall = new Fall(s, { char: 'ch_agent', x: 0, y: 2300, z: 0, vy0: 30, view: 'top', clouds: true, cloudBase: 700, spread: 52, tuck: 88, steer: 15, chuteV: 15, chuteSteer: 17, openRate: 1.5, aim: { r: 2.2, ref: 40, max: 7, color: 0xffffff }, cam: { height: 9, dist: 4, up: -5, ahead: 3 } }); f.aimOff = true; s.light({ parent: f.c.root, x: 0, y: 4, z: 3, color: 0xbfd0ff, i: 320, dist: 26, bulb: false });
     const plane = s.put('a400m', { x: 10, y: 2308, z: -18 });
     const mate = s.target = f.addBody('ch_skydiver', { x: -40, y: 2300 - 210, z: -45, vy: -50, pose: 'fall' }); mate.c.tumble(1.7, 0.8, 0.5); const ring = beacon(s, 0xff2a2a), strobe = s.light({ color: 0xff3030, i: 0, dist: 60, r: 0.25, glow: 6 });
@@ -310,7 +370,7 @@ const halo = {
     const STRIKE_ADV = 'When the blue column appears, steer straight out of it with WASD and let go of SPACE — you have 1.4 s, and you move faster flat than diving.';
     s.objective('Dodge the lightning — dive to the red strobe');
     s.onUpdate((dt, t) => {
-      strobe.position.set(mate.pos.x, mate.pos.y + 1, mate.pos.z); strobe.userData.bulb.position.copy(strobe.position); const blink = (t * 2.2) % 1 < 0.18; strobe.intensity = blink ? 300 : 0; strobe.userData.bulb.visible = blink;
+      strobe.position.set(mate.pos.x, mate.pos.y + 1, mate.pos.z); strobe.userData.bulb.position.copy(strobe.position); const blink = (t * 2.2) % 1 < 0.18, clipped = !solo && (phase === 'carry' || phase === 'canopy' || phase === 'down'); strobe.intensity = blink ? (clipped ? 30 : 300) : 0; strobe.userData.bulb.visible = blink && !clipped; // once he is on your harness the strobe stops flaring over you both
       if (boltT > 0) { boltT -= dt; if (boltT <= 0) col.visible = false; }
       if ((phase === 'carry' || phase === 'canopy') && !solo) { mate.pos.set(f.pos.x + 0.3, f.pos.y - (phase === 'canopy' ? 0.5 : 0.12), f.pos.z - 0.55); }
       if (!s.started || s.ended) return; const tt = t - s.t0, alt = f.pos.y; plane.position.z -= 80 * dt; cd -= dt;
@@ -350,7 +410,7 @@ const halo = {
           if (alt < FATAL) { phase = 'dead'; f.o.openRate = 0.12; f.deploy('parachute'); s.msg('TOO LOW!', 'bad'); return s.fail('Pulled at ' + Math.round(alt * M) + ' ft — far too low, the canopy never opened', { injury: 1, delay: 2.6, advice: 'Pull (E) as the altitude passes 1,300 ft — the PULL prompt appears at 1,700 ft; below 400 ft there is no time for it to open.' }); }
           if (alt < HARD) s.flub('Pulled below 1,000 ft', { penalty: 0.3, advice: 'Pull (E) between 1,300 and 1,000 ft — lower than that and the canopy only just opens in time.' });
           phase = 'canopy'; f.deploy('parachute'); f.aimOff = false; if (!solo) mate.c.setPose('hang', 0.4); s.rate('Low pull (' + Math.round(alt * M) + ' ft)', alt < HARD ? 0.5 : near(alt, HARD + 45, 45, 700), 1.6); s.slowmo(0.5, 1); f.cine('orbit', 1.6, { fov: 50 });
-          s.moment('the last-second pull', { t0: s.t - 3, dur: 6, w: 3, shots: [{ type: 'orbit', fov: 24, a: -0.1, b: 0.5, speed: 0.6 }, { type: 'low', fov: 58, a: 0.35, b: 0.85, speed: 0.5 }, { type: 'track', fov: 38, a: 0.6, b: 1.05, speed: 0.8 }] }); s.bonus('Seconds of freefall', Math.round(tt * 150)); s.msg(alt < HARD + 75 ? 'LAST SECOND!' : 'CANOPY', 'good'); s.objective('Steer for the lit ring on the glass roof'); f.view('chase', { dist: 8, height: 19, up: -10, ahead: 3, fov: 64 });
+          const P = f.pos; s.moment('the last-second pull', { t0: s.t - 3, dur: 6, w: 3, shots: [{ type: 'orbit', fov: 24, a: -0.1, b: 0.5, speed: 0.6 }, { type: 'top', pos: [P.x + 10, P.y + 7, P.z + 12], fov: 28, lookUp: 0.4, a: 0.45, b: 1.0, speed: 0.55 }, { type: 'track', fov: 38, a: 0.6, b: 1.05, speed: 0.8 }] }); /* signature: from the camera jumper above, the canopy snaps open over the lights of Paris */ s.bonus('Seconds of freefall', Math.round(tt * 150)); s.msg(alt < HARD + 75 ? 'LAST SECOND!' : 'CANOPY', 'good'); s.objective('Steer for the lit ring on the glass roof'); f.view('chase', { dist: 8, height: 19, up: -10, ahead: 3, fov: 64 });
         }
       } else if (phase === 'canopy') {
         const d = Math.hypot(f.pos.x - LX, f.pos.z - LZ); s.hud.readout('sep', 'Landing zone (ft)', Math.round(d * M), d < 13 ? 'ok' : ''); s.hud.readout('rv', 'Sink (ft/s)', Math.round(f.speed * M));
@@ -391,7 +451,8 @@ const spySki = {
   controls: `${K('A')}${K('D')} carve &nbsp; ${K('S')} brake &nbsp; then: ${K('SPACE')} kick off skis &nbsp; ${K('E')} open parachute`, intro: { r: 8, h: 2.4 },
   assets: { models: ['ch_skier', 'ch_goon', 'rock_grey', 'parachute_uj', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt', 'helicopter'], tex: ['bd_snow', 'tx_snow', 'tx_rock'] },
   build(s) {
-    s.env('snow', { backdrop: 'bd_snow', look: 'warm60s', fog: 0.00035, hz: 0.5, sun: [38, 215] });
+    // Asgard Peak, Baffin Island: low clear arctic sun raking across a sheer granite wall, blue shadows on the snow
+    s.env('snow', { backdrop: 'bd_snow', look: 'warm60s', fog: 0.00048, hz: 0.5, sun: [24, 228], sunI: 3.0, amb: 0.8, lookOver: { contrast: 1.14, vignette: 0.42, sat: 1.05 } });
     const LIP = SKI_LIP, H = SKI_H, HARD = 198, FATAL = 90, inp = s.input, snow = s.mat({ tex: 'tx_snow' }), rock = s.mat({ tex: 'tx_rock', color: 0x9aa0a8 });
     s.ground({ tex: 'tx_snow', tile: 60, y: -6, size: 12000 });
     s.terrain({ x0: -1500, x1: 1500, z0: LIP - 2600, z1: LIP - 0.01, res: 100, fn: (x, z) => 14 * Math.sin(x * 0.004 + 1) * Math.cos(z * 0.003) + 10, tex: 'tx_snow', tile: 60 });
@@ -400,6 +461,12 @@ const spySki = {
     for (const [x, w, h, d] of [[-250, 120, H * 0.55, 60], [300, 150, H * 0.4, 80], [-90, 70, H * 0.3, 50], [150, 60, H * 0.75, 40]]) s.box({ x, y: -6, z: LIP + 4 + d / 2 - (h < H ? d * 0.8 : 0), w, h, d, mats: [rock, rock, snow, snow, rock, rock], tile: 60, tileTop: 30 });
     s.forest('tree:snowpine', 300, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (40 + Math.pow(r(), 1.4) * 52), 110 - r() * (110 - LIP - 30)]; }, { h: [6, 11], solid: true, seedv: 6, msg: 'Wrapped yourself round a pine' });
     s.forest('tree:snowpine', 420, r => [r() * 2600 - 1300, LIP - 150 - r() * 2200], { h: [16, 30], seedv: 9 });
+    // the wall: granite buttresses and slabs standing proud of the face, snow lying on their ledges (all well inside the line you fall on)
+    const gran = s.mat({ tex: 'tx_rock', color: 0xa8988a }), dk = s.mat({ tex: 'tx_rock', color: 0x6c7078 }), ledge = s.mat({ tex: 'tx_snow', color: 0xf4f6fa }), wallM = [rock, gran, dk];
+    srand(61); for (let i = 0; i < 46; i++) { const x = sr(-420, 420), w = sr(20, 80), h = sr(80, 520), d = sr(4, 14), cap = Math.abs(x) < 70 + w / 2 ? H - 90 : H - 25, y = Math.min(sr(-6, H - h - 20), cap - h); if (y + h < 30) continue; s.box({ x, y, z: LIP + 1.5 - d / 2 + 0.5, w, h, d, mat: wallM[i % 3], tile: 60 }); if (i % 2 === 0) s.box({ x, y: y + h, z: LIP + 1.5 - d / 2 + 0.3, w: w * 0.92, h: 1.6, d: d + 0.6, mat: ledge, tile: 30, cast: false }); }
+    // the valley floor: dark rock outcrops and stands of pine breaking up the white, so the drop reads from the air
+    s.forest('rock_grey', 110, r => [r() * 2400 - 1200, LIP - 100 - r() * 2100], { h: [6, 28], seedv: 62 });
+    srand(63); for (let c = 0; c < 14; c++) { const cx = sr(-1100, 1100), cz = sr(LIP - 300, LIP - 2200); s.trees('snowpine', 26, r => [cx + sr(-60, 60), cz + sr(-60, 60)], { h: [14, 26], seedv: 64 + c }); }
     const rocks = [[-9, -60], [12, -110], [-3, -165], [20, -205], [-18, -250], [5, -300], [-12, -345], [16, -385], [-2, -430], [-22, -470], [10, -505], [26, -330], [-27, -140], [0, -560]];
     for (const [x, z] of rocks) s.put('rock_grey', { x, y: skiFn(x, z) - 0.5, z, height: 3.2, ry: x, solid: true, hitScale: 0.7, sol: { msg: 'Hit a rock at full tilt', hardK: 0.3, advice: 'Look 50 m down the slope and carve early round the grey rocks (A/D) — tap S if you are not lined up in time.' } });
     s.crew({ x: 9, y: skiFn(9, 52), z: 52, ry: 1.0 }); s.put('helicopter', { x: -60, y: H + 60, z: LIP - 120, ry: 2.2 });
@@ -434,7 +501,7 @@ const spySki = {
           if (alt < HARD) s.flub('Opened below 650 ft', { penalty: 0.3, advice: 'Open (E) while the ALTITUDE readout is between 850 and 650 ft — any lower and the canopy only just snaps open before the valley floor.' });
           if (!kicked) s.flub('Opened with the skis on — tangled lines', { penalty: 0.15, advice: 'Press SPACE as soon as you leave the lip to kick the skis away, then wait for the chute.' });
           phase = 'open'; f.deploy('parachute_uj'); s.rate('Late opening (' + ftOf(alt) + ' ft)', alt < HARD ? 0.5 : near(alt, HARD + 25, 35, 520), 2); s.rate('Ski release', kicked ? 1 : 0.3, 0.8); s.bonus('Freefall: ' + ftOf(H - alt) + ' ft', Math.round((H - alt) * 2.2)); s.msg(kicked ? 'RULE BRITANNIA!' : 'SKIS TANGLED IN THE LINES', kicked ? 'huge good' : 'bad');
-          s.slowmo(0.5, 1.4); s.moment('the Union Jack', { t0: s.t - 2.4, dur: 6, w: 3 }); f.view('', { dist: 17, height: 2, side: 5, up: 4.5, ahead: 0, fov: 58 }); f.cine('wide', 2.6, { dist: 1.6 }); s.wrap(3.4, 'Keeping the British end up, sir.');
+          const P = f.pos; s.slowmo(0.5, 1.4); s.moment('the Union Jack', { t0: s.t - 2.4, dur: 6, w: 3, shots: [{ type: 'wide', pos: [P.x - 75, P.y + 25, P.z - 70], fov: 18, lookUp: 1.5, a: 0.15, b: 0.75, speed: 0.8 }, { type: 'low', fov: 52, a: 0.3, b: 0.9, speed: 0.5 }, { type: 'wide', dist: 2.6, side: 1, a: 0.5, b: 1.05, speed: 0.6 }] }); /* signature: across the valley, the canopy blooms against the granite wall */ f.view('', { dist: 17, height: 2, side: 5, up: 4.5, ahead: 0, fov: 58 }); f.cine('wide', 2.6, { dist: 1.6 }); s.wrap(3.4, 'Keeping the British end up, sir.');
         }
       }
     });
@@ -455,13 +522,14 @@ const cliff = {
   controls: `${K('W')} gas &nbsp; ${K('S')} brake &nbsp; ${K('A')}${K('D')} steer &nbsp; then: ${K('W')}${K('A')}${K('S')}${K('D')} steer &nbsp; hold ${K('SPACE')} track &nbsp; ${K('E')} parachute`, intro: { r: 8, h: 2.4 },
   assets: { models: ['enduro_bike', 'ch_agent', 'parachute', 'camera_crew', 'film_light', 'director_chair', 'ch_stunt', 'helicopter', 'rock_grey'], tex: ['bd_norway', 'tx_rock', 'tx_grass', 'tx_dirt', 'tx_wood', 'tx_metal'] },
   build(s) {
-    s.env('overcast', { backdrop: 'bd_norway', look: 'teal_orange', fog: 0.00028, hz: 0.5, amb: 1.25, sunI: 2.4 });
-    const H = 800, EDGE = -250, R0 = -140, R1 = -264, RH = 15, LX = 70, LZ = EDGE - 470, HARD = 150, FATAL = 70, inp = s.input, rock = s.mat({ tex: 'tx_rock', color: 0x8f9490 }), grass = s.mat({ tex: 'tx_grass', color: 0xb8c8a0 });
-    s.ground({ tex: 'tx_grass', tile: 50, y: -5, size: 12000, color: 0xa9bf8f });
+    // Helsetkopen, Norway: broken cloud, a low sun breaking through across the plateau, fjord haze in the valley below
+    s.env('overcast', { backdrop: 'bd_norway', look: 'teal_orange', fog: 0.00042, hz: 0.5, amb: 1.05, sun: [28, 235], sunCol: 0xfff0dc, sunI: 2.9, lookOver: { sat: 0.95, contrast: 1.12, vignette: 0.42 } });
+    const H = 800, EDGE = -250, R0 = -140, R1 = -264, RH = 15, LX = 70, LZ = EDGE - 470, HARD = 150, FATAL = 70, inp = s.input, rock = s.mat({ tex: 'tx_rock', color: 0x8f9490 }), grass = s.mat({ tex: 'tx_grass', color: 0x8e9a72 });
+    s.ground({ tex: 'tx_grass', tile: 50, y: -5, size: 12000, color: 0x8a9c74 });
     const vfn = (x, z) => 8 * Math.sin(x * 0.005) * Math.cos(z * 0.004) + 6 - 14 * smooth(-420, -620, x);
     s.terrain({ x0: -1600, x1: 1600, z0: EDGE - 2800, z1: EDGE - 0.01, res: 100, fn: vfn, tex: 'tx_grass', tile: 50, mat: s.mat({ tex: 'tx_grass', rep: 1, color: 0xa9bf8f }) });
     s.water({ y: 0.2, color: 0x2b5a6a, w: 1100, d: 5000, x: -1100, z: EDGE - 1400, size: 5000 });
-    s.terrain({ x0: -160, x1: 160, z0: EDGE, z1: 140, res: 5, fn: (x, z) => H + 1.2 * Math.sin(x * 0.05 + z * 0.03) * smooth(7, 30, Math.abs(x)), tex: 'tx_grass', tile: 8 });
+    s.terrain({ x0: -160, x1: 160, z0: EDGE, z1: 140, res: 5, fn: (x, z) => H + 1.2 * Math.sin(x * 0.05 + z * 0.03) * smooth(7, 30, Math.abs(x)), tex: 'tx_grass', tile: 8, vary: { tint: 0x8e9670, patch: 0x7a6e58, amt: 0.5 } });
     s.box({ x: 0, y: -5, z: EDGE + 1 + 500, w: 1500, h: H + 4.5, d: 1000, mats: [rock, rock, grass, grass, rock, rock], tile: 60, tileTop: 12, top: true });
     for (const [x, w, h, d] of [[-330, 130, H * 0.5, 70], [420, 170, H * 0.62, 90], [-120, 80, H * 0.3, 50], [190, 70, H * 0.8, 40]]) s.box({ x, y: -5, z: EDGE + 3 + d / 2 - (h < H ? d * 0.75 : 0), w, h, d, mats: [rock, rock, grass, grass, rock, rock], tile: 60, tileTop: 12 });
     s.road({ z0: 130, z1: R0, width: 4.5, lanes: 1, mat: { tex: 'tx_dirt', color: 0xb49a78 }, marks: false });
@@ -470,6 +538,12 @@ const cliff = {
     for (let z = R0 - 12; z > EDGE; z -= 12) for (const x of [-1.5, 1.5]) s.box({ x, y: H, z, w: 0.14, h: Math.max(0.1, rp(z) - H - 0.5), d: 0.14, mat: steel }); for (const x of [-1.5, 1.5]) s.box({ x, y: H + 5.5, z: EDGE - 6, w: 0.2, h: 0.2, d: 17, mat: steel, rx: 0.75 });
     s.forest('tree:pine', 500, r => { const x = r() * 2800 - 1100, z = EDGE - 120 - r() * 2400; return Math.hypot(x - LX, z - LZ) < 60 ? null : [x, z]; }, { h: [14, 26], seedv: 5 }); s.forest('rock_grey', 30, r => [(r() < 0.5 ? -1 : 1) * (9 + r() * 120), 120 - r() * 350], { h: [0.6, 2.4], seedv: 3 });
     disc(s, LX, vfn(LX, LZ) + 0.3, LZ, 16, 0xff7a20, 0.5); s.mark({ x: LX, z: LZ, y: vfn(LX, LZ) + 0.3, r: 16, color: 0xffa040 }); s.mark({ x: LX, z: LZ, y: vfn(LX, LZ) + 0.3, r: 4, color: 0xffffff }); s.crew({ x: LX + 22, y: vfn(LX + 22, LZ), z: LZ - 8, ry: 1.2 });
+    // the plateau: bare granite breaking through the heather, boulders and a lip of rock either side of the ramp (the track and ramp stay clear)
+    const slab = s.mat({ tex: 'tx_rock', color: 0x8a8c88 }); srand(71);
+    for (let i = 0; i < 26; i++) { const x = (i % 2 ? 1 : -1) * sr(12, 150), z = sr(EDGE + 4, 120), w = sr(6, 22), d = sr(5, 18); s.box({ x, y: H - 1.4, z, w, h: sr(1.6, 2.6), d, ry: sr(3), mat: slab, tile: 10, cast: false }); }
+    for (const [x0, x1] of [[-60, -9], [9, 70]]) for (let x = x0; x < x1; x += sr(5, 9)) s.box({ x, y: H - 1, z: EDGE + sr(1, 4), w: sr(4, 8), h: sr(1.5, 4), d: sr(3, 6), ry: sr(-0.3, 0.3), mat: rock, tile: 10 });
+    s.forest('rock_grey', 60, r => { const x = (r() < 0.5 ? -1 : 1) * (10 + r() * 140); return [x, EDGE + 6 + r() * 360]; }, { h: [1.2, 4.5], seedv: 72 });
+    s.trees('bush', 260, r => { const x = (r() < 0.5 ? -1 : 1) * (8 + r() * 150); return [x, EDGE + 5 + r() * 380]; }, { h: [0.5, 1.3], seedv: 73, wide: 1.8 });
     s.crew({ x: 6, y: H, z: 96, ry: 0.9 }); s.put('helicopter', { x: 55, y: H + 30, z: EDGE - 90, ry: -0.9 }); s.line({ x: 0, z: R0 + 1, w: 3.2, d: 0.4, y: H, color: 0xffe14a });
     const car = s.car = new Drive(s, { kind: 'bike', model: 'enduro_bike', driver: 'ch_agent', driverPos: [0, -0.52, 0.28], x: 0, z: 110, cam: { dist: 5.8, height: 2.2 }, hard: 14 });
     car.cineOff = true; const subj = new THREE.Object3D(); s.scene.add(subj); s.subject = subj; s.onUpdate(() => subj.position.copy(f ? f.pos : car.pos)); // replay follows rider, then the body
@@ -532,16 +606,16 @@ const cliff = {
 const EXTRA = {
   butch_cliff: {
     goals: { shot: ['Hold W to sprint for the rim and press SPACE in the last 3 m (EDGE readout green, under 10 ft)', 'In the air, steer (WASD) the red ring into the yellow ring inside the orange buoys — the wind drags you left, so lean on D', 'From about 200 ft (HEIGHT readout), hold SPACE to straighten up feet first until the FEET FIRST meter is green'], cut: ['Landing on the rocks, a boulder, or more than 10 ft outside the deep channel'], stars: ['Take-off at the lip', 'Distance from the centre of the deep channel', 'Feet-first entry'] },
-    cine: [{ type: 'front', pos: [-26, 139.5, -84], fov: 16, a: -0.1, b: 0.6, speed: 1 }, { type: 'track', fov: 58, a: 0.3, b: 0.85, speed: 0.55 }, { type: 'low', fov: 42, a: 0.65, b: 1.05, speed: 0.5 }],
+    cine: [{ type: 'front', pos: SIG_BUTCH, fov: 13, lookUp: 0.6, a: -0.1, b: 0.3, speed: 1 }, { type: 'wide', pos: [-43, 89.6, -24], fov: 20, lookUp: 0.6, a: 0.2, b: 0.62, speed: 0.7 }, { type: 'track', fov: 58, a: 0.45, b: 0.8, speed: 0.55 }, { type: 'low', pos: [21, 2.0, -41], fov: 36, lookUp: 0.8, a: 0.72, b: 1.05, speed: 0.5 }],
     freeze: { line: 'You crazy? The fall\'ll probably kill ya!', shot: 1, at: 0.45 },
   },
   lethal_weapon: {
     goals: { shot: ['On the ledge, A/D until OFF LINE reads 0 ft, then SPACE to step off (wait 25 s and the jumper drags you off)', 'Steer (WASD) to keep the red ring on the X — gusts shove you sideways, watch the WIND arrow', 'Press E inside the green of the timing bar (about 60 ft up) to roll onto your back'], cut: ['Missing the airbag by more than about 4 ft and hitting the street'], stars: ['Landing in the centre of the bag', 'Back-first landing (timing of E)'] },
-    cine: [{ type: 'top', fov: 20, a: -0.1, b: 0.55, speed: 1 }, { type: 'low', fov: 64, a: 0.35, b: 1.0, speed: 0.45 }, { type: 'wide', dist: 1.3, a: 0.7, b: 1.1, speed: 0.7 }],
+    cine: [{ type: 'wide', pos: [-12, 60, -32.5], fov: 22, lookUp: 0.6, a: -0.1, b: 0.72, speed: 0.85 }, { type: 'low', pos: [11.5, 0.9, -8], fov: 46, lookUp: 0.6, a: 0.5, b: 1.0, speed: 0.45 }, { type: 'wide', dist: 1.3, a: 0.7, b: 1.1, speed: 0.7 }],
   },
   goldeneye_dam: {
     goals: { shot: ['Press SPACE to swan-dive off the parapet', 'All the way down keep WALL between 2 and 7 m: A eases away, D closes in — the updraught keeps pushing you in', 'Press E to fire the piton when STOP HEIGHT reads 0–14 m (green); it shows up below 170 m'], cut: ['Touching the dam face', 'Firing the piton so late that the cord runs out (STOP HEIGHT under −16 m), or never firing it'], stars: ['How low the cord stops you', 'How close to the concrete you stayed'] },
-    cine: [{ type: 'top', fov: 44, a: -0.05, b: 0.5, speed: 1 }, { type: 'low', fov: 55, at: 0.9, a: 0.35, b: 1.0, speed: 0.5 }, { type: 'wide', dist: 1.5, a: 0.65, b: 1.05, speed: 0.7 }],
+    cine: [{ type: 'top', pos: [5, 224, -2.6], fov: 16, lookUp: 0.3, a: 0.14, b: 0.6, speed: 1 }, { type: 'low', fov: 55, at: 0.9, a: 0.35, b: 1.0, speed: 0.5 }, { type: 'wide', dist: 1.5, a: 0.65, b: 1.05, speed: 0.7 }],
   },
   point_break: {
     goals: { shot: ['Hold SPACE to dive after the orange smoke trail', 'Let go of SPACE before you reach him — CLOSING must be under 9 m/s or you bounce off', 'Beside him, hold E and stay glued to him (WASD) for 2 s until GRIP is full', 'Hook up before 600 m altitude — the higher, the better'], cut: ['He opens the canopy with you hanging on', 'Reaching 600 m without him: you pull the hidden reserve and the take is blown (almost no stars)'], stars: ['Hook-up height', 'Docking speed', 'Clean catch (each bounce or slip costs)'] },
@@ -558,7 +632,7 @@ const EXTRA = {
   },
   mi_cliff: {
     goals: { shot: ['Ride the dirt track and up the one-plank ramp dead centre at 58–68 mph (W gas, S brake)', 'Off the lip, steer hard away from the bike (A or D) until BIKE reads over 4 m', 'Hold SPACE to track away from the cliff, then press E to pull at 300–160 m (green of the bar)', 'Steer the canopy to the orange ring in the valley'], cut: ['Falling off the side of the ramp', 'The bike landing on you', 'Pulling below 70 m, or never pulling'], stars: ['Ramp speed', 'Clear of the bike', 'Low pull', 'Landing in the ring'] },
-    cine: [{ type: 'wide', dist: 1.4, a: -0.1, b: 0.6, speed: 0.7 }, { type: 'track', fov: 56, a: 0.3, b: 0.85, speed: 0.45 }, { type: 'orbit', a: 0.55, b: 1.05, speed: 0.6 }],
+    cine: [{ type: 'wide', pos: [-24, 806, -246], fov: 26, lookUp: 0.6, a: 0.1, b: 0.75, speed: 0.6 }, { type: 'track', fov: 56, a: 0.3, b: 0.85, speed: 0.45 }, { type: 'orbit', a: 0.55, b: 1.05, speed: 0.6 }],
   },
 };
 export default [butch, lethal, dam, pointBreak, halo, spySki, cliff].map(d => Object.assign(d, EXTRA[d.id]));

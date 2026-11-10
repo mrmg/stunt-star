@@ -13,7 +13,7 @@ function finish(s, f, extra) {
 // mark the film's signature beat for the replay: every successful beat passing test() adds a moment; later/bigger ones win
 function signature(s, f, test, label, o = {}) {
   const base = f._success.bind(f); let n = 0;
-  f._success = (b, perfect) => { base(b, perfect); if (!test(b, perfect)) return; if (o.slow !== false) s.slowmo(o.slow ?? 0.4, 0.45); s.moment(label, { t0: s.t - (o.pre ?? 1.3), t1: s.t + (o.post ?? 0.9), w: (o.w ?? 2) + (n++) * 0.001 + (perfect ? 0.01 : 0), shots: o.shots }); };
+  f._success = (b, perfect) => { base(b, perfect); if (!test(b, perfect)) return; if (o.slow !== false) s.slowmo(o.slow ?? 0.4, 0.45); s.moment(label, { t0: s.t - (o.pre ?? 1.3), t1: s.t + (o.post ?? 0.9), w: (o.w ?? 2) + (n++) * 0.001 + (perfect ? 0.01 : 0), shots: o.shots, subject: o.subject }); };
 }
 // a side-on fight stage: floor, back wall, optional ceiling. Player stands at x=0,z=0 and the camera looks down -Z.
 function room(s, o) {
@@ -59,7 +59,10 @@ const oldboy = {
     const beats = chart('R . R . L . R R . L . B . R . L R . D . R . R L . U . R . B . L . R R R . L . D . R L . R . U . R . L . B . R R . L R', { bpm: 112, start: 1.6 });
     const f = s.fight = new Fight(s, { char: 'ch_hammer', enemies: ['ch_thug', 'ch_goon'], beats, hp: 8, travel: 0.95, camDist: 5.6, fov: 52, backZ: -0.6 });
     // the whole corridor in one unbroken sideways track
-    finish(s, f, () => s.moment('The corridor — one take', { t0: s.t - 8.5, t1: s.t + 0.6, w: 2.5 }));
+    // replay subject for the film's cross-section dolly: a marker riding 4 m in front of the fighter on the open side,
+    // so the 'track' rig sits ~8 m out and frames the corridor floor to ceiling like a cut-away set (look line passes through him)
+    const dolly = new THREE.Object3D(); s.scene.add(dolly); s.onUpdate(() => dolly.position.set(f.pos.x, 1.05, 4.2));
+    finish(s, f, () => s.moment('The corridor — one take', { t0: s.t - 8.5, t1: s.t + 0.6, w: 2.5, subject: dolly }));
     // the hammer
     const hm = new THREE.Group(); hm.add(new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.34, 6), s.mat({ color: 0x6b4a2a }))); const hd = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.04, 0.04), s.mat({ color: 0x333333, metal: 0.8, rough: 0.4 })); hd.position.y = 0.17; hm.add(hd); f.c.bones.RightHand?.add(hm); hm.scale.setScalar(100); hm.rotation.x = Math.PI / 2;
   },
@@ -75,12 +78,15 @@ const killBill = {
   controls: CTL.fight, intro: { r: 6, h: 1.8, up: 1.1 },
   assets: { models: ['ch_bride', 'ch_goon'], tex: ['bd_tokyo', 'tx_wood', 'tx_snow'] },
   build(s) {
-    s.env('night', { backdrop: 'bd_tokyo', look: 'cold', fog: 0.012, amb: 1.5, sunI: 1.1, lookOver: { bloom: 0.3, sat: 1.2 } });
-    s.ground({ tex: 'tx_snow', tile: 5, color: 0x8a94b0 });
+    s.env('night', { backdrop: 'bd_tokyo', look: 'teal_orange', fog: 0.012, amb: 1.0, sunI: 1.1, lookOver: { bloom: 0.35, sat: 1.15 } });
+    s.ground({ tex: 'tx_snow', tile: 5, color: 0x8a94b0, y: -0.06 }); // just under the teahouse floor (was z-fighting with it)
     room(s, { x0: -26, x1: 26, depth: 9, h: 0.05, floor: { tex: 'tx_wood', color: 0xb58a55 }, wall: { color: 0x222222 }, floorTile: 2 });
-    const paper = s.mat({ color: 0xfff4d8, emissive: 0xffe2a0, emI: 0.22 }), dark = s.mat({ color: 0x1c1410, rough: 0.6 });
+    const paper = s.mat({ color: 0xfff4d8, emissive: 0xffe2a0, emI: 0.4 }), dark = s.mat({ color: 0x1c1410, rough: 0.6 });
     for (let x = -24; x <= 24; x += 4) { s.box({ x, y: 0, z: -6.4, w: 3.7, h: 3.2, d: 0.08, mat: paper, cast: false }); s.box({ x: x + 2, y: 0, z: -6.35, w: 0.16, h: 3.4, d: 0.16, mat: dark }); for (const y of [1.05, 2.1]) s.box({ x, y, z: -6.34, w: 4, h: 0.06, d: 0.06, mat: dark, cast: false }); }
     s.box({ x: 0, y: 3.3, z: -6.3, w: 52, h: 0.5, d: 1.4, mat: dark }); for (const x of [-10, 10]) s.light({ x, y: 2.6, z: -2, color: 0xffd9a0, i: 25, dist: 22, bulb: false });
+    // House of Blue Leaves: red paper lanterns along the beam and a warm key from the house side, so the fight reads warm against the cold snow
+    const lan = s.mat({ color: 0xd02818, emissive: 0xff3a20, emI: 1.4 }); for (let x = -22; x <= 22; x += 5.5) { s.cyl({ x, y: 2.35, z: -5.7, r: 0.26, h: 0.55, mat: lan, seg: 10, cast: false }); s.box({ x, y: 2.9, z: -5.7, w: 0.02, h: 0.4, d: 0.02, mat: dark, cast: false }); }
+    for (const x of [-7, 7]) s.light({ x, y: 3.4, z: 3.5, color: 0xffc080, i: 30, dist: 16, bulb: false });
     s.forest('tree:snowpine', 40, r => [(r() - 0.5) * 90, -14 - r() * 50], { h: [5, 10], seedv: 5 });
     const p = V3(), v = V3(); s.onUpdate(() => { const c = s.camera.position; for (let i = 0; i < 3; i++) s.fx.streak(p.set(c.x + rnd(-10, 10), rnd(1, 7), c.z - rnd(3, 14)), v.set(rnd(-0.6, 0.6), -1.6, 0), [1, 1, 1], 1.2, 0.06, 0.7); });
     const a = chart('R . L . R . U . L L . R . D . R L . B . R . L . U . R R . L', { bpm: 108, start: 1.6 }), tB = a.at(-1).t + 1.6;
@@ -120,7 +126,9 @@ const matrixDodge = {
     });
     f.c.heading = -Math.PI / 2;
     s.onUpdate(() => { for (const b of f.beats) { if (b.shot == null || f.t > b.t + 0.5) continue; const k = (f.t - b.shot) / Math.max(0.05, b.t - b.shot), x = 4.6 - k * 5.0, y = b.dir === 'D' ? 1.45 : 1.25, z = b.dir === 'L' ? 0.25 : b.dir === 'R' ? -0.25 : 0; for (let i = 0; i < 3; i++) s.fx.streak(tmp.set(x + i * 0.12, y, z), vel.set(0, 0, 0), [0.75, 1, 0.8], 0.45, 0.09, 0.5); if (Math.random() < 0.5) s.fx.streak(tmp.set(x, y, z), vel.set(0, 0, 0), [1, 1, 1], 0.1, 0.16, 0.9); } });
-    signature(s, f, b => b.dir === 'D', 'Bullet time', { w: 2.2, pre: 1.0, post: 0.8, slow: false });
+    // bullet-time rig: the replay orbit centres on a marker at hip height, so the 120-camera arc sweeps round him low and level
+    const bt = new THREE.Object3D(); s.scene.add(bt); s.onUpdate(() => bt.position.set(f.pos.x, 0.45, f.pos.z));
+    signature(s, f, b => b.dir === 'D', 'Bullet time', { w: 2.2, pre: 1.0, post: 0.8, slow: false, subject: bt });
     finish(s, f);
   },
   bot: fbot,
@@ -138,13 +146,21 @@ const inception = {
     s.env('indoor', { look: 'teal_orange', fog: 0.02, amb: 4.5, sunI: 0.4, lookOver: { bloom: 0.3 } });
     const drum = new THREE.Group(); drum.position.set(0, 1.5, 0); s.scene.add(drum);
     const wall = { tex: 'tx_hotel', color: 0xfff0dd }, carpet = s.mat({ color: 0x7a2a22, rough: 0.95 }), wood = s.mat({ tex: 'tx_wood', color: 0x5a3a22 }), lamp = s.mat({ color: 0xfff0c0, emissive: 0xffd890, emI: 1.1 });
-    s.box({ parent: drum, x: 20, y: -1.62, z: 0, w: 110, h: 0.12, d: 3, mat: carpet, cast: false }); s.box({ parent: drum, x: 20, y: 1.5, z: 0, w: 110, h: 0.12, d: 3, mat: { color: 0xe8e0d0 }, cast: false });
-    s.box({ parent: drum, x: 20, y: -1.5, z: -1.56, w: 110, h: 3, d: 0.12, mat: wall, tile: 3 });
-    for (let x = -30; x < 74; x += 5) { s.box({ parent: drum, x, y: -1.5, z: -1.48, w: 1, h: 2.2, d: 0.06, mat: wood }); s.box({ parent: drum, x: x + 2.5, y: 0.55, z: -1.44, w: 0.18, h: 0.3, d: 0.14, mat: lamp, cast: false }); s.box({ parent: drum, x: x + 2.5, y: 1.42, z: 0, w: 0.5, h: 0.06, d: 0.5, mat: lamp, cast: false }); }
+    // four panels (floor, ceiling, both walls). Whichever panel turns to face the camera is hidden, so the side-on view
+    // is always a cut-away into the corridor instead of the back of a wall (the film shot it the same way: open sides)
+    const panels = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1]].map(n => { const g = new THREE.Group(); g.userData.n = V3(...n); drum.add(g); return g; }), [floorG, ceilG, backG, frontG] = panels;
+    s.box({ parent: floorG, x: 20, y: -1.62, z: 0, w: 110, h: 0.12, d: 3, mat: carpet, cast: false }); s.box({ parent: ceilG, x: 20, y: 1.5, z: 0, w: 110, h: 0.12, d: 3, mat: { color: 0xe8e0d0 }, cast: false });
+    s.box({ parent: backG, x: 20, y: -1.5, z: -1.56, w: 110, h: 3, d: 0.12, mat: wall, tile: 3 }); s.box({ parent: frontG, x: 20, y: -1.5, z: 1.56, w: 110, h: 3, d: 0.12, mat: wall, tile: 3, cast: false });
+    for (let x = -30; x < 74; x += 5) { s.box({ parent: backG, x, y: -1.5, z: -1.48, w: 1, h: 2.2, d: 0.06, mat: wood }); s.box({ parent: backG, x: x + 2.5, y: 0.55, z: -1.44, w: 0.18, h: 0.3, d: 0.14, mat: lamp, cast: false }); s.box({ parent: ceilG, x: x + 2.5, y: 1.42, z: 0, w: 0.5, h: 0.06, d: 0.5, mat: lamp, cast: false });
+      s.box({ parent: frontG, x: x + 2.5, y: -1.5, z: 1.48, w: 1, h: 2.2, d: 0.06, mat: wood, cast: false }); s.box({ parent: frontG, x, y: 0.55, z: 1.44, w: 0.18, h: 0.3, d: 0.14, mat: lamp, cast: false }); }
+    const nw = V3(); s.onUpdate(() => { for (const g of panels) { nw.copy(g.userData.n).applyQuaternion(drum.quaternion); g.visible = nw.z < 0.45; } });
     for (const x of [-8, 6, 20, 34, 48]) s.light({ x, y: 2.6, z: 0.3, color: 0xffd9a0, i: 30, dist: 14, bulb: false });
     const beats = chart('R . L . R . . U . R . L . D . . U . L R . B . . U . R . R L . . U . D . L . R . . U . R L R . B . . U . L . R', { bpm: 104, start: 1.8 });
     const f = s.fight = new Fight(s, { char: 'ch_suit', enemies: ['ch_goon'], beats, hp: 8, travel: 0.5, camDist: 5.2, fov: 54, failMsg: 'Thrown into the ceiling one time too many', injury: 0.5, koAdvice: 'The ↑ W markers are jumps timed to the wall coming round — press W as the marker enters the box, and do not swing between moves.' });
-    signature(s, f, b => b.dir === 'U', 'The corridor turns', { w: 2, pre: 1.6, post: 1.0 });
+    // replay subject on the corridor axis at hip height: the 'chase' rig then sits a few metres back down the corridor and
+    // looks along it while the whole set turns round him (the film's shot), and the side rigs stay level with him
+    const ax = new THREE.Object3D(); s.scene.add(ax); s.onUpdate(() => ax.position.set(f.pos.x, 0.35, 0));
+    signature(s, f, b => b.dir === 'U', 'The corridor turns', { w: 2, pre: 1.6, post: 1.0, subject: ax });
     // rotation: a quarter turn completes on every ↑ beat
     const ups = beats.filter(b => b.dir === 'U').map(b => b.t); let ang = 0;
     s.onUpdate(dt => { if (!s.started) return; const n = ups.filter(t => t <= f.t).length, nx = ups[n], pv = n ? ups[n - 1] : 0; const k = nx ? clamp((f.t - pv) / (nx - pv)) : 0; const target = (n + k * k * k) * Math.PI / 2; ang = damp(ang, target, 8, dt); drum.rotation.x = ang; s.cam.roll = Math.sin(ang * 0.5) * 0.16; drum.position.x = f.pos.x * 0; });
@@ -158,10 +174,10 @@ const KEYS_LINE = 'Press the key shown on each marker as it slides into the whit
 const CUT = ['Nothing ends it early except 8 missed moves — then the director calls it and you keep a low score'];
 const STARS = ['Timing (inside the box = GOOD, dead centre = PERFECT)', 'Longest combo without a miss', 'Health left'];
 const EXTRA = {
-  enter_dragon: { goals: { shot: ['Guards run in from both sides — one marker per guard slides along the lane', KEYS_LINE, '25 moves in about 14 s, one every half-second — a missed one costs a combo and 1 of your 8 health'], cut: CUT, stars: STARS }, cine: ['wide', { type: 'low', speed: 0.4 }, { type: 'orbit', speed: 0.5 }] },
-  oldboy: { goals: { shot: ['You walk right down the corridor the whole time — the camera tracks with you in one take', KEYS_LINE, '34 moves in about 17 s, attackers from both ends; ● SPACE blocks come when you are swarmed'], cut: CUT, stars: STARS }, cine: [{ type: 'track', side: -1, speed: 1, a: -0.05, b: 1.05, fov: 46 }] },
-  kill_bill: { goals: { shot: [KEYS_LINE, '17 moves at a steady pace, then the picture goes black and white and 29 more come faster (132 bpm)', 'Two markers close together = two quick presses — do not break the chain'], cut: CUT, stars: STARS }, cine: ['top', { type: 'low', speed: 0.45 }, { type: 'orbit', speed: 0.5 }] },
-  matrix_dodge: { goals: { shot: ['Each marker is a bullet — 18 of them over about 18 s', 'Press its key as it reaches the box: S lean back, A sway left, D sway right, SPACE brace', 'The gunshot comes ~0.5 s before the bullet — dodge on the marker, not the bang'], cut: ['Only 8 bullets taken — then the director calls it and you keep a low score'], stars: STARS }, cine: [{ type: 'orbit', speed: 0.22, a: -0.4, b: 1.1, heading: Math.PI / 2 }, { type: 'low', speed: 0.45, heading: Math.PI / 2 }, { type: 'wide', speed: 0.7 }] },
-  inception: { goals: { shot: ['The corridor rotates a quarter turn on every ↑ marker — press W to jump as the wall comes round (6 jumps)', KEYS_LINE, '27 moves in about 18 s while you drift right down the corridor'], cut: CUT, stars: STARS }, cine: [{ type: 'track', side: -1, fov: 40 }, { type: 'low', side: -1, speed: 0.4 }, { type: 'wide', side: -1 }] },
+  enter_dragon: { goals: { shot: ['Guards run in from both sides — one marker per guard slides along the lane', KEYS_LINE, '25 moves in about 14 s, one every half-second — a missed one costs a combo and 1 of your 8 health'], cut: CUT, stars: STARS }, cine: [{ type: 'low', pos: [-2.3, 0.4, 3.9], fov: 46, lookUp: 0.85, speed: 0.4, a: 0.2, b: 1.0 }, 'wide', { type: 'orbit', speed: 0.5 }] },
+  oldboy: { goals: { shot: ['You walk right down the corridor the whole time — the camera tracks with you in one take', KEYS_LINE, '34 moves in about 17 s, attackers from both ends; ● SPACE blocks come when you are swarmed'], cut: CUT, stars: STARS }, cine: [{ type: 'track', side: -1, speed: 1, a: -0.05, b: 1.05, fov: 31 }] },
+  kill_bill: { goals: { shot: [KEYS_LINE, '17 moves at a steady pace, then the picture goes black and white and 29 more come faster (132 bpm)', 'Two markers close together = two quick presses — do not break the chain'], cut: CUT, stars: STARS }, cine: [{ type: 'low', pos: [0.9, 0.85, 5.2], fov: 40, lookUp: 0.6, speed: 0.4, a: 0.0, b: 1.0 }, { type: 'orbit', speed: 0.5 }, { type: 'top', pos: [3.5, 7.5, 4.5], fov: 46, lookUp: 0, speed: 0.6 }] },
+  matrix_dodge: { goals: { shot: ['Each marker is a bullet — 18 of them over about 18 s', 'Press its key as it reaches the box: S lean back, A sway left, D sway right, SPACE brace', 'The gunshot comes ~0.5 s before the bullet — dodge on the marker, not the bang'], cut: ['Only 8 bullets taken — then the director calls it and you keep a low score'], stars: STARS }, cine: [{ type: 'orbit', speed: 0.22, a: -0.4, b: 1.1, heading: Math.PI / 2, fov: 54 }, { type: 'low', speed: 0.45, heading: Math.PI / 2 }, { type: 'wide', speed: 0.7 }] },
+  inception: { goals: { shot: ['The corridor rotates a quarter turn on every ↑ marker — press W to jump as the wall comes round (6 jumps)', KEYS_LINE, '27 moves in about 18 s while you drift right down the corridor'], cut: CUT, stars: STARS }, cine: [{ type: 'chase', fov: 64, speed: 0.5 }, { type: 'track', side: -1, fov: 44, speed: 0.7 }, { type: 'low', side: -1, speed: 0.4 }] },
 };
 export default [enterDragon, oldboy, killBill, matrixDodge, inception].map(d => Object.assign(d, EXTRA[d.id]));

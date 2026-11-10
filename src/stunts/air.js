@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Fly } from '../modes/fly.js';
 import { clamp, near, damp, V3, rnd, sr, srand, lerp } from '../world/stage.js';
 import { K, CTL, sign } from './common.js';
+import * as dress from '../world/dress.js';
 
 const ftOf = m => Math.round(m * 3.281);
 const avg = a => a.n ? a.s / a.n : 0, acc = (a, v, w = 1) => { a.s += v * w; a.n += w; };
@@ -15,8 +16,9 @@ const octopussy = {
   controls: `${K('A')}${K('D')} bank &nbsp; ${K('W')} climb &nbsp; ${K('S')} dive &nbsp; ${K('SHIFT')} afterburner &nbsp; hold ${K('SPACE')} knife-edge`, intro: { r: 12, h: 2.5, up: 0.3 },
   assets: { models: ['acrostar', 'ww2_truck', 'camera_crew', 'film_light', 'director_chair'], tex: ['bd_jungle', 'tx_grass', 'tx_asphalt', 'tx_metal', 'tx_wood', 'tx_concrete', 'tx_roof'] },
   build(s) {
-    s.env('jungle', { backdrop: 'bd_jungle', look: 'jungle', fog: 0.0015 });
-    s.ground({ tex: 'tx_grass', tile: 9, color: 0x9fae8c });
+    // steamy Indian jungle strip: hazy low sun from the right, humid air thick enough to soften the far tree walls
+    s.env('jungle', { backdrop: 'bd_jungle', look: 'jungle', fog: 0.0022, sun: [38, 55], sunCol: 0xffe6b4, sunI: 3.5, amb: 0.9, lookOver: { contrast: 1.12, sat: 1.05 } });
+    s.ground({ tex: 'tx_grass', tile: 9, color: 0xa4ae84, vary: { lo: 0.7, hi: 1.05, patch: 0x9a8a58, amt: 0.45 } });
     const HZ = -2300, HL = 76, HW = 17, HH = 13, JZ = HZ + 330; // door plane, hangar length, half width, height, end of jungle
     s.road({ z0: 110, z1: -230, width: 14, lanes: 2 }); s.road({ z0: JZ + 40, z1: HZ - 420, width: 20, lanes: 2 });
     // palm lines with one gap each + huts
@@ -26,6 +28,9 @@ const octopussy = {
     s.forest('tree:palm', 260, r => [r(-74, 74), -40 - r() * (-JZ - 60)], { h: [3, 5.5], seedv: 9 });
     s.forest('tree:jungle', 520, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (82 + r() * 150), 100 - r() * (-JZ + 160)]; }, { h: [18, 30], seedv: 23 });
     s.forest('tree:palm', 90, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (60 + r() * 120), JZ - r() * 700]; }, { h: [12, 18], seedv: 31 });
+    // dense canopy edge just outside the flying corridor, low jungle hills closing the horizon
+    dress.treeLine(s, { x: -84, z0: 100, z1: JZ - 200, side: 1, depth: 14, step: 11, kinds: ['jungle', 'palm', 'jungle'], h: [18, 28], seed: 61 }); dress.treeLine(s, { x: 84, z0: 100, z1: JZ - 200, side: -1, depth: 14, step: 11, kinds: ['jungle', 'jungle', 'palm'], h: [18, 28], seed: 62 });
+    dress.hills(s, { z: -1100, r: 1700, h: 150, depth: 400, color: 0x3a5a32, trees: 'jungle', nTrees: 160 });
     const thatch = { tex: 'tx_wood', color: 0xb99a5a }, wood = { tex: 'tx_wood', color: 0x8a6a48 };
     gates.forEach((g, i) => { if (i % 2) return; const nx = gates[i + 1]?.x ?? 0, hx = g.x + (g.x >= nx ? 1 : -1) * 24, hz = g.z - 55; s.box({ x: hx, y: 0, z: hz, w: 7, h: 3.2, d: 6, mat: wood, tile: 3, solid: true, sol: { msg: 'Flew into a village hut' } }); s.box({ x: hx, y: 3.2, z: hz, w: 8.4, h: 1.5, d: 7.4, mat: thatch, tile: 2, solid: true, sol: { msg: 'Flew into a village hut' } }); });
     // hangar: open near end, two sliding doors at the far end
@@ -59,7 +64,8 @@ const octopussy = {
       if (st.boom) return; st.boom = true; const e = V3(0, 6, HZ + 1); s.fx.explosion(e, 3.6); s.fx.explosion(V3(rnd(-6, 6), HH - 1, HZ + 14), 2.6); s.fx.fireBurst(V3(0, 5, HZ - 2), 60, { size: 5, speed: 18 }); s.fx.debris(e, 60, { color: 0x6a726c, speed: 30, size: 1.2, dir: V3(0, 0.3, -1) });
       s.audio.explosion(1.4); s.engine.addShake(1.6); s.engine.flash(0.6); mis.visible = false; for (const d of doors) { d.userData.solid.dead = true; d.userData.blow = { vx: d.userData.sd * rnd(8, 14), vy: rnd(9, 13), vz: -rnd(22, 30), r: rnd(-2, 2) }; }
       s.msg('MISSILE TAKES THE HANGAR', 'huge good'); s.audio.say?.('Beautiful!'); s.wrap(2.6);
-      const m = st.mom; if (m) { m.t1 = s.t + 2.4; const D = m.t1 - m.t0, k = x => (x - m.t0) / D; m.shots = [{ type: 'track', a: 0, b: k(st.tb - 0.25), speed: 0.6, fov: 34 }, { type: 'front', a: k(st.tb - 0.9), b: k(st.tb), speed: 0.3, fov: 24 }, { type: 'wide', a: k(st.tb + 0.1), b: 1, speed: 0.8, side: 1, dist: 2.5 }]; }
+      // replay B (signature): low outside the far end of the hangar, the doors nearly shut and the jet bursting out of the slot knife-edge
+      const m = st.mom; if (m) { m.t1 = s.t + 2.4; const D = m.t1 - m.t0, k = x => (x - m.t0) / D; m.shots = [{ type: 'track', a: 0, b: k(st.tb - 0.25), speed: 0.6, fov: 34 }, { type: 'front', pos: [2.6, 2.4, HZ - 34], fov: 26, lookUp: -1, a: k(st.tb - 0.7), b: k(st.tb + 0.32), speed: 0.3 }, { type: 'wide', a: k(st.tb + 0.1), b: 1, speed: 0.8, side: 1, dist: 2.5 }]; }
     };
     mis.position.copy(mp); s.objective('Stay low in the palms — the missile is locked on');
     s.onUpdate((dt, t) => {
@@ -108,12 +114,12 @@ const topgun = {
   controls: `${K('A')}${K('D')} slide left / right &nbsp; ${K('W')} up &nbsp; ${K('S')} down &nbsp; ${K('SPACE')} roll inverted`, intro: { r: 36, h: 8, up: -4 },
   assets: { models: ['f14', 'mig'], tex: ['bd_desert_mtn', 'tx_sand'] },
   build(s) {
-    s.env('high', { backdrop: 'bd_desert_mtn', look: 'golden', fog: 0.00025, sun: [22, 55], sunCol: 0xffd0a0 });
+    s.env('high', { backdrop: 'bd_desert_mtn', look: 'golden', fog: 0.0006, sun: [22, 55], sunCol: 0xffd0a0 }); // a little dust haze so the desert floor falls away
     s.ground({ tex: 'tx_sand', tile: 90, color: 0xcdb48e });
     const Y0 = 320, fly = s.fly = new Fly(s, { model: 'f14', kind: 'jet', x: 16, y: Y0 + 20, z: 0, speed: 120, boost: 1, agility: 10, climb: 8, resp: 3, r: 6, bank: 0.4, canInvert: true, blur: 0.5, cam: { dist: 30, height: 7, ahead: 40, up: -2, fov: 56, stiff: 12 } });
     const mig = s.put('mig', { x: 0, y: Y0, z: -1 }), M = s.mig = { x: 0, y: Y0, vx: 0, vy: 0 }, D0 = (fly.size.y + mig.userData.size.y) / 2 * 0.86; s.D0 = D0; s.migH = mig.userData.size.y;
     const ex = V3(), ev = V3(0, 0, -110);
-    const boxM = new THREE.LineBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.9, toneMapped: false }), frame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(6.5, 3.5, 15)), boxM); s.scene.add(frame);
+    const boxM = new THREE.LineBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.9, toneMapped: false }), frame = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(6.5, 3.5, 15)), boxM); s.scene.add(frame); frame.userData.noRec = true; // HUD aid: never in the replay
     const st = s.st = { photo: 0, rel: { s: 0, n: 0 }, tight: { s: 0, n: 0 }, done: false, clear: 20, dx: 16, inT: 0, outT: 0, was: false, drops: 0, low: false, firstIn: -1, boxT: 0, tot: 0 }, FUEL = 45, BINGO = 62;
     s.introFocus = mig.position; s.objective('Roll inverted (SPACE) and settle into the box above the MiG');
     const finish = (el, why) => {
@@ -121,14 +127,16 @@ const topgun = {
       s.rate('Photo', st.photo, 1.6); s.rate('Time to get the shot', near(el, 16, 6, 60), 0.8); s.rate('Smooth formation', st.rel.n ? clamp(1.15 - avg(st.rel) / 3.2) : 0, 1); s.rate('Canopy to canopy', avg(st.tight), 1.2); s.rate('Held the box', st.tot > 0 ? clamp(st.boxT / st.tot * 1.25) : 0, 0.6);
       if (why) { s.msg(why, 'bad'); s.wrap(2, 'Fuel says we go with what we have.'); return; }
       s.engine.flash(1); s.audio.tick(); s.audio.good(); s.msg('CLICK! — got the Polaroid', 'huge good'); s.slowmo(0.35, 0.7); s.wrap(2.4, 'Watch the birdie.');
-      st.mom = s.moment('canopy to canopy', { t0: s.t - 3.6, t1: s.t + 1.2, w: 3, shots: [{ type: 'track', fov: 30, a: 0, b: 0.5, speed: 0.8 }, { type: 'orbit', a: 0.45, b: 0.9, speed: 0.4 }, { type: 'front', a: 0.7, b: 1.05, speed: 0.6 }] });
+      // replay C (signature): the camera ship parked off the right wing, level between the two, as the inverted Tomcat and the MiG go past canopy to canopy
+      const P = fly.pos, sig = [P.x + 30, P.y - 2.2, P.z - fly.v * 0.15];
+      st.mom = s.moment('canopy to canopy', { t0: s.t - 3.6, t1: s.t + 1.2, w: 3, shots: [{ type: 'track', fov: 30, a: 0, b: 0.45, speed: 0.8 }, { type: 'orbit', a: 0.3, b: 0.6, speed: 0.4 }, { type: 'wide', pos: sig, fov: 21, lookUp: -2.6, a: 0.5, b: 0.82, speed: 0.35 }] });
     };
     s.onUpdate((dt, t) => {
       const el = s.started ? t - s.t0 : 0, p = fly.pos, k = st.done ? Math.max(0, 1 - (t - st.doneT) * 0.6) : 1;
       const nx = (12 * Math.sin(0.35 * el) + 3 * Math.sin(0.9 * el + 1) - 3 * Math.sin(1)) * k + (st.done ? M.x * (1 - k) : 0), ny = Y0 + 3 * Math.sin(0.5 * el);
       if (dt > 0) { M.vx = (nx - M.x) / dt; M.vy = (ny - M.y) / dt; } M.x = nx; M.y = ny; mig.position.set(nx, ny, p.z - 1); mig.rotation.z = damp(mig.rotation.z, -M.vx * 0.04, 4, dt); mig.rotation.x = M.vy * 0.03;
       for (const sx of [-0.7, 0.7]) s.fx.exhaust(ex.set(nx + sx, ny + 1.2, p.z - 1 + mig.userData.size.z * 0.5), ev, 1.1, true);
-      frame.position.set(nx, ny + mig.userData.size.y / 2 + D0 + 2.05, p.z - 1); frame.visible = !st.done;
+      frame.position.set(nx, ny + mig.userData.size.y / 2 + D0 + 2.05, p.z - 1); frame.visible = !st.done && !s.ended;
       if (!s.started || s.ended || fly.dead) return;
       const dx = p.x - nx, dy = p.y - (ny + mig.userData.size.y / 2), clear = dy - D0; st.clear = clear; st.dx = dx;
       if (!st.done && clear < 0 && clear > -D0 * 2.4 && Math.abs(dx) < 7) { s.fx.explosion(mig.position, 2.5); mig.visible = false; return fly.crash('Mid-air collision with the MiG', 1, 'Come down onto him slowly: stop descending once Separation reads 2 m, and tap W the moment it drops under 1 m. Match his drift with A/D.'); }
@@ -205,7 +213,8 @@ const t2 = {
       if (hit(van, VS, 0.3)) return fly.crash('Put the skids through the roof of the van', 1, 'Stay 10–40 m behind the van, not on top of it — let off SHIFT once the Van readout is under 25 m.');
       for (const tr of trucks) if (hit(tr, tr.userData.size, 0.3)) return fly.crash('Flew into the back of a big rig', 1, 'The big rigs are slower than you: when one is ahead in your lane, slide over to the other lane (A/D) 60 m before you reach it.');
       // over the top is a flub; under is the shot
-      BR.forEach((z, i) => { if (!st.br[i] && p.z < z - 10) { st.br[i] = 1; if (p.y < 7.6) { st.under++; s.msg('UNDER THE BRIDGE!', 'good'); s.bonus('Under the overpass', 2000); s.engine.addShake(0.5); s.moment('under the overpass', { t0: s.t - 1.5, t1: s.t + 1.1, w: 2 + st.under, shots: [{ type: 'front', a: -0.1, b: 0.65, speed: 0.7 }, { type: 'low', a: 0.15, b: 0.85, speed: 0.35, at: 0.55 }, { type: 'track', a: 0.35, b: 1.2, speed: 0.8, fov: 36 }] }); } else s.flub('Went over the overpass', { penalty: 0.2, advice: ADV.bridge }); } });
+      // replay A (signature): on the hard shoulder past the overpass, low, as the helicopter comes out from under the deck straight at the lens
+      BR.forEach((z, i) => { if (!st.br[i] && p.z < z - 10) { st.br[i] = 1; if (p.y < 7.6) { st.under++; s.msg('UNDER THE BRIDGE!', 'good'); s.bonus('Under the overpass', 2000); s.engine.addShake(0.5); s.moment('under the overpass', { t0: s.t - 1.5, t1: s.t + 1.1, w: 2 + st.under, shots: [{ type: 'front', pos: [14.2, 1.3, z - 34], fov: 40, lookUp: -0.3, a: -0.05, b: 0.78, speed: 0.45 }, { type: 'low', a: 0.15, b: 0.85, speed: 0.35, at: 0.55 }, { type: 'track', a: 0.5, b: 1.2, speed: 0.8, fov: 36 }] }); } else s.flub('Went over the overpass', { penalty: 0.2, advice: ADV.bridge }); } });
       if (p.y > 30) { p.y = Math.min(p.y, 34); fly.vy = Math.min(fly.vy, 0); if (!st.high) { st.high = true; s.flub('Climbed out of the shot', { penalty: 0.1, advice: 'The shot is the skids a few feet off the freeway. Keep the Skids readout under 15 ft.' }); } } else if (p.y < 15) st.high = false;
       acc(st.low, near(alt, 2.6, 2.8, 12), dt); acc(st.rng, gap > 6 && gap < 45 ? 1 : gap < 70 ? 0.3 : 0, dt);
       s.hud.readout('alt', 'Skids (ft)', ftOf(Math.max(0, alt)), alt < 5.5 ? 'ok' : 'warn'); s.hud.readout('gap', 'Van (m)', Math.round(gap), gap > 6 && gap < 45 ? 'ok' : 'warn');
@@ -232,13 +241,15 @@ const maverick = {
   controls: `${CTL.fly} &nbsp; ${K('E')} release &nbsp; ${K('SPACE')} roll inverted`, intro: { r: 30, h: 7, up: 0 },
   assets: { models: ['fa18'], tex: ['bd_canyon_snow', 'tx_rock', 'tx_snow', 'tx_concrete'] },
   build(s) {
-    s.env('snow', { backdrop: 'bd_canyon_snow', look: 'teal_orange', fog: 0.0011, shadows: false });
+    s.env('snow', { backdrop: 'bd_canyon_snow', look: 'teal_orange', fog: 0.0016, shadows: false, sun: [36, -40], sunI: 3.7, amb: 1.4 }); // lower raking sun models the walls (no shadow maps at this scale), cold haze down the canyon
     s.ground({ tex: 'tx_snow', tile: 40, y: -40, base: false });
     s.terrain({ x0: -350, x1: 350, z0: 160, z1: -6950, res: 7, fn: mH, mat: { tex: 'tx_rock', color: 0xd8dde4 }, tile: 46, base: false });
     const tx = mcx(TZ), ty = mfl(TZ); s.box({ x: tx, y: ty, z: TZ, w: 12, h: 4, d: 12, mat: 'tx_concrete' }); s.cyl({ x: tx, y: ty + 4, z: TZ, r: 4, r1: 3, h: 2.5, mat: { color: 0x555555, metal: 0.6 } });
     const tgt = s.mark({ x: tx, z: TZ, y: ty + 0.4, r: 22, color: 0x40ff70 }), pip = s.mark({ x: tx, z: TZ, y: ty, r: 9, color: 0xff3030 }); pip.visible = false; pip.material.depthTest = false; tgt.material.depthTest = false;
     for (const [dz, sd] of [[-900, 1], [-2300, -1], [-3600, 1], [-4700, -1]]) for (let i = 0; i < 5; i++) { const z = dz - i * 14, x = mcx(z) + sd * (HW0(z) + 8 + i * 3); s.box({ x, y: mH(x, z) - 2, z, w: 9 - i, h: 9 + i * 3, d: 9 - i, mat: { tex: 'tx_rock', color: 0xc8ced6 }, ry: i }); }
     const fly = s.fly = new Fly(s, { model: 'fa18', kind: 'jet', x: mcx(60), y: mfl(60) + 16, z: 60, speed: 135, boost: 1.3, agility: 52, climb: 64, r: 5, canInvert: true, graze: 0.8, floorGraze: 0.7, floor: mH, floorScrape: 'Scraped the rock', floorAdvice: 'Look 2–3 s ahead down the canyon and start every turn and climb early: small, steady A/D and W inputs, never full stick at the last moment.', cam: { dist: 24, height: 5.2, ahead: 46, fov: 68 } });
+    // signature replay camera: down on the floor beyond the ridge, looking back up as the Hornet pops over the crest against the sky and dives at the lens
+    const SIG = (() => { const z = RZ - 230, x = mcx(z) + 14; return [x, mH(x, z) + 2.5, z]; })();
     const bomb = s.box({ w: 0.5, h: 0.5, d: 2.4, color: 0x30343a }); bomb.visible = false; const bv = V3();
     const CLOCK = 42, CEIL = 34, st = s.st = { lock: 0, maxLock: 0, low: { s: 0, n: 0 }, rel: false, hit: null, sam: false, inv: false, agl: 16, crest: false, pops: 0, popF: false, late: false };
     const ADV = { sam: 'Keep the Altitude readout under 100 ft. If you balloon above it, push S at once — about 3 s up there and the SAM fires.', aim: 'Over the ridge, dive with S until the red pipper sits inside the green ring, THEN press E. Releasing early throws the bomb long.', late: 'Hold SHIFT on every straight — the canyon is 6 km and the clock gives you 42 s.' };
@@ -261,7 +272,7 @@ const maverick = {
         s.hud.meter('sam', hi ? 'SAM RADAR — GET DOWN' : 'SAM lock', st.lock, { color: '#ff4030' }); if (hi && Math.floor(t * 6) % 2) s.audio.tick();
         if (st.lock >= 1 && !st.sam) { st.sam = true; s.msg('SAM LAUNCH!', 'huge bad'); s.after(0.7, () => fly.crash('Stayed above the radar floor — SAM launch', 1, ADV.sam)); }
         if (p.z < RZ + 520 && p.z > RZ) s.objective('RIDGE — climb the face, stay tight to it');
-        if (p.z < RZ + 160 && !st.mom) st.mom = s.moment('pop-up and dive', { t0: s.t - 0.6, dur: 6, w: 3, shots: [{ type: 'low', a: 0, b: 0.3, speed: 0.45, at: 0.5 }, { type: 'track', a: 0.2, b: 0.6, speed: 0.7, fov: 32 }, { type: 'wide', a: 0.5, b: 1, speed: 0.8 }] });
+        if (p.z < RZ + 160 && !st.mom) st.mom = s.moment('pop-up and dive', { t0: s.t - 0.6, dur: 6, w: 3, shots: [{ type: 'low', pos: SIG, fov: 30, a: 0.1, b: 0.5, speed: 0.45 }, { type: 'track', a: 0.3, b: 0.65, speed: 0.7, fov: 32 }, { type: 'wide', a: 0.5, b: 1, speed: 0.8 }] });
         if (p.z < RZ) { st.crest = true; pip.visible = true; s.objective('Dive on the target — E to release when the pipper is on it'); s.msg('POP UP — TARGET IN SIGHT', 'good'); if (fly.inverted) { st.inv = true; s.bonus('Inverted over the ridge', 4000); } }
       } else if (!st.rel) {
         // continuously computed impact point

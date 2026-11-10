@@ -17,7 +17,8 @@ const italian = {
   controls: CTL.drive, intro: { r: 11, h: 3 },
   assets: { models: ['mini_red', 'mini_white', 'mini_blue', 'cardboard_boxes'], tex: ['bd_turin', 'tx_cobble', 'tx_fac_italy', 'tx_roof', 'tx_concrete', 'tx_wood'] },
   build(s) {
-    s.env('golden', { backdrop: 'bd_turin', look: 'warm60s', fog: 0.0016 });
+    // Turin, late-summer afternoon: low warm sun over the rooftops, the city below falling away into haze, Alps behind
+    s.env('golden', { backdrop: 'bd_turin', look: 'warm60s', sun: [18, 62], fog: 0.0023, fogMix: 0.5, lookOver: { contrast: 1.1, sat: 1.0 } });
     s.ground({ tex: 'tx_cobble', tile: 8 });
     const Y = 30, Y2 = 25;
     s.building({ x: 0, z: -65, w: 20, d: 170, h: Y, fac: 'tx_fac_italy', top: true }); s.building({ x: 0, z: -235, w: 24, d: 130, h: Y2, fac: 'tx_fac_italy', top: true });
@@ -27,7 +28,9 @@ const italian = {
     const sky = s.mat({ glass: true, color: 0x9fd0e0, opacity: 0.5 });
     for (const [x, z] of [[-4, -38], [4.5, -62], [-3.5, -88], [5.5, -200], [-5.5, -222]]) s.box({ x, y: z < -160 ? Y2 : Y, z, w: 3, h: 1.1, d: 4, mat: sky, solid: 'break', sol: { glass: true, slow: 0.8, on: () => { s.rate('Clean line', (s.scores.get('Clean line')?.v ?? 1) - 0.3); s.msg('SKYLIGHT!', 'bad'); } } });
     s.put('cardboard_boxes', { x: 0, y: Y2, z: -214, height: 2.2, solid: 'break', sol: { soft: true, debris: 0xb08a55 } });
-    for (const [sd, x, sv] of [[-1, -24, 3], [1, 24, 5], [-1, -70, 8], [1, 70, 9]]) s.row({ side: sd, x, z0: 60, z1: -340, fac: ['tx_fac_italy'], height: [14, 26], seedv: sv, solid: false });
+    const nb = []; for (const [sd, x, sv, hh] of [[-1, -24, 3, [16, 31]], [1, 24, 5, [16, 31]], [-1, -70, 8, [20, 40]], [1, 70, 9, [20, 40]], [-1, -118, 11, [24, 46]], [1, 118, 12, [24, 46]]]) nb.push(...s.row({ side: sd, x, z0: 60, z1: -340, fac: ['tx_fac_italy'], height: hh, seedv: sv, solid: false }));
+    // rooftop clutter on the neighbours (visual): chimney stacks and water tanks
+    { const brick = s.mat({ tex: 'tx_concrete', color: 0xa07a5a }), tank = s.mat({ tex: 'tx_concrete', color: 0x6a6258 }); srand(23); for (const b of nb) { const P = b.geometry.parameters, top = b.position.y + P.height / 2; for (let k = 0; k < 2; k++) s.box({ x: b.position.x + sr(-0.4, 0.4) * P.width, y: top, z: b.position.z + sr(-0.4, 0.4) * P.depth, w: 0.8, h: sr(1.4, 3), d: 0.8, mat: brick, cast: false }); if (sr() < 0.3) s.cyl({ x: b.position.x + sr(-0.3, 0.3) * P.width, y: top, z: b.position.z, r: 1.3, h: 2.2, mat: tank, cast: false }); } }
     const zone = s.line({ x: 0, z: -272, w: 22, d: 22, y: Y2, color: 0x30ff70, glow: 0.8 }); zone.material.opacity = 0.25; s.line({ x: 0, z: -117, w: 10, d: 0.6, y: Y, color: 0xffe14a });
     s.crew({ x: 8, z: -8, y: Y, ry: 1.2 }); s.crew({ x: -9.5, z: -180, y: Y2, ry: -1.9, people: false });
     const car = s.car = new Drive(s, { kind: 'mini', model: 'mini_red', x: 0, z: 8, y: Y });
@@ -55,11 +58,12 @@ const greatEscape = {
   brief: 'Open meadow, a grass bank, and a twelve-foot border fence. Wind it up, hit the bank flat out and clear the wire. The Swiss side is a nice soft field, I am told.',
   tips: ['You need <b>50 mph or more</b> at the bank to clear the wire.', 'Go through the gap in the first fence — do not hit the posts.', 'In the air: <b>W lifts the nose, S drops it</b>. Land rear wheel first.'],
   controls: CTL.bike, intro: { r: 7, h: 2 },
-  assets: { models: ['triumph', 'ch_biker', 'pine_tree', 'ww2_truck', 'rock_grey'], tex: ['bd_alps', 'tx_grass', 'tx_wood', 'tx_dirt'] },
+  assets: { models: ['triumph', 'ch_biker', 'pine_tree', 'ww2_truck', 'rock_grey'], tex: ['bd_alps', 'tx_grass', 'tx_wood', 'tx_dirt', 'tx_roof'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_alps', look: 'warm60s', fog: 0.0012, hz: 0.42 });
+    // shot in high summer on the meadows outside Füssen, Bavaria: bright afternoon sun, Alpine haze, warm Technicolor-ish grade
+    s.env('day', { backdrop: 'bd_alps', look: 'warm60s', fog: 0.0019, hz: 0.42, sun: [30, 45], lookOver: { sat: 1.0, contrast: 1.08 } });
     const hill = (x, z) => (Math.sin(x * 0.035 + 1) * Math.cos(z * 0.02) * 4 + Math.sin(z * 0.011 + x * 0.02) * 3 + 5) * smooth(14, 70, Math.abs(x));
-    s.ground({ tex: 'tx_grass', tile: 5, y: -0.4, base: false }); s.terrain({ x0: -170, x1: 170, z0: 90, z1: -560, res: 5, fn: hill, tex: "tx_grass", tile: 5 });
+    s.ground({ tex: 'tx_grass', tile: 5, y: -0.4, base: false }); s.terrain({ x0: -170, x1: 170, z0: 90, z1: -560, res: 5, fn: hill, mat: { tex: 'tx_grass', color: 0xaab890 }, tile: 5 });
     const wood = s.mat({ tex: 'tx_wood', color: 0x9a8a70 }), wire = s.mat({ color: 0x555555, metal: 0.6, rough: 0.5 });
     // first fence with a gap on the right
     for (let x = -60; x <= 60; x += 4) { if (x > 2 && x < 9) continue; s.box({ x, y: 0, z: -150, w: 0.22, h: 1.5, d: 0.22, mat: wood, solid: 'break', sol: { debris: 0x8a7050, slow: 0.7, on: () => s.flub('Went through the fence', { penalty: 0.15, advice: 'Line up on the gap in the first fence early — it is on the right, by the flag.' }) } }); if (!(x > -2 && x < 9)) s.box({ x: x + 2, y: 0.5, z: -150, w: 4, h: 0.9, d: 0.08, mat: wood, solid: 'break', sol: { debris: 0x8a7050, slow: 0.85 } }); }
@@ -67,7 +71,14 @@ const greatEscape = {
     s.slope({ x: 0, w: 12, z0: -294, z1: -311, y0: 0, y1: 2.6, curve: 1.5, mat: { tex: 'tx_grass', rep: 0.12 } });
     for (const z of [-326, -333]) { for (let x = -80; x <= 80; x += 5) s.box({ x, y: 0, z, w: 0.25, h: 3.3, d: 0.25, mat: wood, cast: x > -30 && x < 30 }); for (let y = 0.5; y < 3.3; y += 0.55) s.box({ x: 0, y, z, w: 160, h: 0.04, d: 0.04, mat: wire, cast: false }); }
     s.course.addSolid({ x0: -80, x1: 80, y0: 0, y1: 3.2, z0: -334, z1: -325, msg: 'Tangled in the barbed wire', hardK: 0.1, advice: 'You hit the bank too slow to clear the wire. Be over 50 mph before the bank and stay flat out up it.' });
-    trees(s, 'pine_tree', 70, 60, -540, 22, 150, { h: [8, 15], seedv: 4 }); s.forest('rock_grey', 40, r => [(r() < .5 ? -1 : 1) * (16 + r() * 60), 40 - r() * 520], { h: [1, 2.6], seedv: 9 });
+    // framing: spruce forest climbing the slopes either side of the meadow, a few clumps in the open, a Bavarian farm, hills closing the horizon under the Alps
+    dress.treeLine(s, { path: [[-52, 90], [-46, -200], [-58, -560]], side: 1, depth: 26, step: 6, kinds: ['pine', 'pine', 'oak'], h: [12, 21], seed: 41 });
+    dress.treeLine(s, { path: [[56, 90], [62, -250], [50, -560]], side: -1, depth: 26, step: 6, kinds: ['pine'], h: [12, 22], seed: 42 });
+    dress.hills(s, { z: -250, r: 470, h: 34, color: 0x4f6040, trees: 'pine', nTrees: 160 });
+    s.trees('pine', 60, (r, i) => { const c = [[-30, -60], [26, -120], [-34, -230], [-28, -420], [32, -470], [24, 0]][i % 6]; return [c[0] + sr(-7, 7), c[1] + sr(-9, 9)]; }, { h: [8, 16], seedv: 43 });
+    dress.barn(s, { x: -40, z: -95, w: 10, d: 16, h: 5, ry: 0.2, color: 0xe6e0d0, roof: 0x5a3a2a }); dress.barn(s, { x: -36, z: -118, w: 6, d: 8, h: 3.2, ry: 0.1, color: 0x7a5a3a });
+    dress.fence(s, { path: [[-14, 80], [-12, -140]], kind: 'rail' }); dress.fence(s, { path: [[-14, -360], [-16, -540]], kind: 'wire' });
+    s.forest('rock_grey', 40, r => [(r() < .5 ? -1 : 1) * (16 + r() * 60), 40 - r() * 520], { h: [1, 2.6], seedv: 9 });
     s.put('ww2_truck', { x: -9, z: 52, ry: 0.5 }); s.crew({ x: 7, z: 30, ry: 0.9 }); s.crew({ x: -10, z: -350, ry: 2.6, people: false });
     s.line({ x: 0, z: -292, w: 12, d: 0.5, color: 0xffe14a }); s.line({ x: 0, z: -430, w: 30, d: 1, color: 0x30ff70 });
     const b = s.car = new Drive(s, { kind: 'bike', model: 'triumph', driver: 'ch_biker', driverPos: [0, -0.52, 0.28], x: 5, z: 36, cam: { dist: 5.6, height: 2.1 } }); b.dustColor = [0.45, 0.5, 0.3]; b.k.dusty = true;
@@ -98,8 +109,8 @@ const smokey = {
     sign(s, 'BRIDGE OUT', { x: 0, y: 1.5, z: -269.9, w: 5, bg: '#d9a400', fg: '#111' });
     trees(s, 'pine_tree', 30, 90, -680, 12, 110, { h: [9, 16], seedv: 2 }); trees(s, 'oak_tree', 18, 90, -680, 14, 90, { h: [7, 11], seedv: 6 });
     // Georgia back road: pine woods closing in on both sides, poles, a ranch fence, a barn and baled fields
-    dress.treeLine(s, { x: -48, z0: 90, z1: -326, side: -1, depth: 22, step: 6, kinds: ['pine', 'oak', 'pine'], h: [10, 18], seed: 3 }); dress.treeLine(s, { x: 46, z0: 40, z1: -326, side: 1, depth: 22, step: 6, kinds: ['pine', 'oak'], h: [10, 17], seed: 4 });
-    dress.treeLine(s, { x: -24, z0: -376, z1: -700, side: -1, depth: 20, kinds: ['pine', 'oak'], seed: 5 }); dress.treeLine(s, { x: 24, z0: -376, z1: -700, side: 1, depth: 20, kinds: ['pine'], seed: 6 });
+    dress.treeLine(s, { x: -48, z0: 90, z1: -326, side: 1, depth: 22, step: 6, kinds: ['pine', 'oak', 'pine'], h: [10, 18], seed: 3 }); dress.treeLine(s, { x: 46, z0: 40, z1: -326, side: -1, depth: 22, step: 6, kinds: ['pine', 'oak'], h: [10, 17], seed: 4 });
+    dress.treeLine(s, { x: -24, z0: -376, z1: -700, side: 1, depth: 20, kinds: ['pine', 'oak'], seed: 5 }); dress.treeLine(s, { x: 24, z0: -376, z1: -700, side: -1, depth: 20, kinds: ['pine'], seed: 6 });
     dress.hills(s, { z: -300, r: 520, h: 55, color: 0x4a5a3a, trees: 'pine', nTrees: 220 });
     dress.poles(s, { x: -6.5, z0: 95, z1: -320 }); dress.poles(s, { x: -6.5, z0: -372, z1: -690 });
     dress.fence(s, { x: 7, z0: 80, z1: -250, kind: 'rail' }); dress.fence(s, { x: -9, z0: -60, z1: -300, kind: 'wire' });
@@ -128,13 +139,23 @@ const generalLee = {
   brief: 'Dirt ramp, three patrol cars parked nose to tail, and one very heavy orange Charger. She flies like a brick with the nose down, so keep your foot in to hold it up.',
   tips: ['Flat out to the ramp — the further you fly, the more you earn.', 'The Charger is nose-heavy: <b>hold W in the air</b> to keep the front up.', 'Land level, on all four wheels. Nose first and the car folds in half.'],
   controls: CTL.drive, intro: { r: 10, h: 2.5 },
-  assets: { models: ['general_lee', 'police_car', 'pine_tree', 'oak_tree'], tex: ['bd_georgia', 'tx_grass', 'tx_dirt'] },
+  assets: { models: ['general_lee', 'police_car', 'pine_tree', 'oak_tree'], tex: ['bd_georgia', 'tx_grass', 'tx_dirt', 'tx_wood', 'tx_roof'] },
   build(s) {
-    s.env('golden', { backdrop: 'bd_georgia', look: 'golden', fog: 0.0013 });
-    s.ground({ tex: 'tx_dirt', tile: 9, color: 0xd0a070 });
+    // Hazzard County = Covington, Georgia in high summer: hot late-afternoon sun, red clay track through pasture, pine woods all round
+    s.env('day', { backdrop: 'bd_georgia', look: 'golden', sun: [24, 58], sunCol: 0xffd6a0, sunI: 3.6, fog: 0.0019, lookOver: { sat: 1.02, contrast: 1.1 } });
+    s.ground({ tex: 'tx_grass', tile: 5, vary: { tint: 0xb0b48a } });
+    const clay = { tex: 'tx_dirt', color: 0xd89c6c }; s.road({ z0: 110, z1: -242, width: 9, lanes: 2, mat: clay, marks: false }); s.road({ z0: -242, z1: -440, width: 20, lanes: 2, mat: clay, marks: false }); s.road({ z0: -440, z1: -620, width: 9, lanes: 2, mat: clay, marks: false });
     s.slope({ x: 0, w: 8, z0: -250, z1: -264, y0: 0, y1: 2.0, curve: 1.45, mat: { tex: 'tx_dirt', rep: 0.15, color: 0xb98a5a } });
     for (let i = 0; i < 3; i++) s.put('police_car', { x: 0, z: -272 - i * 6.2, ry: Math.PI / 2 + (i % 2 ? 0.08 : -0.06), solid: true, sol: { msg: 'Landed on the patrol cars', hardK: 0.2 } });
-    trees(s, 'pine_tree', 50, 60, -560, 14, 120, { h: [9, 15], seedv: 3 }); trees(s, 'oak_tree', 20, 60, -560, 16, 90, { h: [7, 11], seedv: 8 });
+    // framing: pine woods 40 m out both sides, pasture with a farmhouse, bales and fences, poles along the track, hills closing the horizon
+    dress.treeLine(s, { x: -40, z0: 110, z1: -620, side: 1, depth: 20, step: 6.5, kinds: ['pine', 'oak', 'pine'], h: [11, 19], seed: 7 });
+    dress.treeLine(s, { path: [[46, 110], [42, -200], [48, -620]], side: -1, depth: 20, step: 6.5, kinds: ['pine', 'oak'], h: [10, 18], seed: 8 });
+    dress.hills(s, { z: -260, r: 520, h: 50, color: 0x4a5a3a, trees: 'pine', nTrees: 200 });
+    dress.poles(s, { x: -8, z0: 105, z1: -615 }); dress.fence(s, { x: -12, z0: 90, z1: -600, kind: 'wire' });
+    dress.fence(s, { x: 11, z0: 95, z1: -236, kind: 'rail' }); dress.fence(s, { x: 12, z0: -350, z1: -600, kind: 'rail' });
+    dress.barn(s, { x: 27, z: -112, w: 9, d: 12, h: 4.2, ry: -0.25, color: 0xd8d0c0, roof: 0x5a4a40 }); dress.barn(s, { x: 30, z: -150, w: 10, d: 14, h: 5.5, ry: 0.15 });
+    srand(15); dress.bales(s, Array.from({ length: 12 }, () => [sr(16, 34), sr(-170, -235), sr(3)])); dress.bales(s, Array.from({ length: 8 }, () => [sr(-34, -18), sr(-350, -460), sr(3)]));
+    s.trees('oak', 22, () => { const sd = sr() < 0.5 ? -1 : 1, z = sr(80, -600); return Math.abs(z + 270) < 75 && sd > 0 ? null : [sd * sr(18, 34), z]; }, { h: [8, 13], seedv: 11 });
     for (let d = 20; d <= 60; d += 10) { const z = -264 - d; s.line({ x: 0, z, w: 14, d: 0.25, color: 0xffffff, glow: 0.7 }); sign(s, ftOf(d) + ' FT', { x: 8.5, y: 1.2, z, w: 3.4, ry: -0.5, bg: '#222', size: 70 }); }
     s.crew({ x: 8, z: 18, ry: 1.1 }); s.crew({ x: -9, z: -300, ry: -2.0, people: false });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'general_lee', x: 0, z: 40, nose: -0.62, air: 0.46, pitchTol: 0.45 }); car.dustColor = [0.75, 0.55, 0.38]; car.k.dusty = true;
@@ -162,7 +183,7 @@ const bttf = {
     s.env('storm', { backdrop: 'bd_smalltown', look: 'night', fog: 0.0035, amb: 0.75, sunI: 1.2, lookOver: { bloom: 0.9 } });
     s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x666666, rough: 0.5 });
     street(s, { z0: 60, z1: -700, width: 13, lanes: 2, fac: ['tx_fac_old', 'tx_brick'], height: [9, 16], lit: 0.5, lamps: 40 });
-    s.building({ x: 0, z: -725, w: 46, d: 30, h: 22, fac: 'tx_fac_old' }); s.building({ x: 0, z: -722, w: 12, d: 12, h: 36, fac: 'tx_fac_old' }); s.put('clock_tower_face', { x: 0, y: 26, z: -715.5, height: 7 });
+    s.building({ x: 0, z: -725, w: 46, d: 30, h: 22, fac: 'tx_fac_old' }); s.building({ x: 0, z: -722, w: 12, d: 12, h: 36, fac: 'tx_fac_old' }); s.put('clock_tower_face', { x: 0, y: 26, z: -715.5, height: 7 }); s.light({ x: 0, y: 25, z: -706, color: 0xffe8b0, i: 160, dist: 34, bulb: false }); // the lit clock face: the shot's beacon
     const WZ = -560, T = 21; // the wire
     for (const x of [-7.2, 7.2]) s.cyl({ x, z: WZ, r: 0.12, h: 6.5, color: 0x333333 }); const wire = s.box({ x: 0, y: 5.6, z: WZ, w: 14.4, h: 0.05, d: 0.05, mat: s.mat({ color: 0x222222 }), cast: false });
     s.line({ x: 0, z: WZ, w: 13, d: 0.6, color: 0x60c8ff, glow: 2 }); s.line({ x: 0, z: 22, w: 13, d: 0.5, color: 0xffffff, glow: 0.8 });
@@ -208,17 +229,23 @@ const bullitt = {
   controls: CTL.drive, intro: { r: 10, h: 2.5 },
   assets: { models: ['mustang_green', 'charger_black', 'street_lamp', ...TRAFFIC], tex: ['bd_sf', 'tx_asphalt', 'tx_fac_sf', 'tx_concrete', 'tx_roof'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_sf', look: 'warm60s', fog: 0.0016, hz: 0.46, bdFollow: 0.3 });
+    // San Francisco, spring 1968: hazy afternoon sun low over the bay at the bottom of the hill, muted cool-green 60s stock
+    s.env('day', { backdrop: 'bd_sf', look: 'warm60s', sun: [32, 176], sunI: 3.1, amb: 0.98, fog: 0.0024, hz: 0.46, bdFollow: 0.3, lookOver: { sat: 0.84, contrast: 1.1, tint: [1.0, 1.02, 0.97] } });
     s.ground({ tex: 'tx_asphalt', y: -150, base: false, color: 0x8899aa }); s.course.kill = -500;
     s.terrain({ x0: -44, x1: 44, z0: 80, z1: -1260, res: 2.6, fn: (x, z) => hz(z), tex: 'tx_asphalt', tile: 9 });
     street(s, { z0: 80, z1: -1260, width: 15, lanes: 4, fac: ['tx_fac_sf'], height: [16, 22], yfn: hz, lamps: 0, bwidth: [14, 22], tints: [0xffffff, 0xe8d8c0, 0xcfe0e8, 0xf0d0c8, 0xd8e8c8], double: true });
     srand(21); for (let z = -70; z > -1200; z -= 13) { if (sr() < 0.55) continue; const sd = sr() < 0.5 ? -1 : 1; const d = (-z - 40) % 105; if (d < 26) continue; s.put(TRAFFIC[Math.floor(sr(TRAFFIC.length))], { x: sd * 6.5, z, y: hz(z), rx: sd * 0, solid: true, sol: { msg: 'Ploughed into a parked car' } }).rotation.x = -Math.atan(12 / 83) * 1; }
+    // Muni trolley wires and poles down both kerbs, following the hill
+    dress.poles(s, { x: -8.6, z0: 70, z1: -1240, gap: 34, h: 9 }); dress.poles(s, { x: 8.6, z0: 53, z1: -1240, gap: 34, h: 9 });
     s.crew({ x: 6.6, z: 22, ry: 0.8 });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'mustang_green', x: -1.8, z: 30, hard: 12, pitchTol: 0.75 });
     const mv = new Movers(s, car); mv.nearPay = 120;
     const ch = s.rival = mv.add({ model: 'charger_black', z: -6, path: (z, e) => 1.8 + Math.sin(z * 0.017) * 2.6, v: 0, nearMiss: false, hardK: 3, ai: (e, dt) => { if (!s.started) return; const gap = car.pos.z - e.z; const want = gap > 140 ? 10 : gap > 75 ? 24 : gap < 14 ? 42 : 33.5; e.v += (want - e.v) * Math.min(1, dt * 1.2); } });
     traffic(s, mv, { lanes: [[-1.9, 1], [1.9, -1], [4.0, -1]], n: 9, z0: -160, z1: -1150, speed: [9, 13], zEnd: -1200, recycle: false, msg: 'Collected the traffic' });
     let close = 0, tot = 0, lands = [], fin = false; s.rate('Clean driving', 1);
+    // signature shot: the long lens at the bottom of the block, looking back up as both cars fly the crest. Which crest
+    // becomes the replay moment is only known in play, so the hand-placed camera is fitted to it when the moment is made.
+    s.onUpdate(() => { const m = car._mom; if (m && !m._sig) { m._sig = 1; const zc = -62 - 105 * Math.max(0, Math.round((-car.pos.z - 62) / 105)), zp = zc - 78; m.shots = [{ type: 'front', pos: [0, hz(zp) + 1.3, zp], fov: 11, lookUp: 0.6, a: -0.25, b: 1.05, speed: 0.55 }, 'track', { type: 'low', side: -1 }]; } });
     car.onLand = i => { if (i.airTime > 0.35) { lands.push(i.clean); s.bonus('Airtime', Math.round(i.airTime * 220)); if (i.airTime > 0.8) s.msg('BIG AIR', 'small'); } };
     car.onHit = (sol, imp) => s.rate('Clean driving', (s.scores.get('Clean driving')?.v ?? 1) - 0.2);
     s.objective('Stay on the Charger');
@@ -242,15 +269,22 @@ const blues = {
   controls: CTL.drive, intro: { r: 10, h: 2.5 },
   assets: { models: ['bluesmobile', 'police_car', 'street_lamp'], tex: ['bd_chicago', 'tx_asphalt', 'tx_fac_office', 'tx_fac_nyc', 'tx_concrete', 'tx_roof', 'tx_metal'] },
   build(s) {
-    s.env('overcast', { backdrop: 'bd_chicago', look: 'bleach', fog: 0.0016 });
+    // 95th Street bridge over the Calumet, Chicago: flat grey industrial overcast, damp haze over the river, bleached stock
+    s.env('overcast', { backdrop: 'bd_chicago', look: 'bleach', fog: 0.0023, fogMix: 0.5, lookOver: { contrast: 1.16, tint: [0.98, 1.0, 1.0] } });
     s.ground({ tex: 'tx_concrete', y: -0.2, base: false, color: 0x777777 });
     s.terrain({ x0: -260, x1: 260, z0: 100, z1: -800, res: 6, fn: (x, z) => -9 * smooth(0, 6, Math.min(z + 366, -296 - z)), tex: 'tx_concrete', tile: 12 }); s.water({ y: -5, color: 0x3a4a44, w: 520, d: 66, z: -331, size: 520 });
     street(s, { z0: 100, z1: -292, width: 14, lanes: 4, fac: ['tx_fac_office', 'tx_fac_nyc'], height: [18, 46], lamps: 38 }); street(s, { z0: -370, z1: -800, width: 14, lanes: 4, fac: ['tx_fac_office', 'tx_fac_nyc'], height: [18, 46], lamps: 38, seedv: 9 });
-    const L = 30, pA = -298, pB = -364, st = { th: 0 }; const steel = s.mat({ tex: 'tx_metal', color: 0x6a7480, metal: 0.5, rough: 0.6 });
+    const L = 30, pA = -298, pB = -364, st = { th: 0 }; const steel = s.mat({ tex: 'tx_metal', color: 0x8a949a, metal: 0.1, rough: 0.75, emissive: 0x3a4248, emI: 0.5, emMap: true });
     const mk = (pz, dir) => { const g = new THREE.Group(); g.position.set(0, 0, pz); s.scene.add(g); s.box({ parent: g, x: 0, y: -0.9, z: dir * L / 2, w: 14, h: 0.9, d: L, mat: steel, tile: 5 }); for (const sx of [-7.3, 7.3]) s.box({ parent: g, x: sx, y: 0, z: dir * L / 2, w: 0.4, h: 2.2, d: L, mat: steel }); return g; };
     const gA = mk(pA, -1), gB = mk(pB, 1);
     s.course.addPiece({ x0: -7, x1: 7, z0: pA - L, z1: pA, fn: (x, z) => (pA - z) * Math.tan(st.th), step: 2.5 }); s.course.addPiece({ x0: -7, x1: 7, z0: pB, z1: pB + L, fn: (x, z) => (z - pB) * Math.tan(st.th), step: 2.5 });
     for (const x of [-3.5, 3.5]) s.box({ x, y: 0.9, z: -286, w: 6.6, h: 0.18, d: 0.18, mat: s.mat({ color: 0xdd2222 }), solid: 'break', sol: { soft: true, debris: 0xdd2222 } });
+    // bridge tender houses at the four corners of the bascule, a barge and a tug working the river, all clear of the deck
+    { const wall = s.mat({ tex: 'tx_concrete', color: 0x8a8274 }), glass = s.mat({ color: 0x2a3238, metal: 0.6, rough: 0.2 }), rust = s.mat({ tex: 'tx_metal', color: 0x5a3a2a, metal: 0.4, rough: 0.8 }), dark = s.mat({ color: 0x1e2226 });
+      for (const sx of [-1, 1]) for (const z of [pA + 3.5, pB - 3.5]) { s.box({ x: sx * 10.6, y: 0, z, w: 4.2, h: 4.8, d: 5, mat: wall, tile: 3 }); s.box({ x: sx * 10.6, y: 3.0, z, w: 4.3, h: 1.1, d: 5.1, mat: glass, cast: false }); s.box({ x: sx * 10.6, y: 4.8, z, w: 5, h: 0.35, d: 5.8, mat: dark }); }
+      // warehouses and lofts lining both banks so the river reads as a canyon, not an empty plain
+      srand(61); for (const sx of [-1, 1]) for (const [zb, sz] of [[-291, 1], [-371, -1]]) for (let x = 36; x < 260;) { const w = sr(14, 34), d = sr(14, 22); s.building({ x: sx * (x + w / 2), z: zb + sz * d / 2, w, d, h: sr(9, 26), fac: sr() < 0.5 ? 'tx_fac_nyc' : 'tx_fac_office', solid: false }); x += w + sr(0, 6); }
+      s.box({ x: -52, y: -5.6, z: -342, w: 34, h: 1.9, d: 9, mat: rust, tile: 4 }); s.box({ x: -52, y: -3.7, z: -342, w: 31, h: 0.5, d: 7.6, mat: dark }); s.box({ x: 70, y: -5.5, z: -322, w: 12, h: 1.9, d: 5, mat: rust }); s.box({ x: 72, y: -3.6, z: -322, w: 5, h: 3, d: 3.8, mat: wall }); s.cyl({ x: 73, y: -0.6, z: -322, r: 0.45, h: 2.2, mat: dark }); }
     s.crew({ x: 6.2, z: 30, ry: 0.9 });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'bluesmobile', x: 0, z: 40, hard: 12.5, nose: -0.42, air: 0.5, pitchTol: 0.6, top: 50 });
     const mv = new Movers(s, car); for (let i = 0; i < 3; i++) mv.add({ model: 'police_car', x: (i - 1) * 3.6, z: 62 + i * 7, v: 0, nearMiss: false, solid: false, ai: (e, dt) => { if (!s.started) return; const want = e.z < -265 ? 0 : Math.max(10, car.v * (0.9 - i * 0.03)); e.v += (want - e.v) * Math.min(1, dt * (want ? 1.5 : 4)); } });
@@ -270,15 +304,22 @@ const boat = {
   brief: 'Follow the bayou flat out and take the levee road at full throttle. The world record is one hundred and ten feet. There is a Sheriff parked on that road, so do keep it tidy.',
   tips: ['Boats slide — turn <b>early</b> and stay off the banks.', 'Hit the earth ramp in the centre of the river, throttle wide open.', 'Match the record: <b>110 feet</b>. Land flat and keep going.'],
   controls: `${K('W')} throttle &nbsp; ${K('A')}${K('D')} steer &nbsp; ${K('S')} ease off`, intro: { r: 9, h: 2.2 },
-  assets: { models: ['speedboat', 'police_car', 'oak_tree', 'ch_spy'], tex: ['bd_bayou', 'tx_grass', 'tx_dirt', 'tx_asphalt'] },
+  assets: { models: ['speedboat', 'police_car', 'oak_tree', 'ch_spy'], tex: ['bd_bayou', 'tx_grass', 'tx_dirt', 'tx_asphalt', 'tx_wood'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_bayou', look: 'warm60s', fog: 0.002 });
+    // Louisiana bayou in high summer: hot hazy sun through humid air, olive water, cypress walls hung with moss, muddy banks
+    s.env('day', { backdrop: 'bd_bayou', look: 'warm60s', sun: [38, 40], fog: 0.0032, fogMix: 0.5, lookOver: { sat: 0.9, contrast: 1.08, tint: [1.05, 1.02, 0.88] } });
     const W = 15, RZ = -690; const bank = (x, z) => { const d = Math.abs(x - rcx(z)) - W; return z < RZ + 2 && z > RZ - 16 ? 1.7 : (d < 0 ? -1.2 : Math.min(2.2, d * 0.35) + Math.sin(x * 0.2 + z * 0.13) * 0.15); };
-    s.terrain({ x0: -120, x1: 120, z0: 90, z1: -1000, res: 3.5, fn: bank, tex: "tx_grass", tile: 5, base: false }); s.water({ y: 0, color: 0x35503a, opacity: 0.9 });
+    s.terrain({ x0: -120, x1: 120, z0: 90, z1: -1000, res: 3.5, fn: bank, mat: { tex: 'tx_grass', color: 0x95a070 }, tile: 5, base: false, vary: { patch: 0x6a5a3a, amt: 0.5 } }); s.water({ y: 0, color: 0x35503a, opacity: 0.9 });
     const rx = rcx(RZ - 6); s.slope({ x: rx, w: 9, z0: RZ + 14, z1: RZ, y0: -0.4, y1: 1.9, curve: 1.4, mat: { tex: 'tx_dirt', rep: 0.15 } });
     s.box({ x: 0, y: 1.72, z: RZ - 7, w: 240, h: 0.1, d: 9, mat: { tex: 'tx_asphalt' }, cast: false }); s.course.addPiece({ x0: -120, x1: 120, z0: RZ - 16, z1: RZ, fn: () => 1.8, step: 0.5 });
     s.put('police_car', { x: rx + 9, y: 1.8, z: RZ - 7, ry: Math.PI / 2, solid: true, sol: { msg: 'Landed on the Sheriff' } }); s.put('police_car', { x: rx - 15, y: 1.8, z: RZ - 6.5, ry: -Math.PI / 2 + 0.3 });
     s.forest('tree:cypress', 420, (r) => { const z = 80 - r() * 1060, sd = r() < .5 ? -1 : 1; return [rcx(z) + sd * (W + 4 + Math.pow(r(), 1.6) * 70), z]; }, { h: [9, 17], seedv: 12 });
+    // framing: a cypress wall a few metres back from each bank, scrub and dead snags at the water's edge, a fishing shack, poles along the levee road, a low tree line closing the horizon
+    { const bk = (x, z) => Math.max(0, bank(x, z)), edge = (i, lo, hi, gap) => { const z = sr(80, -1000), x = rcx(z) + (i % 2 ? 1 : -1) * (W + sr(lo, hi)); return Math.abs(z - RZ) < gap ? null : [x, z, bk(x, z)]; };
+      s.trees('cypress', 380, (r, i) => edge(i, 2.5, 16, 24), { h: [11, 20], seedv: 52 }); s.trees('bush', 260, (r, i) => edge(i, -0.3, 3.5, 18), { h: [1.2, 2.8], seedv: 53, wide: 1.5 }); s.trees('dead', 34, (r, i) => edge(i, 0.5, 6, 30), { h: [6, 11], seedv: 54 });
+      const sz = -430, sx = rcx(sz) + W + 13; dress.barn(s, { x: sx, y: bk(sx, sz) - 0.2, z: sz, w: 6, d: 8, h: 3, ry: Math.PI / 2 + 0.2, color: 0x7a7266, roof: 0x8a8a86, roofTex: 'tx_asphalt' });
+      dress.poles(s, { path: [[-118, RZ - 13], [rx - 18, RZ - 13]] }); dress.poles(s, { path: [[rx + 22, RZ - 13], [118, RZ - 13]] });
+      dress.hills(s, { z: -460, r: 560, h: 12, color: 0x3a4630, trees: 'cypress', nTrees: 170 }); }
     s.crew({ x: rcx(40) + W + 4, y: 1.4, z: 40, ry: 1.3 });
     const b = s.car = new Drive(s, { kind: 'boat', model: 'speedboat', driver: 'ch_spy', driverPos: [-0.35, -0.42, 0.5], x: rcx(50), z: 50, y: 0, cam: { dist: 9, height: 3.2 }, pitchTol: 0.7, hard: 14 }); b.gravK = 1; b.k.handbrake = false;
     let jumped = false, landed = false, off = 0, tot = 0; s.objective('Follow the bayou to the levee');
@@ -302,7 +343,8 @@ const french = {
   controls: CTL.drive, intro: { r: 9, h: 2.2 },
   assets: { models: ['lemans', 'street_lamp', 'fruit_cart', 'cardboard_boxes', ...TRAFFIC], tex: ['bd_brooklyn', 'tx_asphalt', 'tx_fac_nyc', 'tx_brick', 'tx_concrete', 'tx_roof', 'tx_metal'] },
   build(s) {
-    s.env('overcast', { backdrop: 'bd_brooklyn', look: 'bleach', fog: 0.0024 });
+    // Bensonhurst, January 1971: flat white winter overcast, the street striped in the El's shadow, cold bleached grain
+    s.env('overcast', { backdrop: 'bd_brooklyn', look: 'bleach', fog: 0.0026, amb: 1.4, sunI: 1.4, lookOver: { tint: [0.96, 1.0, 1.04], contrast: 1.18, grain: 0.07 } });
     s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x777777 });
     const Z1 = -1150; street(s, { z0: 80, z1: Z1 - 80, width: 17, lanes: 4, fac: ['tx_fac_nyc', 'tx_brick'], height: [12, 22], lamps: 0, double: true });
     const steel = s.mat({ tex: 'tx_metal', color: 0x3d4a44, metal: 0.4, rough: 0.7 });
@@ -312,6 +354,11 @@ const french = {
     for (const [x, z] of [[-6.7, -330], [6.7, -660], [-6.7, -960]]) s.put('cardboard_boxes', { x, z, height: 2, solid: 'break', sol: { soft: true, debris: 0xb08a55 } });
     // the train
     const tr = new THREE.Group(), tm = s.mat({ tex: 'tx_metal', color: 0x8a8f86, metal: 0.5, rough: 0.5 }); for (let i = 0; i < 4; i++) { s.box({ parent: tr, x: 0, y: 0, z: i * 16.4, w: 2.9, h: 3.1, d: 15.8, mat: tm, tile: 3 }); s.box({ parent: tr, x: 0, y: 1.5, z: i * 16.4, w: 2.96, h: 0.9, d: 14.5, mat: s.mat({ color: 0x151a1e, rough: 0.2, metal: 0.8 }), cast: false }); } tr.userData.size = V3(2.9, 3.1, 16);
+    // El cross girders over each pillar pair, shop signs on the facades, pedestrians on the sidewalks (all visual, above or outside the lanes)
+    { srand(71); for (let z = 60; z > Z1 - 60; z -= 22) s.box({ x: 0, y: 6.3, z, w: 9.4, h: 0.9, d: 0.45, mat: steel, cast: false });
+      const shops = ['DELI', 'PIZZA', 'BAR', 'SHOES', 'PAWN', 'BAKERY', 'HARDWARE', 'LIQUORS', 'DINER', 'BARBER', 'CLEANERS', 'FURNITURE'], cols = ['#7a1a14', '#123a5a', '#1a4a2a', '#5a3a12', '#2a2a2a', '#6a5a1a'];
+      for (let i = 0, z = 40; z > Z1 - 40; z -= sr(28, 60), i++) { const sd = i % 2 ? 1 : -1; sign(s, shops[i % shops.length], { x: sd * 10.7, y: 4.4, z, w: 2.6, ry: 0, bg: cols[i % cols.length], size: 58, glow: 0.62 }); }
+      for (const sd of [-1, 1]) dress.crowd(s, { path: [[sd * 11.4, 60], [sd * 11.4, Z1 + 60]], rows: 1, step: 4.2, gaps: 0.72, side: sd, face: sd * Math.PI / 2, colors: [0x2a2a2a, 0x3a3428, 0x4a3a30, 0x202838, 0x5a4a3a, 0x6a6a6a], seed: 72 + sd }); }
     s.crew({ x: 7.6, z: 26, ry: 0.9 });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'lemans', x: -2.2, z: 30, crashV: 14 });
     const mv = new Movers(s, car); const train = mv.add({ obj: tr, x: 0, y: 8.1, z: 10, v: 0, solid: false, nearMiss: false, ai: (e, dt) => { if (s.started) { const gap = car.pos.z - e.z; e.v += ((gap > 160 ? 6 : 19) - e.v) * Math.min(1, dt * 0.5); } } });
@@ -329,14 +376,14 @@ const french = {
 
 // What the player is asked to do, in plain numbers, plus the film's signature camera angles for the replay.
 const EXTRA = {
-  italian_job: { goals: { shot: ['Drive along the roof and hit the wooden ramp at 55–70 mph', 'Jump the gap and land on the far roof', 'Brake and stop inside the green box'], cut: ['You drop into the street (too slow at the ramp)'], stars: ['Take-off speed', 'Landing', 'Stopping on the mark', 'Missing the skylights'] }, cine: ['low', 'wide', 'front'] },
-  great_escape: { goals: { shot: ['Ride through the gap in the first fence', 'Be doing 50+ mph when you hit the grass bank', 'Clear the barbed wire and land, then ride on'], cut: ['You hit the wire (too slow at the bank)'], stars: ['Speed at the bank', 'Landing', 'Time'] }, cine: ['wide', 'low', 'track'] },
+  italian_job: { goals: { shot: ['Drive along the roof and hit the wooden ramp at 55–70 mph', 'Jump the gap and land on the far roof', 'Brake and stop inside the green box'], cut: ['You drop into the street (too slow at the ramp)'], stars: ['Take-off speed', 'Landing', 'Stopping on the mark', 'Missing the skylights'] }, cine: [{ type: 'wide', pos: [17, 31.5, -158], fov: 42, lookUp: 0.3, a: -0.15, b: 1.2, speed: 0.45 }, { type: 'low', pos: [-13, 1.8, -161], fov: 30, a: 0.13, b: 0.5, speed: 0.45 }, 'front'] },
+  great_escape: { goals: { shot: ['Ride through the gap in the first fence', 'Be doing 50+ mph when you hit the grass bank', 'Clear the barbed wire and land, then ride on'], cut: ['You hit the wire (too slow at the bank)'], stars: ['Speed at the bank', 'Landing', 'Time'] }, cine: [{ type: 'low', pos: [10, 0.6, -339], fov: 36, lookUp: 0.4, a: 0.12, b: 0.95, speed: 0.4 }, { type: 'wide', side: 1 }, 'track'] },
   smokey: { goals: { shot: ['Drive straight down the dirt road, flat out', 'Smash the BRIDGE OUT barrier at 70+ mph', 'Fly the river and land on the far road'], cut: ['You land in the river (too slow)'], stars: ['Take-off speed', 'Landing', 'Not hitting anything'] }, cine: [{ type: 'front', pos: [-30, 2.2, -351], fov: 36, lookUp: 0.4, speed: 0.4 }, 'low', { type: 'wide', speed: 0.8 }] },
-  general_lee: { freeze: { line: 'Now most folks would have called it a day right there. Not this one.', shot: 1, at: 0.5 }, liveShots: ['low', 'track'], goals: { shot: ['Floor it down the dirt track to the ramp', 'Hold W in the air to keep the heavy nose up', 'Land on all four wheels past the patrol cars'], cut: ['You land nose-first and fold the car'], stars: ['Distance (feet)', 'Landing'] }, cine: ['wide', 'low', 'track'] },
-  bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire — within 1.5 s of the bolt', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: ['front', 'low', 'wide'], liveShot: 'front' },
-  bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving'] }, cine: ['front', 'low', 'track'] },
-  blues_brothers: { goals: { shot: ['Drive at the drawbridge as it starts to rise', 'The longer you wait, the steeper it gets — and the more you earn', 'Hold W in the air and land on the far side'], cut: ['You drop into the river'], stars: ['Nerve (bridge angle)', 'Landing'] }, cine: ['wide', 'low', 'front'] },
-  boat_jump: { goals: { shot: ['Follow the bayou channel at full throttle', 'Hit the earth ramp in the middle of the river', 'Jump the levee road — the record is 110 feet'], cut: ['You crash into the Sheriff'], stars: ['Jump distance vs the record', 'Landing', 'Staying off the banks'] }, cine: ['wide', 'low', 'track'] },
-  french_connection: { goals: { shot: ['Drive under the elevated railway, chasing the train above', 'Weave through the traffic and between the steel pillars', 'Stay level with the train to the end of the line'], cut: ['You hit a pillar or a car head-on'], stars: ['Keeping up with the train', 'Bodywork'] }, cine: ['track', 'front', 'rear'] },
+  general_lee: { freeze: { line: 'Now most folks would have called it a day right there. Not this one.', shot: 1, at: 0.5 }, liveShots: ['low', 'track'], goals: { shot: ['Floor it down the dirt track to the ramp', 'Hold W in the air to keep the heavy nose up', 'Land on all four wheels past the patrol cars'], cut: ['You land nose-first and fold the car'], stars: ['Distance (feet)', 'Landing'] }, cine: [{ type: 'wide', pos: [21, 3, -238], fov: 36, speed: 1 }, { type: 'low', pos: [7, 0.4, -294], fov: 60, lookUp: 0.2, a: 0.36, b: 1.05, speed: 0.4 }, 'track'] },
+  bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire — within 1.5 s of the bolt', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: [{ type: 'rear', pos: [-5.4, 0.8, -528], fov: 42, lookUp: 0.5, a: 0.45, b: 1.12, speed: 0.5 }, { type: 'front', pos: [2.6, 0.45, -614], fov: 30, lookUp: 0.3, a: 0.6, b: 1.2, speed: 0.5 }, { type: 'track', a: 0.2, b: 0.9, speed: 0.6 }], liveShot: 'front' },
+  bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving'] }, cine: [{ type: 'front', pos: [0, hz(-1190) + 1.3, -1190], fov: 11, lookUp: 0.6, a: 0.35, b: 1.0, speed: 0.55 }, 'track', { type: 'low', side: -1 }] },
+  blues_brothers: { goals: { shot: ['Drive at the drawbridge as it starts to rise', 'The longer you wait, the steeper it gets — and the more you earn', 'Hold W in the air and land on the far side'], cut: ['You drop into the river'], stars: ['Nerve (bridge angle)', 'Landing'] }, cine: [{ type: 'wide', pos: [42, 7, -318], fov: 26, lookUp: 0.3, a: -0.12, b: 0.62, speed: 0.45 }, 'low', 'front'] },
+  boat_jump: { goals: { shot: ['Follow the bayou channel at full throttle', 'Hit the earth ramp in the middle of the river', 'Jump the levee road — the record is 110 feet'], cut: ['You crash into the Sheriff'], stars: ['Jump distance vs the record', 'Landing', 'Staying off the banks'] }, cine: [{ type: 'wide', pos: [rcx(-696) + 11, 0.9, -715], fov: 46, lookUp: 0.3, a: 0.08, b: 0.8, speed: 0.4 }, { type: 'wide', side: -1 }, 'track'] },
+  french_connection: { goals: { shot: ['Drive under the elevated railway, chasing the train above', 'Weave through the traffic and between the steel pillars', 'Stay level with the train to the end of the line'], cut: ['You hit a pillar or a car head-on'], stars: ['Keeping up with the train', 'Bodywork'] }, cine: [{ type: 'front', pos: [-7.9, 0.6, -1186], fov: 24, lookUp: 0.4, a: 0.45, b: 1.05, speed: 0.55 }, 'track', 'rear'] },
 };
 export default [italian, greatEscape, smokey, generalLee, bttf, bullitt, blues, boat, french].map(d => Object.assign(d, EXTRA[d.id]));

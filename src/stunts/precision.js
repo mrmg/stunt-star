@@ -43,7 +43,7 @@ const steamboat = {
       s.audio.set('storm', 'wind', 0.7 + Math.abs(st.w) * 0.08, 0.35 + Math.abs(st.w) * 0.05);
       if (!s.started) return;
       if (st.fall < 0 && el >= DROP) { st.fall = 0; s.audio.crash?.(0.5); s.engine.addShake(0.4); s.msg('THE WALL IS GOING!', 'bad'); s.objective('HOLD YOUR MARK');
-        const SH = Math.PI; st.mom = s.moment('The falling house', { t0: s.t - 1.0, t1: s.t + FALLT + 1.8, w: 3, shots: [{ type: 'front', a: -0.1, b: 1.0, speed: 1, heading: SH, fov: 36 }, { type: 'low', a: 0.1, b: 0.95, speed: 0.4, heading: SH }, { type: 'top', a: 0.4, b: 1.05, speed: 0.7, heading: SH }] }); }
+        const SH = Math.PI; st.mom = s.moment('The falling house', { t0: s.t - 1.0, t1: s.t + FALLT + 1.8, w: 3, shots: [{ type: 'front', pos: [2.2, 1.7, 13], fov: 40, lookUp: 2.3, a: -0.1, b: 1.0, speed: 1 }, { type: 'low', a: 0.1, b: 0.95, speed: 0.4, heading: SH }, { type: 'wide', pos: [-11.5, 1.5, 0.6], fov: 36, lookUp: 1.9, a: 0.15, b: 1.05, speed: 0.6 }] }); } // the film's two angles: square-on wide with the whole facade in frame, then side-on as it comes down past him
       if (st.fall > 1.0 && !st.slow && !st.done) { st.slow = true; s.slowmo(0.3, 1.0); }
       if (st.fall >= 0 && !st.done) {
         st.fall += dt; const k = clamp(st.fall / FALLT); st.th = Math.PI / 2 * Math.pow(k, 2.4); piv.rotation.x = st.th;
@@ -81,7 +81,7 @@ const spidey = {
   controls: `${K('A')}${K('D')} left / right &nbsp; ${K('W')}${K('S')} back / forward`, intro: { r: 6.5, h: 2.6, up: 1 },
   assets: { models: ['ch_stunt', 'ch_bride', 'camera_crew', 'film_light', 'director_chair'], tex: ['tx_concrete', 'tx_wallpaper', 'tx_wood', 'tx_metal'] },
   build(s) {
-    s.env('indoor', { look: 'neutral', amb: 1.5, sunI: 1.6, sun: [70, 20], fog: 0.00001, top: 0x30343a, hor: 0x50545a });
+    s.env('indoor', { look: 'neutral', amb: 1.5, sunI: 1.6, sun: [70, 20], fog: 0.00001, top: 0x30343a, hor: 0x50545a, lookOver: { tint: [1.06, 1.0, 0.9], sat: 1.12, contrast: 1.1, bloom: 0.45 } }); // warm, glossy 2002 Raimi grade
     s.ground({ tex: 'tx_concrete', tile: 2.2, color: 0xd9d2bf });
     const wall = { tex: 'tx_wallpaper', color: 0xe6dfc8 }, top = { tex: 'tx_wood', color: 0xd8c9a8 }, leg = { color: 0x8a8f96, metal: 0.7, rough: 0.4 }, seat = { color: 0x2f6a8a }, win = { color: 0xdff0ff, emissive: 0xcfe6ff, emI: 0.55 };
     s.box({ x: 0, y: 0, z: -9, w: 30, h: 6, d: 0.3, mat: wall, tile: 4 }); for (const sx of [-1, 1]) s.box({ x: sx * 13, y: 0, z: 0, w: 0.3, h: 6, d: 18, mat: wall, tile: 4 }); s.box({ x: 0, y: 6, z: 0, w: 30, h: 0.3, d: 18, color: 0xeeeeee, cast: false });
@@ -109,7 +109,7 @@ const spidey = {
     const finish = () => {
       st.over = true; const n = st.caught; s.rate(`Catches (${n} / ${N})`, n / N, 3); s.rate('Centre of the tray', n ? st.sum / n : 0, 1.5);
       const t0 = s.t0 + items[N - 5].t0 + items[N - 5].T - 1.2;
-      s.moment(n === N ? 'Every last bite' : 'The lunch tray', { t0, t1: s.t + 1.2, w: 2 + n / N, shots: [{ type: 'low', a: -0.05, b: 0.55, speed: 0.45 }, { type: 'wide', a: 0.3, b: 0.8, speed: 0.6, dist: 0.5 }, { type: 'orbit', a: 0.6, b: 1.05, speed: 0.45 }] });
+      s.moment(n === N ? 'Every last bite' : 'The lunch tray', { t0, t1: s.t + 1.2, w: 2 + n / N, shots: [{ type: 'wide', pos: [-1.5, 1.3, 3.4], fov: 34, lookUp: 0.5, a: -0.05, b: 0.6, speed: 0.45 }, { type: 'low', pos: [2.6, 0.95, 2.4], fov: 50, lookUp: 0.5, a: 0.3, b: 0.85, speed: 0.6 }, { type: 'orbit', a: 0.6, b: 1.05, speed: 0.45 }] }); // the film's medium two-shot: her slipping on the left, him stacking the lunch
       girl.setPose('stand', 0.4);
       if (n === N) { s.msg('ONE TAKE!', 'huge good'); s.after(0.5, () => s.audio.say('Wow. Nice reflexes.', { rate: 1, pitch: 1.35 })); s.after(1.2, () => s.audio.cheer?.(0.6)); s.wrap(2.4, 'Got it in one. The original needed 156 takes.'); }
       else { s.msg(`${n} OF ${N} ON THE TRAY`, n >= N - 2 ? 'good' : 'bad'); s.wrap(2, n >= N - 2 ? 'So close. The original needed 156 takes.' : 'Lunch is on the floor. Go again.'); }
@@ -158,7 +158,7 @@ const vault = {
   controls: `${K('W')} lower &nbsp; ${K('S')} raise &nbsp; ${K('SPACE')} arrest a slip &nbsp; ${K('E')} catch the sweat drop`, intro: { r: 6.5, h: 1.2, up: 0, a0: 0.9 },
   assets: { models: ['ch_agent'], tex: [] },
   build(s) {
-    s.env('indoor', { look: 'cold', amb: 0.8, sunI: 0.9, sun: [80, 30], fog: 0.00001, top: 0x8a96a4, hor: 0xa4aeb8, shadows: true });
+    s.env('indoor', { look: 'cold', amb: 1.25, sunI: 1.1, sun: [80, 30], fog: 0.00001, top: 0x8a96a4, hor: 0xa4aeb8, shadows: true, lookOver: { bloom: 0.55, sat: 0.8, contrast: 1.04, tint: [0.95, 1.0, 1.06] } }); // the vault: clinical, over-lit white
     const R = 6.5, CH = 7.4, white = { color: 0xdfe4ea, rough: 0.6 }, pane = { color: 0xcfd6de, rough: 0.5 }, grid = { color: 0x6f7c8c }, dark = { color: 0x23272d, rough: 0.5, metal: 0.4 };
     s.box({ x: 0, y: -0.3, z: 0, w: 2 * R, h: 0.3, d: 2 * R, mat: white }); s.box({ x: 0, y: CH, z: 0, w: 2 * R, h: 0.3, d: 2 * R, mat: white, cast: false });
     for (const [x, z, w, d] of [[0, -R, 2 * R, 0.3], [0, R, 2 * R, 0.3], [-R, 0, 0.3, 2 * R], [R, 0, 0.3, 2 * R]]) s.box({ x, y: 0, z, w, h: CH, d, mat: pane, cast: false });
@@ -175,7 +175,8 @@ const vault = {
     const Y0 = 6.1, BAND = [1.06, 1.5], VMAX = 2.4, FLOOR = 0.34, QUIET = 0.45, st = s.st = { y: Y0, vy: 0, sw: 0, noise: 0, maxN: 0, temp: 0, prog: 0, phase: 'in', slip: null, slips: 0, drops: [], sweat: null, sweats: 0, sw8: [], jolt: 0, alarm: false };
     s.cam.fixed(V3(4.6, 1.9, 4.9), () => ({ pos: s.focus }), { fov: 46, up: 0, lookStiff: 4 }); s.introFocus = V3(0, 1.6, 0);
     const alarm = (why, advice) => { if (st.alarm) return; st.alarm = true; laser.material.opacity = 0.35; s.hemi.color.set(0xff3030); s.audio.bell(); s.audio.bad?.(); s.engine.flash(0.5); s.fail(why, { injury: 0.1, advice }); };
-    const SHOTS = [{ type: 'orbit', a: -0.1, b: 1.0, speed: 0.35 }, { type: 'low', a: 0.1, b: 0.95, speed: 0.5, heading: Math.PI }, { type: 'track', a: 0.3, b: 1.05, speed: 0.7, fov: 40 }];
+    // the film's frames: flat on the white floor looking along it at him (inches to spare), the slow orbit, and straight down from the vent
+    const SHOTS = [{ type: 'low', pos: [3.6, 0.75, 0.4], fov: 42, lookUp: 0.45, a: -0.05, b: 1.0, speed: 0.45 }, { type: 'orbit', a: 0.0, b: 1.0, speed: 0.4 }, { type: 'top', pos: [1.2, 6.9, 2.6], fov: 44, lookUp: 0.3, a: 0.3, b: 1.05, speed: 0.6 }];
     // the director's calls: close shaves, noise spikes and a warm room cost stars, they do not stop the take
     const done = () => { const av = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : st.prog; s.rate('Download', st.prog, 1.5); s.rate('Silence', clamp(1.3 - st.maxN * 1.1), 1.2); s.rate('Rope arrests', av(st.drops.map(d => near(d, 0, 0.18, 0.95))), 1.2); s.rate('Sweat catch', av(st.sw8), 1); s.rate('Cool room', clamp((1.05 - st.temp) / 0.45), 0.8); };
     s.objective('Lower to the terminal — quietly');
@@ -234,13 +235,13 @@ const vault = {
 
 // What the player is asked to do, in plain numbers, plus the film's signature camera angles for the replay.
 const EXTRA = {
-  steamboat: { cine: [{ type: 'front', heading: Math.PI, fov: 36 }, { type: 'low', heading: Math.PI }, { type: 'top', heading: Math.PI }], goals: {
+  steamboat: { cine: [{ type: 'front', pos: [2.2, 1.7, 13], fov: 40, lookUp: 2.3 }, { type: 'low', heading: Math.PI }, { type: 'top', heading: Math.PI }], goals: {
     shot: ['Walk onto the white chalk cross with A/D — the "Off the mark" readout should say 0', 'The storm shoves you about for 17 s: tap the key against the wind (wind ▶ = tap A, ◀ wind = tap D) to stay under 10 cm', 'When the wall drops (1.75 s) stay still on the mark'],
     cut: ['You are more than about 64 cm off the mark when the wall lands (it lands on you)'], stars: ['On the mark: under 10 cm perfect, under 28 cm clean, 28–64 cm the window frame clips you', 'Not moving as it lands'] } },
-  spiderman_tray: { cine: ['low', { type: 'wide', dist: 0.5 }, 'orbit'], goals: {
+  spiderman_tray: { cine: [{ type: 'wide', pos: [-1.5, 1.3, 3.4], fov: 34, lookUp: 0.5, speed: 0.5 }, { type: 'low', pos: [2.6, 0.95, 2.4], fov: 50, lookUp: 0.5 }, 'orbit'], goals: {
     shot: ['14 items fly off her tray, one every 1–1.75 s, in the order they are thrown', 'Each shows a yellow ring on the floor where it will land: move your white tray ring onto it with W A S D before it comes down', 'A dropped item splats on the floor — keep going, the take always runs to the 14th item'],
     cut: ['Nothing — the take ends after the last item, caught or not'], stars: ['How many of the 14 you caught', 'How close to the tray centre each landed'] } },
-  mi_vault: { cine: [{ type: 'orbit', speed: 0.35 }, { type: 'low', heading: Math.PI }, { type: 'track', fov: 40 }], goals: {
+  mi_vault: { cine: [{ type: 'low', pos: [3.6, 0.75, 0.4], fov: 42, lookUp: 0.45, speed: 0.45 }, { type: 'orbit', speed: 0.35 }, { type: 'top', pos: [1.2, 6.9, 2.6], fov: 44, lookUp: 0.3 }], goals: {
     shot: ['Hold W gently to lower to the screen (Above floor 70–115 cm) — over half speed raises the Sound meter', 'Hover there ~10 s while the Download bar fills; when the rope ticks and slips, press SPACE at once', 'Twice a bead of sweat falls: press E while the marker is in the green band', 'When the download completes, hold S to rise back to the vent'],
     cut: ['You (or the slipping rope) touch the floor'], stars: ['Download', 'Silence', 'Rope arrests (how far it slipped)', 'Sweat catches', 'Cool room (be out inside ~58 s)'] } },
 };

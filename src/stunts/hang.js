@@ -3,6 +3,7 @@ import { Grip } from '../modes/grip.js';
 import { POSES } from '../world/character.js';
 import { clamp, near, smooth, V3, rnd, sr, srand, lerp, damp } from '../world/stage.js';
 import { K, CTL, sign } from './common.js';
+import * as dress from '../world/dress.js';
 
 const ftOf = m => Math.round(m * 3.281);
 // --- shared helpers -----------------------------------------------------------------------------
@@ -76,7 +77,7 @@ const safetyLast = {
         if (g.v > 30.5) { s.objective('Get under the tip of the big hand and leap'); g.promptText = inReach ? `${K('E')} leap for the hand` : ''; }
         if (inReach && s.input.hit('x')) { phase = 1; pt = 0; g.promptText = ''; g.o.range = null; g.o.pose = 'hang'; g.o.idleCycle = 'hang'; g.o.bracePose = 'hoseswing'; g.o.movePose = 'climb'; s.cam.set({ up: 2.6, height: 3.2, dist: 9.5 }); s.audio.whoosh(1); s.slowmo(0.5, 0.5); s.msg('GOT IT!', 'good'); s.objective('Hang on — brace when it gives');
           haT = -1.05; s.rate('Leap', near(g.u, tip.x, 0.6, 1.8), 0.5);
-          const SH = Math.PI; const m = s.moment('Hanging from the clock', { t0: s.t - 0.7, dur: 7.4, w: 3, shots: [{ type: 'low', a: 0, b: 0.42, speed: 0.6, heading: SH }, { type: 'wide', a: 0.3, b: 0.75, speed: 0.8, heading: SH }, { type: 'wide', a: 0.62, b: 1.02, speed: 0.7, heading: SH, dist: 0.5 }] });
+          const SH = Math.PI; const m = s.moment('Hanging from the clock', { t0: s.t - 0.7, dur: 7.4, w: 3, shots: [{ type: 'wide', pos: [9, 40.5, 7.5], fov: 36, lookUp: 0.9, a: 0, b: 0.5, speed: 0.6 }, { type: 'wide', a: 0.3, b: 0.75, speed: 0.8, heading: SH }, { type: 'wide', a: 0.62, b: 1.02, speed: 0.7, heading: SH, dist: 0.5 }] });
           m.freeze = { line: 'Twelve storeys up, and the boy found the one thing on Broadway that was slower than he was.', shot: 1, at: 0.62 };
           g.gust(1.7, { label: 'THE HAND IS GIVING WAY!', sfx: 'thud', power: 0.4, on: () => { haT = -0.38; s.audio.bell(); s.slowmo(0.4, 1.1); s.engine.addShake(0.6); } });
           g.gust(3.6, { label: 'THE FACE IS COMING OFF!', sfx: 'crash', power: 0.4, on: () => { faceT = 0.3; s.fx.debris(tip, 8, { color: 0x999999, speed: 3 }); s.fx.dust(V3(CX, CY, 0.6), 8, { color: [0.8, 0.8, 0.8] }); } });
@@ -150,7 +151,8 @@ const burj = {
       if (k > 0.4) g.u = clamp(g.u + k * 0.22 * dt, -9, 9); // the storm leans on you
       if (glove === 2 && g.v > Y0 + 5.4 * FH) { glove = 1; g.drainK = 2; padL?.material.color.setRGB(3, 0.1, 0.05); s.hud.readout('glv', 'GLOVES', '1 / 2', 'warn'); s.audio.bad(); s.objective('One glove dead — everything costs double'); g.lose(0.15, 'LEFT GLOVE — RED IS DEAD', null, { flub: false }); s.moment('Red is dead', { t0: s.t - 1.2, dur: 2.8, w: 1.2 }); s.fx.sparks(g.world.clone().add(V3(-0.3, 1.9, 0)), 10, { color: [1, 0.2, 0.1], speed: 3 }); }
       if (g.v >= TOP - 0.03 && Math.abs(g.u - WX) < 1.2) { won = true; g.done = true; s.hud.prompt(''); g.off.z = -0.6; g.v = TOP + 0.15; g.c.setPose('crouch', 0.3); s.msg('IN!', 'good'); s.slowmo(0.45, 0.9); s.audio.say('I am in.', { rate: 0.95, pitch: 0.8 });
-        s.moment('In through the window', { t0: s.t - 4.2, t1: s.t + 1.4, w: 3, shots: [{ type: 'wide', a: -0.05, b: 0.6, speed: 0.9, dist: 1.6 }, { type: 'orbit', a: 0.3, b: 0.9, speed: 0.5 }, { type: 'track', a: 0.6, b: 1.05, speed: 0.6, fov: 34 }] }); gripScores(s, g, { time: [38, 7, 24], timeW: 1.5 }); s.bonus('Beat the storm', Math.round(clamp((LIMIT - t - 8) / 20) * 2500)); s.wrap(1.6); }
+        // replay A (signature): from out past the corner of the tower, along the glass at him, the desert a quarter-mile below
+        s.moment('In through the window', { t0: s.t - 4.2, t1: s.t + 1.4, w: 3, shots: [{ type: 'wide', pos: [27, TOP - 2.5, 4.6], fov: 19, lookUp: 0.6, a: -0.05, b: 0.66, speed: 0.8 }, { type: 'track', a: 0.6, b: 1.05, speed: 0.6, fov: 34 }] }); gripScores(s, g, { time: [38, 7, 24], timeW: 1.5 }); s.bonus('Beat the storm', Math.round(clamp((LIMIT - t - 8) / 20) * 2500)); s.wrap(1.6); }
       else if (g.v >= TOP - 0.03) g.promptText = 'The open window is to the ' + (g.u < WX ? 'RIGHT →' : '← LEFT'); else g.promptText = '';
       if (t > LIMIT && !g.dead) { g.dead = true; g.detach(V3(9, 2, 4)); s.hud.prompt(''); s.fail('The sandstorm hit with you still on the glass', { injury: 1, advice: 'Climb in long bursts with W and rest only when Stamina drops under a quarter — you need about 3.5 m every 6 s to beat the storm. Drift right with D on the way up so you arrive under the window.' }); }
     });
@@ -169,12 +171,17 @@ const a400 = {
   controls: `hold ${K('SPACE')} brace &nbsp; ${K('E')} swing in through the door`, intro: { r: 16, h: 3, a0: -2.2, speed: 0.06, up: 0.5, fov: 50 },
   assets: { models: ['a400m', 'ch_agent', 'jeep_gc', 'van_white'], tex: ['bd_alps', 'tx_grass', 'tx_asphalt', 'tx_concrete', 'tx_metal', 'tx_fac_office'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_alps', look: 'teal_orange', fog: 0.0007, hz: 0.44, sun: [38, -65] });
+    // early-morning take-off: low sun from the door side, cool haze over the airfield, grey-green grade
+    s.env('day', { backdrop: 'bd_alps', look: 'teal_orange', fog: 0.0013, hz: 0.44, sun: [22, -70], sunCol: 0xffe2c0, amb: 0.85, lookOver: { sat: 0.95, contrast: 1.1 } });
     s.ground({ tex: 'tx_grass', tile: 9 });
     s.road({ z0: 260, z1: -2300, width: 46, lanes: 2, markColor: 0xf0f0f0 }); for (let z = 200; z > -2300; z -= 300) s.box({ x: 0, y: 0, z, w: 46, h: 0.05, d: 1.2, mat: { color: 0xdddddd }, cast: false });
     for (const [x, z, w, d, h] of [[-110, 40, 60, 40, 16], [-120, -60, 50, 50, 14], [120, -20, 44, 70, 18], [-105, -200, 30, 30, 9]]) s.building({ x, z, w, d, h, fac: 'tx_metal', solid: false, facTile: 9, roofMat: { tex: 'tx_metal', color: 0x889098 } });
     s.cyl({ x: 92, y: 0, z: 80, r: 3, h: 26, mat: 'tx_concrete' }); s.box({ x: 92, y: 26, z: 80, w: 9, h: 4, d: 9, mat: { glass: true, color: 0x7fb0c0, opacity: 0.7 } });
     s.forest('tree:pine', 420, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (70 + r() * r() * 500), 300 - r() * 2700]; }, { h: [9, 17], seedv: 3 }); s.forest('tree:oak', 160, r => [(r() < 0.5 ? -1 : 1) * (50 + r() * 300), -300 - r() * 2100], { h: [7, 12], seedv: 5 });
+    // airfield perimeter: wire fence, a dark tree line beyond the grass, hills closing the far end
+    dress.fence(s, { x: -62, z0: 250, z1: -2300, kind: 'wire', h: 2 }); dress.fence(s, { x: 62, z0: 250, z1: -2300, kind: 'wire', h: 2 });
+    dress.treeLine(s, { x: -140, z0: 260, z1: -2300, side: 1, depth: 12, step: 12, kinds: ['pine', 'oak'], h: [11, 18], seed: 51 }); dress.treeLine(s, { x: 150, z0: 260, z1: -2300, side: -1, depth: 12, step: 12, kinds: ['pine', 'pine', 'oak'], h: [11, 18], seed: 52 });
+    dress.hills(s, { z: -1000, r: 1500, h: 120, depth: 400, color: 0x4a5a42, trees: 'pine', nTrees: 160 });
     s.put('jeep_gc', { x: -30, z: 30, ry: -0.6 }); s.put('van_white', { x: -34, z: 22, ry: 0.4 }); s.crew({ x: -27, z: 14, ry: -2.2 });
     // aircraft
     const ac = grp(s.scene, 0, 0, 0); s.put('a400m', { parent: ac, len: 54, ry: -Math.PI / 2 }); /* this model's nose is on -X and its 'length' is the wingspan */ const DX = -3.2, DY = 2.3, DZ = 5.6;
@@ -203,7 +210,9 @@ const a400 = {
     const G = (tt, label, o = {}) => g.gust(tt, { label, power: 0.3, ...o });
     G(4.5, 'RUNWAY JOLT!', { kick: [0, -0.2, 0], sfx: 'thud', power: 0.22 }); G(9, 'CROSSWIND!', { kick: [-0.3, 0, 0], on: () => { rollT = 0.05; s.after(1, () => rollT = 0); } });
     G(13, 'ROTATION — NOSE UP!', { power: 0.34, sfx: 'thud', kick: [0, -0.3, 0.2], on: () => { pitchT = 0.21; s.objective('Airborne. Hang on until the door opens'); s.slowmo(0.4, 1.4); s.engine.addShake(0.8);
-      s.moment('Rotation — wheels up', { t0: s.t - 2.2, dur: 6.2, w: 3, shots: [{ type: 'track', a: -0.05, b: 0.55, speed: 0.75, fov: 36 }, { type: 'wide', a: 0.25, b: 0.85, speed: 0.6, dist: 1.8 }, { type: 'front', a: 0.5, b: 1.05, speed: 0.6 }] }); } });
+      // signature: side-on from the grass on the door side as the nose comes up, the agent a small dark shape on the fuselage (he passes ~0.8 s after rotation)
+      const sig = [-34, g.world.y + 1.2, g.world.z - v * 0.8];
+      s.moment('Rotation — wheels up', { t0: s.t - 2.2, dur: 6.2, w: 3, shots: [{ type: 'track', a: -0.05, b: 0.4, speed: 0.75, fov: 36 }, { type: 'wide', pos: sig, fov: 17, lookUp: 0.3, a: 0.3, b: 0.62, speed: 0.35 }, { type: 'front', a: 0.55, b: 0.92, speed: 0.6 }] }); } });
     G(16.5, 'GEAR UP!', { sfx: 'impact', kick: [0, 0.2, 0] }); s.after(0, () => { }); 
     G(19.6, 'BIRD STRIKE!', { power: 0.36, sfx: 'punch', failLabel: 'BIRD IN THE FACE!', on: () => { s.fx.debris(g.world.clone().add(V3(0, 1.5, -1)), 14, { color: 0xeeeeee, size: 0.1, speed: 5, floor: -100 }); } });
     G(22.6, 'BANKING HARD!', { kick: [-0.3, 0, 0], on: () => { rollT = -0.32; pitchT = 0.14; } }); G(25.2, 'LOOSE PANEL!', { power: 0.36, sfx: 'crash', on: () => { s.fx.debris(g.world.clone().add(V3(0, 1.5, -2)), 10, { color: 0x8a9298, size: 0.4, speed: 8, floor: -100 }); s.fx.sparks(g.world.clone().add(V3(0.3, 2, -1.5)), 20); } });
@@ -235,7 +244,8 @@ const cliffhanger = {
   controls: `${K('D')} along the cable &nbsp; ${K('A')} back &nbsp; hold ${K('SPACE')} brace`, intro: { r: 17, h: 3, a0: 0.5, speed: 0.05, up: 1, fov: 55 },
   assets: { models: ['a400m', 'learjet', 'ch_agent'], tex: ['bd_clouds', 'tx_snow', 'tx_rock'] },
   build(s) {
-    s.env('high', { backdrop: 'bd_clouds', look: 'cold', fog: 0.00016, hz: 0.5, sun: [42, 150] }); s.course.base = () => -1e6;
+    // haze: the peaks two miles down fade into the cloud deck instead of ending at the far plane
+    s.env('high', { backdrop: 'bd_clouds', look: 'cold', fog: 0.00026, hz: 0.5, sun: [42, 150] }); s.course.base = () => -1e6;
     const SPD = 78; // m/s, faked: the world goes past the aircraft
     const peaks = (x, z) => -2300 + Math.abs(Math.sin(x * 0.0021 + 1) * Math.cos(z * 0.0016)) * 900 + Math.sin(x * 0.006 + z * 0.004) * 220 + Math.sin(z * 0.011) * 90;
     const land = s.terrain({ x0: -5000, x1: 5000, z0: -9000, z1: 1500, res: 125, fn: peaks, mat: { tex: 'tx_snow', color: 0xe8eef6 }, tile: 260, base: false });
@@ -268,7 +278,8 @@ const cliffhanger = {
       if (!s.started || s.ended) return; s.hud.readout('m', 'METRES TO GO', Math.max(0, LEN - g.u).toFixed(0), ''); s.hud.readout('alt', 'ALT FT', 15000 + Math.round(g.world.y * 3.3), ''); s.hud.readout('tmp', 'TEMP', '-21°C', g.stam < 0.3 ? 'warn' : '');
       if (g.stam < 0.25) g.promptText = '<span style="color:#9fd0ff">FREEZING — keep moving</span>'; else g.promptText = '';
       if (g.u >= LEN - 0.02) { won = true; g.done = true; s.hud.prompt(''); g.c.over = null; gripScores(s, g, { time: [30, 4, 22], braceW: 2 }); s.rate('Strength left', clamp(g.stam * 3 + 0.25), 0.7); s.bonus('Most expensive stunt in the book', 5000); s.msg('MADE IT ACROSS!', 'good'); s.slowmo(0.45, 1);
-        s.moment('Across the line', { t0: s.t - 5, t1: s.t + 1.4, w: 3, shots: [{ type: 'wide', a: -0.05, b: 0.6, speed: 0.9, dist: 1.4 }, { type: 'track', a: 0.35, b: 0.85, speed: 0.6, fov: 34 }, { type: 'orbit', a: 0.65, b: 1.05, speed: 0.45 }] }); g.c.setPose('crouch', 0.3); small.attach(g.c.root); s.wrap(1.8); }
+        // replay B (signature): from just behind the transport's tail, along the sagging line to him and the little jet, over the cloud deck
+        s.moment('Across the line', { t0: s.t - 5, t1: s.t + 1.4, w: 3, shots: [{ type: 'wide', a: -0.05, b: 0.5, speed: 0.9, dist: 1.4 }, { type: 'wide', pos: [-3, 2.5, 21], fov: 34, lookUp: -0.4, a: 0.25, b: 0.8, speed: 0.6 }] }); g.c.setPose('crouch', 0.3); small.attach(g.c.root); s.wrap(1.8); }
     });
     s.dbg = () => ({ u: +g.u.toFixed(1), grip: +g.grip.toFixed(2), stam: +g.stam.toFixed(2), drift: +drift.toFixed(1) });
   },
@@ -284,12 +295,21 @@ const deathProof = {
   controls: `${K('A')}${K('D')} shuffle across the bonnet &nbsp; hold ${K('SPACE')} brace`, intro: { r: 7.5, h: 2.4, a0: 2.6, speed: 0.1, up: 0.6 },
   assets: { models: ['challenger_white', 'charger_black', 'ch_bride', 'ch_stunt'], tex: ['bd_georgia', 'tx_grass', 'tx_asphalt', 'tx_wood', 'tx_dirt'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_georgia', look: 'warm60s', fog: 0.0016, hz: 0.45, lookOver: { grain: 0.09, sat: 1.15 } });
+    // Tarantino's Georgia back road: hot hazy afternoon, sun raking in from the right, grindhouse grain
+    s.env('day', { backdrop: 'bd_georgia', look: 'warm60s', fog: 0.0026, hz: 0.45, sun: [30, 75], lookOver: { grain: 0.1, sat: 1.05, contrast: 1.1 } });
     s.ground({ tex: 'tx_grass', tile: 6 }); s.road({ z0: 90, z1: -1900, width: 8.4, lanes: 2, double: true, markColor: 0xe0c040 });
     for (const sd of [-1, 1]) { s.box({ x: sd * 5.4, y: 0, z: -900, w: 2.2, h: 0.04, d: 2000, mat: { tex: 'tx_dirt', color: 0xb09a78 }, tile: 4, cast: false }); }
-    s.forest('tree:oak', 520, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (9 + Math.pow(r(), 1.6) * 110), 100 - r() * 2000]; }, { h: [8, 15], seedv: 6 }); s.forest('tree:bush', 200, r => [(r() < 0.5 ? -1 : 1) * (7.5 + r() * 30), 100 - r() * 2000], { h: [1.2, 2.6], seedv: 8 });
-    const wood = s.mat({ tex: 'tx_wood', color: 0x8a7a66 }); for (let z = 60; z > -1900; z -= 55) { s.cyl({ x: -7.2, y: 0, z, r: 0.13, h: 8, mat: wood }); s.box({ x: -7.2, y: 7.2, z, w: 1.8, h: 0.1, d: 0.1, mat: wood }); }
-    for (const [x, z] of [[30, -260], [-36, -640], [34, -1100], [-30, -1500]]) { s.building({ x, z, w: 12, d: 16, h: 6, fac: 'tx_wood', solid: false, facTile: 5, roofMat: { color: 0x7a2a22 } }); }
+    // pasture either side, then woods 24 m out (broken where a farm sits), hills closing the horizon
+    s.forest('tree:oak', 360, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (40 + Math.pow(r(), 1.4) * 120), 100 - r() * 2000]; }, { h: [9, 16], seedv: 6 }); s.forest('tree:bush', 200, r => [(r() < 0.5 ? -1 : 1) * (9.5 + r() * 30), 100 - r() * 2000], { h: [1.2, 2.6], seedv: 8 });
+    for (const [z0, z1] of [[90, -580], [-700, -1440], [-1560, -1900]]) dress.treeLine(s, { x: -24, z0, z1, side: 1, depth: 14, step: 9, kinds: ['oak', 'pine', 'oak'], h: [10, 17], seed: 7 + Math.abs(z0) });
+    for (const [z0, z1] of [[90, -200], [-320, -1040], [-1160, -1900]]) dress.treeLine(s, { x: 24, z0, z1, side: -1, depth: 14, step: 9, kinds: ['oak', 'oak', 'pine'], h: [10, 17], seed: 9 + Math.abs(z0) });
+    dress.hills(s, { z: -900, r: 1150, h: 90, depth: 320, color: 0x4a5a3a, trees: 'oak', nTrees: 180 });
+    dress.poles(s, { x: -7.2, z0: 80, z1: -1900, gap: 55, h: 8 });
+    dress.fence(s, { x: 8.8, z0: 85, z1: -1900, kind: 'wire' }); dress.fence(s, { x: -9.2, z0: 85, z1: -1900, kind: 'wire' });
+    dress.barn(s, { x: 32, z: -260, w: 11, d: 16, h: 5.5, ry: 0.2 }); dress.barn(s, { x: 30, z: -232, w: 6, d: 7, h: 3, ry: 0.1, color: 0x6a6258 });
+    dress.barn(s, { x: -36, z: -640, w: 10, d: 14, h: 5, ry: -0.3, color: 0x8a3a2a }); dress.barn(s, { x: 34, z: -1100, w: 9, d: 12, h: 4.5, ry: 0.15, color: 0xd8d0c0, roof: 0x4a4a4a });
+    dress.barn(s, { x: -30, z: -1500, w: 12, d: 18, h: 6, ry: -0.1 });
+    srand(19); dress.bales(s, [...Array.from({ length: 10 }, () => [sr(14, 22), sr(-200, -320), sr(3)]), ...Array.from({ length: 10 }, () => [-sr(14, 24), sr(-1440, -1560), sr(3)])]);
     s.crew({ x: 7.5, z: 6, ry: 0.9 });
     const car = grp(s.scene, 0, 0, 12), bad = grp(s.scene, -3.4, 0, 22); s.put('challenger_white', { parent: car }); s.put('charger_black', { parent: bad }); s.char('ch_stunt', { parent: car, x: -0.42, y: 0.05, z: 0.25, pose: 'drive' });
     let v = 0, t = 0, x0 = 0, jolt = 0, joltV = 0, px = 0, pvx = 0, ax = 0, side = -1, sideT = -1, rx = -3.4, rz = 9, swing = 0, uv = 0, sumU = 0, nU = 0, edgeT = 0, over = false, onEdge = false; const P = V3(), Q = V3(), carry = V3();
@@ -323,7 +343,10 @@ const deathProof = {
     });
     s.cam.follow(() => ({ pos: car.position, heading: 0 }), { dist: 6.4, height: 2.7, side: -1.6, yaw: Math.PI, up: 1.0, ahead: 0, fov: 64, stiff: 30, lookStiff: 30 }); s.introFocus = V3(0, 0.6, 11);
     const rams = [5, 9, 13.5, 17, 21.5, 25, 28.5, 32, 35.5], flips = [11, 19.2, 26.6, 33.6];
-    for (const tt of rams) { s.after(0, () => { }); g.gust(tt, { label: 'RAM!', power: 0.34, sfx: 'crash', shake: 1.3, failLabel: 'SLAMMED ACROSS THE HOOD!', advice: 'The Charger swings in about a second before it hits — hold SPACE as soon as RAM! is called, then let go and steer back to the middle.', on: () => { joltV = -sideT * 9; swing = 0; if (tt === rams.at(-1)) { s.slowmo(0.35, 1.2); s.moment('The last ram', { t0: s.t - 2.4, t1: s.t + 2.2, w: 3, shots: [{ type: 'track', a: -0.05, b: 0.6, speed: 0.7, fov: 40 }, { type: 'low', a: 0.25, b: 0.9, speed: 0.4 }, { type: 'front', a: 0.4, b: 1.05, speed: 0.7 }] }); } s.fx.sparks(P.set(car.position.x + sideT * 1.05, 0.7, car.position.z + 0.6), 26); s.fx.debris(P, 5, { color: 0x222222, size: 0.12 }); }, onHit: () => { uv += -sideT * 2.6; } }); }
+    for (const tt of rams) { s.after(0, () => { }); g.gust(tt, { label: 'RAM!', power: 0.34, sfx: 'crash', shake: 1.3, failLabel: 'SLAMMED ACROSS THE HOOD!', advice: 'The Charger swings in about a second before it hits — hold SPACE as soon as RAM! is called, then let go and steer back to the middle.', on: () => { joltV = -sideT * 9; swing = 0; if (tt === rams.at(-1)) { s.slowmo(0.35, 1.2);
+          // signature: low on the right-hand verge, the white Challenger coming at the lens with her flat on the hood and the Charger slamming in on the far side (she reaches the camera ~0.5 s after the hit)
+          const sig = [6.3, 0.95, car.position.z - v * 0.55];
+          s.moment('The last ram', { t0: s.t - 2.4, t1: s.t + 2.2, w: 3, shots: [{ type: 'track', a: -0.05, b: 0.5, speed: 0.7, fov: 40 }, { type: 'front', pos: sig, fov: 27, lookUp: 0.1, a: 0.38, b: 0.64, speed: 0.4 }, { type: 'wide', pos: [-17, 6.5, car.position.z - v * 1.9], fov: 34, a: 0.58, b: 1.05, speed: 0.7 }] }); } s.fx.sparks(P.set(car.position.x + sideT * 1.05, 0.7, car.position.z + 0.6), 26); s.fx.debris(P, 5, { color: 0x222222, size: 0.12 }); }, onHit: () => { uv += -sideT * 2.6; } }); }
     s.onUpdate(() => { if (!s.started) return; for (const tt of rams) if (t > tt - 0.8 && t < tt) swing = damp(swing, 1, 6, s.dt); for (let i = 0; i < flips.length; i++) if (t > flips[i]) sideT = i % 2 ? -1 : 1;
       if (!s.ended && t > 38.5 && !over) { over = true; s.hud.hideBar(); g.done = true; s.hud.prompt(''); s.msg('LOST HIM!', 'good'); s.audio.say('Ship\'s Mast, baby!', { rate: 1.1, pitch: 1.2 }); s.after(0.6, () => s.audio.cheer()); gripScores(s, g, { braceW: 2 }); s.rate('Middle of the bonnet', clamp(1.3 - (sumU / Math.max(1, nU)) / 0.42), 1.5); s.rate('Stayed off the edges', clamp(1 - edgeT / 2.5), 1); s.bonus('No harness', 1500); s.wrap(2.2); } });
     s.objective('Stay on the bonnet until she shakes him off');
@@ -341,8 +364,12 @@ const furyRoad = {
   controls: `${K('E')} snatch at the bottom of the swing &nbsp; hold ${K('SPACE')} brace`, intro: { r: 19, h: 6, a0: 0.9, speed: 0.07, up: 3, fov: 50 },
   assets: { models: ['tanker', 'charger_black', 'charger_dom', 'ch_roadwarrior', 'ch_goon', 'rock_desert'], tex: ['bd_wasteland', 'tx_sand', 'tx_metal', 'tx_dirt'] },
   build(s) {
-    s.env('desert', { backdrop: 'bd_wasteland', look: 'wasteland', fog: 0.0014, hz: 0.46 });
+    // Namib in Miller's grade: deep teal sky over burnt-orange sand, hard sun from the left, heat haze on the dunes
+    s.env('desert', { backdrop: 'bd_wasteland', look: 'wasteland', fog: 0.0019, hz: 0.46, sun: [40, -115], top: 0x1d5f96, sunCol: 0xfff0d8, lookOver: { contrast: 1.22, vignette: 0.45 } });
     s.ground({ tex: 'tx_sand', tile: 14, color: 0xe0a060 });
+    dress.hills(s, { z: -650, r: 1100, h: 80, depth: 260, color: 0xd08848, tex: 'tx_sand', patch: 0xa86a38 });
+    dress.hills(s, { z: -650, r: 1450, h: 140, depth: 320, color: 0xb87040, tex: 'tx_sand', patch: 0x8a5a30, seed: 9 });
+    s.forest('rock_desert', 26, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (90 + r() * 260), 80 - r() * 1950]; }, { h: [12, 30], seedv: 15 }); // big outcrops on the skyline
     s.forest('rock_desert', 170, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (16 + r() * r() * 160), 60 - r() * 1900]; }, { h: [1.5, 7], seedv: 12 }); s.forest('tree:dead', 80, r => [(r() < 0.5 ? -1 : 1) * (14 + r() * 120), 60 - r() * 1900], { h: [3, 6], seedv: 14 });
     s.crew({ x: -13, z: 4, ry: -1 });
     const SPD = 26, L = 9.5, TH = 1.25, PER = 4.4, PX = -5.6;
@@ -380,7 +407,8 @@ const furyRoad = {
       if (s.input.hit('x') && armed && !g.braced) {
         const d = Math.abs(m - 0.5);
         if (d <= 0.07) { const acc = near(d, 0, 0.022, 0.075); sumAcc += acc; const pd = pods[n]; pd.pod.visible = false; n++; cool = 6.5; s.audio.good(); s.fx.sparks(tip.getWorldPosition(P), 16, { color: [1, 0.6, 0.2] }); s.msg(acc > 0.9 ? 'PERFECT SNATCH!' : 'GOT ONE!', 'good'); s.slowmo(n >= 3 ? 0.3 : 0.45, n >= 3 ? 1.2 : 0.6);
-          s.moment(n >= 3 ? 'The last pod' : 'Pod ' + n, { t0: s.t - 2.4, t1: s.t + 1.5, w: 2 + n * 0.3, shots: [{ type: 'track', a: -0.05, b: 0.6, speed: 0.75, fov: 38 }, { type: 'low', a: 0.3, b: 0.85, speed: 0.4 }, { type: 'wide', a: 0.5, b: 1.05, speed: 0.8 }] }); g.c.setPose(reach, 0.06); g._slipT = 0.5; s.bonus('Fuel pods', 600);
+          // replay B (signature): low and side-on from the sand, the pole arcing over the War Rig against the sky
+          s.moment(n >= 3 ? 'The last pod' : 'Pod ' + n, { t0: s.t - 2.4, t1: s.t + 1.5, w: 2 + n * 0.3, shots: [{ type: 'track', a: -0.05, b: 0.5, speed: 0.75, fov: 38 }, { type: 'wide', pos: [cv.position.x - 30, 2, g.world.z - v * 0.2], fov: 30, lookUp: -2, a: 0.3, b: 0.85, speed: 0.4 }, { type: 'wide', a: 0.6, b: 1.05, speed: 0.8 }] }); g.c.setPose(reach, 0.06); g._slipT = 0.5; s.bonus('Fuel pods', 600);
           if (n >= 3) { won = true; wonT = t; g.done = true; s.hud.prompt(''); s.hud.hideBar(); s.rate('Pods taken (3 / 3)', 1, 2.5); s.rate('Snatch timing', 0.45 + 0.55 * sumAcc / 3, 1); gripScores(s, g, { time: [28, 6, 20] }); s.rate('Clean hands', 1 - misses * 0.3, 1); s.msg('WITNESS!', 'huge'); s.wrap(2.2); } }
         else { misses++; cool = 0.8; g.c.setPose(reach, 0.06); g.lose(0.2, 'SNATCHED AIR!', 'Wait for the marker to sit inside the gold band — that is the bottom of the swing, right over the pod. Early or late and you grab air.'); }
       }
@@ -463,7 +491,7 @@ const policeStory = {
         if (v > 11) return die('Lost control of the slide and came off the pole', [1, -v], 'Never let the MPH readout go past about 15 — squeeze SPACE every couple of floors so the speed never builds up.');
         if (pos.y <= KR) { // through the glass
           endV = v; kroof.visible = false; kwalls.forEach(w => w.visible = false); P.set(PXp, KR, 0); s.fx.glass(P, 90, { speed: 6 }); s.fx.sparks(P, 40, { speed: 8 }); s.audio.glass(1); s.audio.crash(1); s.engine.addShake(1.6); s.slowmo(0.4, 0.8);
-          const shots = [{ type: 'wide', a: -0.02, b: 0.4, speed: 1 }, { type: 'track', a: 0.3, b: 0.88, speed: 1, fov: 58, heading: Math.PI / 2 }, { type: 'low', a: 0.78, b: 1.05, speed: 0.35, at: 0.55 }];
+          const shots = [{ type: 'wide', a: -0.02, b: 0.36, speed: 1 }, { type: 'wide', pos: [-0.4, 22.5, 6.4], fov: 46, lookUp: 0.9, a: 0.34, b: 0.8, speed: 0.9 }, { type: 'track', a: 0.74, b: 1.05, speed: 0.7, fov: 58, heading: Math.PI / 2 }]; // B: across the atrium from the first-floor gallery, up the pole through the strings of bulbs
           s.moment('Down the pole of lights', { t0: leapS - 0.6, t1: s.t + 1.4, w: 3, shots });
           if (v > 8) { phase = 9; vy = -v; vx = 1.5; c.setCycle('flail', 1); s.hud.prompt(''); return s.fail(`Went through the kiosk at ${Math.round(v * 2.237)} mph`, { injury: 0.9, advice: 'Brake with SPACE over the last two floors — under 17 mph on the readout when you reach the kiosk roof.' }); }
           if (v > 5.5) s.flub(`Hit the kiosk hard (${Math.round(v * 2.237)} mph)`, { penalty: 0.12, advice: 'Squeeze SPACE on the last floor so you hit the glass at about 8 mph.' });
@@ -490,11 +518,18 @@ const raidersTruck = {
   controls: CTL.grip, intro: { r: 9, h: 2.2, a0: 1.9, speed: 0.08, up: 0.8 },
   assets: { models: ['ww2_truck', 'ch_adventurer', 'ch_goon', 'jeep_gc', 'rock_desert'], tex: ['bd_egypt', 'tx_sand', 'tx_dirt', 'tx_temple', 'tx_wood'] },
   build(s) {
-    s.env('desert', { backdrop: 'bd_egypt', look: 'golden', fog: 0.0013, hz: 0.45, sun: [50, 70] });
-    s.ground({ tex: 'tx_sand', tile: 12, color: 0xe6cf9e }); s.road({ z0: 80, z1: -1300, width: 7.5, marks: false, mat: { tex: 'tx_dirt', color: 0xd8b888 } });
+    // Tunisia standing in for Egypt: low late-afternoon sun raking across the road from the camera side, dust haze to the horizon
+    s.env('desert', { backdrop: 'bd_egypt', look: 'golden', fog: 0.0021, hz: 0.45, sun: [26, 72], sunCol: 0xffe0b8, sunI: 3.8, amb: 0.85, lookOver: { grain: 0.07, contrast: 1.1, sat: 0.92 } });
+    s.ground({ tex: 'tx_sand', tile: 12, color: 0xe6cf9e }); s.road({ z0: 80, z1: -1300, width: 7.5, marks: false, mat: { tex: 'tx_dirt', color: 0xf6e2c0 } });
     s.forest('tree:palm', 150, r => { const sd = r() < 0.5 ? -1 : 1; return [sd * (7 + Math.pow(r(), 2) * 70), 80 - r() * 1380]; }, { h: [6, 11], seedv: 5 }); s.forest('rock_desert', 90, r => [(r() < 0.5 ? -1 : 1) * (9 + r() * 90), 80 - r() * 1380], { h: [0.8, 4], seedv: 7 });
     const mud = s.mat({ tex: 'tx_temple', color: 0xe0c898 }); srand(31); for (let z = -60; z > -1300; z -= sr(70, 150)) { const sd = sr() < 0.5 ? -1 : 1, x = sd * sr(12, 26), w = sr(5, 9), h = sr(3, 5.5); s.box({ x, y: 0, z, w, h, d: sr(5, 9), mat: mud, tile: 5 }); s.box({ x: x + sd * 1.5, y: h, z: z + 1, w: w * 0.5, h: 1.6, d: 3, mat: mud, tile: 5 }); }
     for (const [x, z] of [[-14, -240], [15, -700]]) for (let i = 0; i < 4; i++) { s.cyl({ x: x + i * 2.6 * Math.sign(-x), y: 0, z: z - i * 0.4, r: 0.55, h: 6.5 - (i % 2) * 2.5, mat: mud, seg: 12 }); }
+    // framing: sandy banks off both verges, date-palm groves and mud-brick hamlets 25-50 m out, telegraph line, dunes closing the horizon
+    dress.berm(s, { x: 9, z0: 70, z1: -1300, side: -1, w: 9, h: 1.3, tex: 'tx_sand', color: 0xd8bc8a, patch: 0xb89a6a }); dress.berm(s, { x: -10, z0: 70, z1: -1300, side: 1, w: 9, h: 1.0, tex: 'tx_sand', color: 0xd8bc8a, patch: 0xb89a6a });
+    dress.treeLine(s, { x: -30, z0: 40, z1: -420, side: 1, depth: 18, step: 8, kinds: ['palm'], h: [7, 12], seed: 41, bushes: false }); dress.treeLine(s, { x: 36, z0: -180, z1: -760, side: -1, depth: 20, step: 8, kinds: ['palm'], h: [7, 13], seed: 42, bushes: false });
+    dress.treeLine(s, { x: -34, z0: -700, z1: -1300, side: 1, depth: 16, step: 9, kinds: ['palm'], h: [7, 12], seed: 43, bushes: false });
+    dress.poles(s, { x: -6.8, z0: 75, z1: -1300, gap: 45, h: 7.5 });
+    dress.hills(s, { z: -500, r: 640, h: 50, depth: 220, color: 0xc8a070, tex: 'tx_sand', patch: 0xa88458 });
     s.crew({ x: 7, z: 4, ry: 1.2 });
     const truck = grp(s.scene, 0, 0, 0), lead = grp(s.scene, 0, 0, -24); s.put('ww2_truck', { parent: truck }); s.put('jeep_gc', { parent: lead }); s.char('ch_goon', { parent: truck, x: -0.45, y: 0.95, z: -1.05, pose: 'drive' });
     let v = 0, t = 0, bounce = 0, bV = 0, sway = 0, swayV = 0; const carry = V3(), P = V3(), Q = V3();
@@ -526,7 +561,10 @@ const raidersTruck = {
       if (sg >= 4 && sg <= 5 && Math.random() < 0.8) s.fx.dust(P.copy(g.world).add(V3(0, 0.1, 0.8)), 1, { color: [0.86, 0.74, 0.52], size: 1.8, a: 0.4, up: 2.5 });
       if (stage === 0) { g.pMax = g.railP(4); if (g.p >= g.railP(4) - 0.01) { stage = 1; whipS = s.t; g.control = false; s.msg('THE WHIP!', 'bad'); s.audio.whoosh(1); s.slowmo(0.45, 0.8); s.objective('Dragged behind — hang on to the whip!'); } }
       else if (stage === 1) { g.p = Math.min(g.railP(5), g.p + 6 * dt); g.pMax = g.pMin = g.p; g._rail(); if (g.p >= g.railP(5)) { stage = 2; g.control = true; dragT = 0; nextG = Math.min(nextG, t + 0.4); } }
-      else if (stage === 2) { dragT += dt; g.stam = clamp(g.stam - 0.12 * dt); if (dragT > 3.6) { stage = 3; g.pMax = g.railLen; g.speedK = 0.8; s.moment('Dragged behind the truck', { t0: whipS - 1.6, t1: s.t + 0.8, w: 3, shots: [{ type: 'track', a: -0.05, b: 0.5, speed: 0.6, fov: 38 }, { type: 'wide', a: 0.3, b: 0.75, speed: 0.5 }, { type: 'rear', a: 0.6, b: 1.05, speed: 0.8 }] }); } }
+      else if (stage === 2) { dragT += dt; g.stam = clamp(g.stam - 0.12 * dt); if (dragT > 3.6) { stage = 3; g.pMax = g.railLen; g.speedK = 0.8;
+        // signature: low on the verge as he is dragged past face-down on the whip, the truck's tailgate and the dust filling the frame behind him (placed where he was ~0.85 s before now)
+        const W = g.world, sig = [truck.position.x + 3.6, 0.5, W.z + v * 0.75 - 1.5];
+        s.moment('Dragged behind the truck', { t0: whipS - 1.6, t1: s.t + 0.8, w: 3, shots: [{ type: 'track', a: -0.05, b: 0.45, speed: 0.6, fov: 38 }, { type: 'low', pos: sig, fov: 42, lookUp: 0.2, a: 0.55, b: 0.98, speed: 0.45 }, { type: 'rear', a: 0.6, b: 1.05, speed: 0.8 }] }); } }
       else if (stage === 3 && sg >= 6) g.speedK = 1;
       const nm = stage === 2 ? 'Dragged behind — brace!' : SEGNAME[sg]; s.objective(nm); g.promptText = stage === 2 || stage === 1 || !KEYS[sg] ? '' : `${K(KEYS[sg])} ${nm.toLowerCase()}`;
       if (t > nextG && stage !== 1) { const [label, on] = gustFor(); g.gust(0.85, { label, on, power: 0.3, sfx: 'thud', kick: [0, -0.12, 0], failLabel: 'NEARLY UNDER THE WHEELS!' }); nextG = t + (stage === 2 ? 1.9 : 4.4); }
@@ -555,7 +593,7 @@ const EXTRA = {
   cliffhanger: { cine: [{ type: 'wide', dist: 1.4 }, { type: 'track', fov: 34 }, 'orbit'], goals: {
     shot: ['Hold D to go hand over hand 31 m along the cable to the small jet', 'Hold SPACE whenever LINE SNAPS TAUT!, TURBULENCE! or JET WASH! is called (about every 4 s), then keep moving', 'The cold drains Stamina and it never comes back — keep D held and never brace between calls'],
     cut: [GRIP_CUT + ' 15,000 ft'], stars: ['Bracing every call', 'Grip left', 'Pace (about 30 s)', 'Strength left'] } },
-  death_proof: { cine: [{ type: 'track', fov: 40 }, 'low', 'front'], goals: {
+  death_proof: { cine: [{ type: 'track', fov: 40 }, 'chase', 'wide'], goals: {
     shot: ['Lie on the bonnet for about 38 s. The bar under you is your position: tap A/D against each swerve to stay in the middle', 'Hold SPACE when RAM! is called (9 rams), then let go — braced you cannot shuffle', 'Stay off the edges: every second on an edge costs a third of your grip'],
     cut: [GRIP_CUT + ' off the bonnet'], stars: ['Bracing the rams', 'Middle of the bonnet', 'Staying off the edges', 'Grip left'] } },
   fury_road: { cine: [{ type: 'track', fov: 38 }, 'low', 'wide'], goals: {

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Run } from '../modes/run.js';
 import { clamp, near, smooth, V3, rnd, sr, srand, lerp, damp } from '../world/stage.js';
 import { K, CTL, sign, pursuer } from './common.js';
+import * as dress from '../world/dress.js';
 
 // ---------------------------------------------------------------------------------------------
 // shared helpers
@@ -236,15 +237,21 @@ const croc = {
   controls: `${K('W')} run &nbsp; ${K('A')}${K('D')} balance &nbsp; ${K('SPACE')} hop`, intro: { r: 9, h: 3.4, a0: 0.5 },
   assets: { models: ['ch_spy', 'crocodile'], tex: ['bd_bayou', 'tx_grass', 'tx_dirt', 'tx_wood'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_bayou', look: 'warm60s', fog: 0.004 });
+    // Kananga's croc farm: hot, hazy Caribbean afternoon light raking across the pond, warm 70s Bond grade
+    s.env('day', { backdrop: 'bd_bayou', look: 'warm60s', fog: 0.0065, sun: [36, 75], sunCol: 0xffe2b0, fogColor: 0xa9b29a, lookOver: { sat: 1.0, contrast: 1.08, tint: [1.07, 1.01, 0.9] } });
     s.course.base = () => -2.2; s.water({ y: 0, color: 0x2e4630, opacity: 0.8 });
     const mud = s.mat({ tex: 'tx_dirt', color: 0x8a7a5a }), grass = { tex: 'tx_grass', color: 0xb0c090 };
     s.cyl({ x: 0, y: -1.5, z: 0, r: 2.6, r1: 2.2, h: 1.8, mat: mud, seg: 14 }); s.course.addPiece({ x0: -1.7, x1: 1.7, z0: -1.9, z1: 1.9, fn: () => 0.3 });
     const BZ = -33.3; s.box({ x: 0, y: -2, z: BZ - 20, w: 90, h: 2.4, d: 40, mat: grass, tile: 5, top: true }); s.box({ x: 0, y: -2, z: 34, w: 90, h: 2.4, d: 40, mat: grass, tile: 5, top: true });
     for (const sx of [-1, 1]) s.box({ x: sx * 36, y: -2, z: 0, w: 28, h: 2.4, d: 60, mat: grass, tile: 5 });
-    s.forest('tree:cypress', 90, r => { const a = r() * 6.28, d = 24 + r() * 26; return [Math.cos(a) * d * 1.1, Math.sin(a) * d - 2, 0.3]; }, { h: [9, 16], seedv: 4 }); s.forest('tree:bush', 40, r => { const a = r() * 6.28, d = 23 + r() * 6; return [Math.cos(a) * d, Math.sin(a) * d - 2, 0.3]; }, { h: [1.2, 2.4], seedv: 6 });
+    s.forest('tree:cypress', 90, r => { const a = r() * 6.28, d = 24 + r() * 26, x = Math.cos(a) * d * 1.1, z = Math.sin(a) * d - 2; return x > -5 && x < 17 && z < -6 && z > -40 ? null : [x, z, 0.3]; }, { h: [9, 16], seedv: 4 }); // a clear view across the pond from the camera boat s.forest('tree:bush', 40, r => { const a = r() * 6.28, d = 23 + r() * 6; return [Math.cos(a) * d, Math.sin(a) * d - 2, 0.3]; }, { h: [1.2, 2.4], seedv: 6 });
     sign(s, 'TRESPASSERS WILL BE EATEN', { x: -5.5, y: 2.1, z: BZ - 2.5, w: 5.4, ry: 0.35, bg: '#e8e0c8', fg: '#a01810', size: 34 }); for (const dx of [-2, 2]) s.box({ x: -5.5 + dx, y: 0.4, z: BZ - 2.5 + dx * -0.36, w: 0.12, h: 1.2, d: 0.12, mat: 'tx_wood' });
     s.crew({ x: 5.5, y: 0.4, z: 17.5, ry: 0.4 }); s.crew({ x: 6, y: 0.4, z: BZ - 4, ry: 2.4, people: false });
+    // the farm on the far bank: a tin-roofed croc shed, a rickety rail fence either side of the landing, palms and reeds
+    dress.barn(s, { x: -13, y: 0.4, z: BZ - 13, w: 7, d: 5, h: 2.8, ry: 0.25, color: 0x8a7458, roof: 0x7a6a58, roofTex: 'tx_metal' });
+    dress.fence(s, { path: [[-24, BZ - 3.5], [-4.5, BZ - 3.5]], kind: 'rail', h: 1.1, color: 0x7a6a50 }); dress.fence(s, { path: [[4.5, BZ - 3.5], [12, BZ - 3.5]], kind: 'rail', h: 1.1, color: 0x7a6a50 });
+    s.trees('palm', 7, (r, i) => [[-19, BZ - 8], [-7, BZ - 18], [9, BZ - 14], [17, BZ - 6], [-26, BZ - 16], [22, 12], [-21, 10]][i], { h: [8, 12], seedv: 8 });
+    s.trees('bush', 26, (r, i) => [i % 3 ? -sr(7, 17) : sr(14, 20), sr(-31, -4), -0.25], { h: [0.8, 1.5], seedv: 12, wide: 1.3 }); // reed clumps out in the pond, well off the croc line
     // the crocodiles
     const LEN = 5.2, OX = 0.3785 * LEN / 4.7, OZ = 0.2987 * LEN / 4.7; // the generated croc lies 12° off-axis and off-centre in its box
     const P = 5.4, SNAP = 1.4, WARN = 0.8, lag = [0.8, 3.0, 6.0, 7.4, 10.6, 13.0], xs = [0, 0.5, -0.4, 0.4, -0.5, 0.1], crocs = [];
@@ -299,7 +306,7 @@ const rumble = {
   controls: CTL.run, intro: { r: 9, h: 3, a0: 2.4 },
   assets: { models: ['ch_hk', 'sedan_grey', 'taxi', 'van_white', 'wagon_brown'], tex: ['bd_brooklyn', 'tx_asphalt', 'tx_fac_nyc', 'tx_brick', 'tx_concrete', 'tx_roof', 'tx_metal'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_brooklyn', look: 'bleach', fog: 0.0022 }); s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x666666 });
+    s.env('day', { backdrop: 'bd_brooklyn', look: 'bleach', fog: 0.0034, sun: [30, 55], sunCol: 0xfff0dc, lookOver: { sat: 0.82, tint: [1.03, 1.0, 0.95] } }); s.ground({ tex: 'tx_asphalt', tile: 10, color: 0x666666 });
     const YA = 24, YB = 22.5, E1 = -64, B0 = -67.6, EDGE = -130, ALLEY = 8.25, BX = 2.2, YBAL = YB - 2.6, BZ0 = EDGE - ALLEY, BZ1 = BZ0 - 2.4;
     const park = { tex: 'tx_asphalt', color: 0x8a8a8a }, conc = s.mat({ tex: 'tx_concrete', color: 0xb0aca4 }), iron = s.mat({ tex: 'tx_metal', color: 0x2a2c2e, metal: 0.5, rough: 0.6 });
     s.building({ x: 0, z: (30 + E1) / 2, w: 18, d: 30 - E1, h: YA, fac: 'tx_brick', top: true, roofMat: park }); s.building({ x: 0, z: (B0 + EDGE) / 2, w: 18, d: B0 - EDGE, h: YB, fac: 'tx_fac_nyc', top: true, roofMat: park });
@@ -319,6 +326,10 @@ const rumble = {
     s.course.addPiece({ x0: BX - 1, x1: BX + 1, z0: BZ1, z1: BZ0, fn: () => YBAL, step: 0.7 }); s.course.addSolid({ x0: BX - 1, x1: BX + 1, y0: YBAL - 0.25, y1: YBAL, z0: BZ1, z1: BZ0 });
     for (const [sd, x] of [[-1, -17], [1, 17]]) s.row({ side: sd, x, z0: 60, z1: -220, fac: ['tx_fac_nyc', 'tx_brick'], height: [14, 30], seedv: sd + 4, solid: false });
     s.crew({ x: 5.5, y: YA, z: 18, ry: 0.9 }); s.crew({ x: -6.5, y: YB, z: EDGE + 7, ry: -2.3, people: false });
+    // a wooden water tank on the roof across the alley (pure New York skyline) and trash down in the alley
+    const tank = s.mat({ tex: 'tx_wood', color: 0x7a5a40 }); s.cyl({ x: -7, y: 38, z: BZ1 - 12, r: 2.2, h: 4.2, mat: tank, seg: 18 }); s.cyl({ x: -7, y: 42.2, z: BZ1 - 12, r: 0.2, r1: 2.5, h: 1.6, mat: iron, seg: 18 });
+    for (const [x, z] of [[-8.6, BZ1 - 9.4], [-5.4, BZ1 - 9.4], [-8.6, BZ1 - 14.6], [-5.4, BZ1 - 14.6]]) s.box({ x, y: 34, z, w: 0.22, h: 4, d: 0.22, mat: iron, cast: false });
+    for (const [x, z, c] of [[-5, EDGE - 1.5, 0x2a4a30], [-2.6, EDGE - 1.2, 0x5a5a60], [6, EDGE - 6.6, 0x2a4a30]]) s.box({ x, y: 0, z, w: 1.8, h: 1.3, d: 1, mat: { tex: 'tx_metal', color: c }, ry: 0.1 });
     const run = s.run = new Run(s, { char: 'ch_hk', x: 0, z: 24, y: YA, xmin: -8.2, xmax: 8.2, fallDeath: 8, cam: { dist: 6.4, height: 2.9, ahead: 4 } });
     let leapt = false, landed = false, takeV = 0, takeD = 0, leapM = null; s.rate('Run-up', 1, 1); run.autoMoments = false;
     run.onStumble = () => { s.rate('Run-up', 1 - run.stats.stumbles * 0.3, 1); s.msg('CLIPPED IT', 'bad'); if (Math.abs(run.pos.z + 56) < 3) s.flub('Clipped the low wall', { penalty: 0.06, advice: 'Hop the low wall with SPACE about two metres before it — it costs you speed for the leap.' }); };
@@ -426,7 +437,9 @@ const crane = {
   controls: CTL.run, intro: { r: 9, h: 3, a0: 2.5 },
   assets: { models: ['ch_spy', 'ch_thug'], tex: ['bd_ocean', 'tx_metal', 'tx_sand', 'tx_concrete', 'tx_dirt'] },
   build(s) {
-    s.env('day', { backdrop: 'bd_ocean', look: 'teal_orange', fog: 0.0011, hz: 0.5 }); s.ground({ tex: 'tx_sand', tile: 14, color: 0xa8a090 }); s.audio.set('wind', 'wind', 1, 0.35);
+    // Madagascar building site by the sea: hard tropical sun, red laterite earth, salt haze over the water
+    s.env('day', { backdrop: 'bd_ocean', look: 'teal_orange', fog: 0.0017, hz: 0.5, sun: [42, 65], sunCol: 0xfff0d8, lookOver: { contrast: 1.14, sat: 1.12 } }); s.ground({ tex: 'tx_dirt', tile: 14, color: 0xb07a58 }); s.audio.set('wind', 'wind', 1, 0.35);
+    s.water({ x: 2620, y: 0.15, w: 5000, d: 7000, color: 0x1f6a78 }); s.box({ x: 108, y: -0.3, z: -100, w: 26, h: 0.4, d: 2400, mat: { tex: 'tx_sand', color: 0xd8c8a0 }, tile: 12, cast: false });
     const Y1 = 60, Y2 = 57, Y3 = 58, yel = s.mat({ tex: 'tx_metal', color: 0xffd23a, rough: 0.6, metal: 0.1, emissive: 0x5a4200, emI: 0.5 }), red = s.mat({ tex: 'tx_metal', color: 0xff5a38, rough: 0.6, metal: 0.1, emissive: 0x5a1000, emI: 0.5 }), grey = s.mat({ tex: 'tx_metal', color: 0x7a8088, metal: 0.5, rough: 0.5 }), conc = s.mat({ tex: 'tx_concrete', color: 0xb0aaa0 });
     // lattice jib: walkable top chord + truss underneath
     const jib = (x, z0, z1, y, w, m, y1 = y) => { const len = z0 - z1, ang = Math.atan2(y1 - y, len), g = new THREE.Group(); g.position.set(x, y, z0); g.rotation.x = ang; s.scene.add(g); const L = Math.hypot(len, y1 - y);
@@ -451,6 +464,11 @@ const crane = {
     srand(7); for (let i = 0; i < 26; i++) { const x = sr(-70, 70), z = sr(30, -260); if (Math.abs(x) < 6) continue; s.box({ x, y: 0, z, w: 2.5, h: 2.6, d: sr() < 0.5 ? 6 : 12, mat: s.mat({ color: [0x9a3a2a, 0x2a5a8a, 0x3a7a4a, 0xb89030][i % 4], rough: 0.7 }), ry: sr(3) }); }
     for (const [x, z, w, h, d] of [[-34, -60, 26, 30, 40], [38, -120, 30, 22, 30], [-40, -190, 24, 38, 30]]) { for (let y = 0; y < h; y += 6) s.box({ x, y: y + 5.6, z, w, h: 0.4, d, mat: conc, tile: 6 }); for (const sx of [-1, 1]) for (const sz of [-1, 1]) s.box({ x: x + sx * (w / 2 - 0.5), y: 0, z: z + sz * (d / 2 - 0.5), w: 0.8, h, d: 0.8, mat: conc }); }
     s.crew({ x: 4.5, y: Y1, z: 12, ry: 0.7 });
+    // the site around it: palms along the beach, site huts and a wire perimeter fence, green hills inland
+    s.trees('palm', 70, (r, i) => i < 46 ? [sr(88, 112), sr(80, -420)] : [sr(-1, 1) < 0 ? sr(-95, -60) : sr(60, 82), sr(60, -330)], { h: [9, 14], seedv: 9 });
+    for (const [x, z, ry, c] of [[-22, -24, 0.2, 0x3a5a8a], [-26, -36, 0.2, 0xd8d0c0], [24, -64, -0.4, 0x3a5a8a], [18, -150, 0.1, 0xd8d0c0], [-18, -232, 0.5, 0x3a5a8a]]) dress.barn(s, { x, z, w: 4, d: 9, h: 2.8, ry, color: c, roof: 0x9aa0a6, roofTex: 'tx_metal', rh: 0.8 });
+    dress.fence(s, { path: [[-58, 40], [-58, -280], [76, -280], [76, 40]], kind: 'wire', h: 2.2, gap: 4 });
+    dress.hills(s, { x: 0, z: -120, r: 520, a0: -Math.PI * 0.95, a1: -Math.PI * 0.05, h: 70, color: 0x4a6a3a, trees: 'jungle', nTrees: 200 });
     const px = z => z > -70 ? 0 : z > -76.5 ? 1.6 * (-70 - z) / 6.5 : z > -150 ? 1.6 : z > -157 ? 1.6 * (1 - (-150 - z) / 7) : 0;
     const run = s.run = new Run(s, { char: 'ch_spy', x: 0, z: 9, y: Y1, strafe: 3.3, fallDeath: 99, cam: { dist: 6.4, height: 3.5, ahead: 4.5, fov: 66 } });
     const tgt = runner(s, 'ch_thug', { x: px, z: -4, acts }); let close = 0, tot = 0, done = false, got = false, lost = false, saves = 0;
@@ -498,8 +516,9 @@ const bourne = {
   controls: CTL.run, intro: { r: 9, h: 3.2, a0: 2.3 },
   assets: { models: ['ch_agent', 'ch_goon'], tex: ['bd_egypt', 'tx_concrete', 'tx_cobble', 'tx_wood', 'tx_roof', 'tx_wallpaper', 'tx_metal'] },
   build(s) {
-    s.env('desert', { backdrop: 'bd_egypt', look: 'bleach', fog: 0.0016 }); s.ground({ tex: 'tx_cobble', tile: 6, color: 0xb0a898 });
-    const white = s.mat({ tex: 'tx_concrete', color: 0xf4efe2 }), cream = s.mat({ tex: 'tx_concrete', color: 0xe6d8b8 }), blue = s.mat({ tex: 'tx_concrete', color: 0x9ec4dc }), wood = s.mat({ tex: 'tx_wood', color: 0x8a6a48 }), dark = s.mat({ color: 0x2a2622 }), tin = s.mat({ tex: 'tx_metal', color: 0xc8c8c8, metal: 0.5, rough: 0.4 });
+    // Tangier medina: hard afternoon sun, dusty ochre haze, bleach-bypass grade (warm highlights, cool shadows)
+    s.env('desert', { backdrop: 'bd_egypt', look: 'bleach', fog: 0.0034, fogColor: 0xd6c6a6, sun: [40, 55], sunCol: 0xffe6c0, amb: 0.8, lookOver: { sat: 0.82, contrast: 1.22, tint: [1.08, 1.0, 0.88] } }); s.ground({ tex: 'tx_cobble', tile: 6, color: 0xb0a898 });
+    const white = s.mat({ tex: 'tx_concrete', color: 0xf4efe2 }), cream = s.mat({ tex: 'tx_concrete', color: 0xe6d8b8 }), blue = s.mat({ tex: 'tx_concrete', color: 0x9ec4dc }), wood = s.mat({ tex: 'tx_wood', color: 0x8a6a48 }), dark = s.mat({ color: 0x2a2622 }), tin = s.mat({ tex: 'tx_metal', color: 0xc8c8c8, metal: 0.5, rough: 0.4 }), ochre = s.mat({ tex: 'tx_concrete', color: 0xd8b07a });
     s.plan = []; const roofs = [[14, -26, 14, 0, 11], [-29.2, -58, 13, 0, 10], [-62, -92, 13.5, 0, 10], [-95.6, -124, 12.3, 0, 10], [-128, -160, 12.3, 3, 10], [-167.5, -197, 12.3, 3, 11]];
     roofs.forEach(([z0, z1, y, x, w], i) => { s.box({ x, y: 0, z: (z0 + z1) / 2, w, h: y, d: z0 - z1, mat: [white, cream, white, blue, white, cream][i], tile: 5, top: true, solid: true, sol: { msg: 'Came up short and hit the wall', injury: 0.8 } }); for (const sx of [-1, 1]) s.box({ x: x + sx * (w / 2 - 0.12), y, z: (z0 + z1) / 2, w: 0.24, h: 0.45, d: z0 - z1, mat: white, tile: 3 }); if (i) s.plan.push({ z: roofs[i - 1][1] + 0.9, act: 'jump' }); });
     const wallLow = (z, y, x = 0, w = 10) => { s.box({ x, y, z, w, h: 0.78, d: 0.35, mat: white, tile: 2, solid: true, sol: { soft: true, once: true } }); s.plan.push({ z: z + 2.5, act: 'jump' }); };
@@ -522,7 +541,10 @@ const bourne = {
     const pane = s.box({ x: WX, y: FY, z: WZ, w: 2, h: WT - FY, d: 0.06, mat: s.mat({ glass: true, color: 0xa8d0e0, opacity: 0.4 }), cast: false, solid: 'break', sol: { glass: true, on: () => { s.through = true; } } }); for (const dy of [1.2, 2.4]) s.box({ x: WX, y: FY + dy, z: WZ + 0.02, w: 2, h: 0.05, d: 0.05, mat: wood, cast: false });
     for (const [x, y] of [[-5, 9], [-9, 14], [8, 10], [12, 15], [-14, 10]]) s.box({ x: WX + x, y, z: WZ + 0.03, w: 1.3, h: 2, d: 0.06, mat: s.mat({ color: 0x2a3a48, rough: 0.3 }), cast: false });
     // the medina around
-    srand(31); for (let i = 0; i < 70; i++) { const sd = sr() < 0.5 ? -1 : 1, x = sd * sr(9.5, 70) + (sd > 0 ? 3 : 0), z = sr(40, -260), w = sr(7, 14), d = sr(7, 14), h = sr(7, 15); if (z < SZ - 2 && z > WZ - 14 && Math.abs(x) < 24) continue; s.box({ x, y: 0, z, w, h, d, mat: [white, cream, white, blue, cream][i % 5], tile: 5 }); if (i % 3 === 0) s.box({ x: x + 1, y: h, z, w: 2.4, h: 2.2, d: 2.6, mat: white }); }
+    srand(31); for (let i = 0; i < 70; i++) { const sd = sr() < 0.5 ? -1 : 1, x = sd * sr(9.5, 70) + (sd > 0 ? 3 : 0), z = sr(40, -260), w = sr(7, 14), d = sr(7, 14), h = sr(7, 15); if (z < SZ - 2 && z > WZ - 14 && Math.abs(x) < 24) continue; s.box({ x, y: 0, z, w, h, d, mat: [white, cream, ochre, blue, cream][i % 5], tile: 5 }); if (i % 3 === 0) s.box({ x: x + 1, y: h, z, w: 2.4, h: 2.2, d: 2.6, mat: white }); else if (i % 3 === 1) { const r = s.cyl({ x: x - w * 0.3, y: h + 1.1, z: z + d * 0.25, r: 0.6, h: 0.05, mat: tin, rx: 1.0 }); r.rotation.y = i; s.cyl({ x: x - w * 0.3, y: h, z: z + d * 0.25, r: 0.04, h: 1.1, color: 0x666666, cast: false }); } else s.cyl({ x: x + w * 0.3, y: h, z: z - d * 0.3, r: 0.55, h: 1.2, mat: tin, seg: 10 }); }
+    // a minaret over the skyline, a couple of palms in the courtyards
+    s.box({ x: -46, y: 0, z: -128, w: 4.2, h: 34, d: 4.2, mat: cream, tile: 4 }); s.box({ x: -46, y: 34, z: -128, w: 5, h: 0.6, d: 5, mat: white }); s.box({ x: -46, y: 34.6, z: -128, w: 2.6, h: 4, d: 2.6, mat: cream, tile: 3 }); s.cyl({ x: -46, y: 38.6, z: -128, r: 0.1, r1: 1.4, h: 2.2, mat: { color: 0x3a8a6a }, seg: 8 });
+    s.trees('palm', 9, (r, i) => [[-14, -20], [18, -48], [-20, -88], [22, -110], [-16, -150], [26, -170], [-30, -60], [32, -30], [-26, -232]][i], { h: [11, 15], seedv: 4 });
     s.crew({ x: 3.6, y: 14, z: 9, ry: 0.8 });
     const run = s.run = new Run(s, { char: 'ch_agent', x: 0, z: 6, y: 14, fallDeath: 5, cam: { dist: 5.8, height: 2.7, ahead: 4, fov: 66, stiff: 9 } });
     // the asset chases on foot along YOUR route (jumps, slides and climbs wherever you did — never through the scenery)
@@ -556,10 +578,10 @@ const bourne = {
 const EXTRA = {
   raiders_boulder: { goals: { shot: ['Press E when the swinging needle is dead centre to swap the idol', 'Run at the camera, holding W: SPACE over the 3 pits, S under the 3 beams, A/D round the 4 rock piles', 'Keep the BOULDER readout above 5 m', 'At the cave mouth a stone door drops — slide (S) under it into the daylight'], cut: ['The boulder flattens you', 'You fall into a spike pit', 'The door shuts you in'], stars: ['Idol swap timing', 'Footwork (each stumble costs)', 'Cutting the door fine', 'Lead over the boulder'] }, cine: ['front', { type: 'low', fov: 52 }, 'wide'] },
   temple_door: { goals: { shot: ['Sprint the spike corridor: A/D away from the wall spikes, SPACE over the 3 floor plates, S under the 2 ceiling blocks', 'Past the red line the door drops: ease off W so DOOR AT ARRIVAL reads 0.85–1.1 m', 'Press S about 4 m before the door to slide under it', 'Then press E at once to reach back for the hat'], cut: ['The door crushes you (gap under 0.8 m when you slide)'], stars: ['Close shave under the door (closer = more)', 'The hat', 'Spike corridor'] }, cine: ['front', { type: 'low', fov: 56 }, 'track'] },
-  croc_run: { goals: { shot: ['Hold W to walk, let go to stop — each croc back is only 3 m long', 'Look at NEXT CROC: hop (SPACE) onto it only when it reads CALM, just after it snaps', 'Cross all 6 crocodiles, then hop onto the far bank'], cut: ['A croc bites you (still on its back 0.4 s into a snap)', 'Falling in the water a third time'], stars: ['Footing (land in the middle of each back)', 'Pace (about 17 s)'] }, cine: [{ type: 'wide', dist: 1.3 }, 'low', 'track'] },
-  rumble_bronx: { goals: { shot: ['Hold W to sprint the car park — A/D round the 7 parked cars, SPACE over the low wall', 'SPACE at the first yellow line to jump down to the second roof', 'Line up with the green marker, then jump ON the far yellow line at 34+ km/h, holding SPACE', 'Steer onto the 2 m balcony across the alley'], cut: ['Falling short of the balcony (or off the roof)'], stars: ['Take-off point', 'Speed', 'Landing on the balcony', 'Run-up'] }, cine: [{ type: 'wide', dist: 1.5 }, { type: 'low', fov: 46 }, 'track'] },
-  die_hard: { goals: { shot: ['Run 94 m for the roof edge with the fireball behind you — A/D round the 4 vents', 'Ease off W so FIREBALL reads 2–4 m (never under 1 m)', 'SPACE to jump in the last 2 m of roof', 'On the hose, press E as you swing IN toward the glass with the needle in the green'], cut: ['The fireball catches you (under 1 m)'], stars: ['Heat on your back', 'Leap', 'Window timing', 'Clean run'] }, cine: [{ type: 'wide', dist: 1.4 }, 'low', 'front'] },
-  casino_crane: { goals: { shot: ['Chase the bomb-maker along the jib, holding W — keep TARGET under 15 m', 'S to slide under the 3 yellow tie-frames, SPACE over the 3 cable drums', 'Jump from the last metre of each jib and hold SPACE for the 2 leaps between cranes', 'Corner him on the platform at the end of crane 3'], cut: ['You fall off the steel'], stars: ['On his tail', 'Footwork'] }, cine: [{ type: 'wide', dist: 1.6 }, { type: 'low', fov: 50 }, 'track'] },
-  bourne: { goals: { shot: ['Sprint across 6 rooftops: SPACE over the gaps and low walls, S under the washing, A/D round the dishes', 'Line up early (x≈4) for the one-board plank bridge', 'Keep PURSUER above 5 m — every snag lets him gain', 'Last roof: full sprint, jump in the last 2 m and steer through the shuttered window'], cut: ['Falling off the roofs', 'Hitting the wall beside the window', 'The asset catching you twice'], stars: ['Parkour line', 'Take-off speed', 'Window', 'Lead on the asset'] }, cine: ['chase', { type: 'wide', dist: 1.3 }, { type: 'low', fov: 50 }] },
+  croc_run: { goals: { shot: ['Hold W to walk, let go to stop — each croc back is only 3 m long', 'Look at NEXT CROC: hop (SPACE) onto it only when it reads CALM, just after it snaps', 'Cross all 6 crocodiles, then hop onto the far bank'], cut: ['A croc bites you (still on its back 0.4 s into a snap)', 'Falling in the water a third time'], stars: ['Footing (land in the middle of each back)', 'Pace (about 17 s)'] }, cine: [{ type: 'track', pos: [10.5, 1.15, -22], fov: 30, lookUp: 0.75, speed: 0.55, a: -0.1, b: 1.0 }, { type: 'low', side: 1 }, { type: 'rear', pos: [-2.2, 2.6, 4], fov: 24, lookUp: 0.6, speed: 0.7 }] },
+  rumble_bronx: { goals: { shot: ['Hold W to sprint the car park — A/D round the 7 parked cars, SPACE over the low wall', 'SPACE at the first yellow line to jump down to the second roof', 'Line up with the green marker, then jump ON the far yellow line at 34+ km/h, holding SPACE', 'Steer onto the 2 m balcony across the alley'], cut: ['Falling short of the balcony (or off the roof)'], stars: ['Take-off point', 'Speed', 'Landing on the balcony', 'Run-up'] }, cine: [{ type: 'wide', pos: [14.5, 24.4, -134.5], fov: 44, lookUp: 0.7, speed: 0.5, a: 0.15, b: 0.85 }, { type: 'low', pos: [-3.5, 1.7, -133.5], fov: 34, lookUp: 0.6, speed: 0.4, a: 0.3, b: 0.75 }, { type: 'rear', pos: [-0.8, 25.4, -119], fov: 42, lookUp: 0.6, speed: 0.7, a: -0.1, b: 0.8 }] },
+  die_hard: { goals: { shot: ['Run 94 m for the roof edge with the fireball behind you — A/D round the 4 vents', 'Ease off W so FIREBALL reads 2–4 m (never under 1 m)', 'SPACE to jump in the last 2 m of roof', 'On the hose, press E as you swing IN toward the glass with the needle in the green'], cut: ['The fireball catches you (under 1 m)'], stars: ['Heat on your back', 'Leap', 'Window timing', 'Clean run'] }, cine: [{ type: 'wide', pos: [7, 118.5, -97], fov: 44, lookUp: 0.8, speed: 0.4, a: 0.14, b: 0.36 }, { type: 'low', pos: [3.5, 99, -91], fov: 52, lookUp: 0.6, speed: 0.5, a: 0.25, b: 0.85 }, { type: 'track', pos: [-6.5, 107.4, -82.4], fov: 62, lookUp: 0.5, speed: 0.5, a: 0.6, b: 1.02 }] },
+  casino_crane: { goals: { shot: ['Chase the bomb-maker along the jib, holding W — keep TARGET under 15 m', 'S to slide under the 3 yellow tie-frames, SPACE over the 3 cable drums', 'Jump from the last metre of each jib and hold SPACE for the 2 leaps between cranes', 'Corner him on the platform at the end of crane 3'], cut: ['You fall off the steel'], stars: ['On his tail', 'Footwork'] }, cine: [{ type: 'wide', pos: [26, 61, -151], fov: 26, lookUp: 0.7, speed: 0.45, a: -0.1, b: 1.0 }, { type: 'low', fov: 50 }, 'track'] },
+  bourne: { goals: { shot: ['Sprint across 6 rooftops: SPACE over the gaps and low walls, S under the washing, A/D round the dishes', 'Line up early (x≈4) for the one-board plank bridge', 'Keep PURSUER above 5 m — every snag lets him gain', 'Last roof: full sprint, jump in the last 2 m and steer through the shuttered window'], cut: ['Falling off the roofs', 'Hitting the wall beside the window', 'The asset catching you twice'], stars: ['Parkour line', 'Take-off speed', 'Window', 'Lead on the asset'] }, cine: [{ type: 'wide', pos: [14, 12.8, -200.5], fov: 40, lookUp: 0.7, speed: 0.45, a: 0.1, b: 0.9 }, 'chase', { type: 'front', pos: [1.6, 12.4, -213], fov: 58, lookUp: 0.5, speed: 0.5, a: 0.35, b: 1.05 }] },
 };
 export default [raiders, temple, croc, rumble, dieHard, crane, bourne].map(d => Object.assign(d, EXTRA[d.id]));

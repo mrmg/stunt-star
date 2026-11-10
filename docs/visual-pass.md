@@ -34,7 +34,7 @@ Reference implementation: `smokey` (Bridge Out) in `src/stunts/drive1.js`. Look 
 
 - `dress.treeLine(s, { x, z0, z1 | path: [[x,z],...], side: ±1, depth, step, kinds: ['pine','oak','palm','cypress','jungle','dead','snowpine','bush'], h: [min,max], seed, bushes })`
   - A forest edge along a line.
-  - `side` = which way the band extends.
+  - `side: +1` extends the band to the **left of the direction of travel** from the first point to the last. For the usual line from `z0` to a more negative `z1` (toward -Z), `+1` grows toward **-X** and `-1` toward +X. The same rule applies to `berm` and `crowd`.
 - `dress.berm(s, { x, z0, z1 | path, side, w, h, off, tex, color })`: a grassy/earth bank.
 - `dress.fence(s, { x, z0, z1 | path, kind: 'rail'|'wire'|'picket'|'barrier'|'guard', h, gap, color })`.
 - `dress.bales(s, [[x,z,ry],...], { round, stack })`: hay bales.

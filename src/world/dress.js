@@ -20,7 +20,8 @@ function along(path, step, jitter = 0) {
 const line = o => o.path || [[o.x ?? 0, o.z0], [o.x1 ?? o.x ?? 0, o.z1]];
 
 // Dense multi-row forest edge along a line: tall trees behind, smaller in front, bushes at the foot.
-// side = which way the band extends from the line (+1 = +X). kinds: any of the procedural tree kinds.
+// side: +1 extends the band to the LEFT of the direction of travel from the first point to the last
+// (for a line running toward -Z that is toward -X); -1 to the right. Same rule for berm() and crowd(). kinds: any of the procedural tree kinds.
 export function treeLine(s, o = {}) {
   const P = line(o), side = o.side ?? 1, depth = o.depth ?? 16, kinds = o.kinds || ['oak'], step = o.step ?? 4.5, hs = o.h || [8, 15];
   srand(o.seed ?? 31); const pts = along(P, step, step * 0.4), per = kinds.map(() => []);
