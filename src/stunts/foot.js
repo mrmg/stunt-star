@@ -54,6 +54,48 @@ function spikes(s, { x, y, z, len = 1, across = 2, d = 1.2, dir = [0, 1], n = 4,
 }
 
 // ---------------------------------------------------------------------------------------------
+// Generated crocodiles are one rigid mesh. Cut the upper jaw off along the mouth line and hang it on a hinge at the back
+// of the head, add a pink mouth lining and teeth, and return open(a) (a = 0 shut .. 1 wide open).
+function crocJaw(s, m) {
+  m.updateWorldMatrix(true, true); const inv = m.matrixWorld.clone().invert(), meshes = []; m.traverse(o => { if (o.isMesh) meshes.push(o); }); if (!meshes.length) return null;
+  const P = [], v = V3(); for (const o of meshes) { const g = o.geometry, a = g.attributes.position, M = inv.clone().multiply(o.matrixWorld), arr = new Float32Array(a.count * 3); for (let i = 0; i < a.count; i++) { v.fromBufferAttribute(a, i).applyMatrix4(M); v.toArray(arr, i * 3); P.push(v.x, v.y, v.z); } o.userData.hp = arr; o.userData.M = M; }
+  // long axis by PCA in xz; the head is the end whose cross-section sits higher (the tail lies on the ground)
+  const n = P.length / 3; let mx = 0, mz = 0; for (let i = 0; i < n; i++) { mx += P[i * 3]; mz += P[i * 3 + 2]; } mx /= n; mz /= n; let sxx = 0, szz = 0, sxz = 0; for (let i = 0; i < n; i++) { const x = P[i * 3] - mx, z = P[i * 3 + 2] - mz; sxx += x * x; szz += z * z; sxz += x * z; }
+  const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz); let ca = Math.cos(ang), sa = Math.sin(ang); const U = (x, z) => (x - mx) * ca + (z - mz) * sa;
+  let u0 = 1e9, u1 = -1e9; for (let i = 0; i < n; i++) { const u = U(P[i * 3], P[i * 3 + 2]); u0 = Math.min(u0, u); u1 = Math.max(u1, u); }
+  const endY = (lo) => { let y = 0, k = 0; for (let i = 0; i < n; i++) { const u = U(P[i * 3], P[i * 3 + 2]); if (lo ? u < u0 + 0.4 : u > u1 - 0.4) { y += P[i * 3 + 1]; k++; } } return y / Math.max(1, k); };
+  if (endY(true) > endY(false)) { ca = -ca; sa = -sa; const t = u0; u0 = -u1; u1 = -t; } // flip so +u is the head
+  const L = u1 - u0, uH = u1 - L * 0.16, B = 24, lo = Array(B).fill(1e9), hi = Array(B).fill(-1e9), wd = Array(B).fill(0), bin = u => clamp(Math.floor((u - uH) / (u1 - uH) * B), 0, B - 1);
+  for (let i = 0; i < n; i++) { const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2], u = U(x, z); if (u < uH) continue; const b = bin(u); lo[b] = Math.min(lo[b], y); hi[b] = Math.max(hi[b], y); wd[b] = Math.max(wd[b], Math.abs(-(x - mx) * sa + (z - mz) * ca)); }
+  for (let b = 1; b < B; b++) if (lo[b] > 1e8) { lo[b] = lo[b - 1]; hi[b] = hi[b - 1]; wd[b] = wd[b - 1]; }
+  const mouth = u => { const b = bin(u); return lo[b] + (hi[b] - lo[b]) * 0.44; }, yH = mouth(uH + 0.01);
+  const H = V3(mx + ca * uH, yH, mz + sa * uH), dir = V3(ca, 0, sa), lat = V3(-sa, 0, ca);
+  const pivot = new THREE.Group(); pivot.position.copy(H); m.add(pivot);
+  for (const o of meshes) {
+    const g = o.geometry, hp = o.userData.hp, cnt = hp.length / 3, up = new Uint8Array(cnt);
+    for (let i = 0; i < cnt; i++) { const x = hp[i * 3], y = hp[i * 3 + 1], z = hp[i * 3 + 2], u = U(x, z); up[i] = u > uH && y > mouth(u) ? 1 : 0; }
+    const idx = g.index ? g.index.array : Array.from({ length: cnt }, (_, i) => i), body = [], jaw = [];
+    for (let k = 0; k < idx.length; k += 3) (up[idx[k]] + up[idx[k + 1]] + up[idx[k + 2]] >= 2 ? jaw : body).push(idx[k], idx[k + 1], idx[k + 2]);
+    const mk = (list, off) => { const gg = new THREE.BufferGeometry(), pa = new Float32Array(hp); if (off) for (let i = 0; i < cnt; i++) { pa[i * 3] -= off.x; pa[i * 3 + 1] -= off.y; pa[i * 3 + 2] -= off.z; } gg.setAttribute('position', new THREE.BufferAttribute(pa, 3)); for (const k in g.attributes) if (k !== 'position') gg.setAttribute(k, g.attributes[k]); gg.setIndex(list); if (!g.attributes.normal) gg.computeVertexNormals(); else { const nm = new THREE.Matrix3().getNormalMatrix(o.userData.M), na = g.attributes.normal, nn = new Float32Array(na.count * 3), w = V3(); for (let i = 0; i < na.count; i++) { w.fromBufferAttribute(na, i).applyMatrix3(nm).normalize(); w.toArray(nn, i * 3); } gg.setAttribute('normal', new THREE.BufferAttribute(nn, 3)); } return gg; };
+    const bm = new THREE.Mesh(mk(body), o.material), jm = new THREE.Mesh(mk(jaw, H), o.material); for (const x of [bm, jm]) { x.castShadow = x.receiveShadow = true; } m.add(bm); pivot.add(jm); o.visible = false;
+  }
+  // mouth lining (a flat pink tongue on the lower jaw, a palate under the upper one) and two rows of teeth
+  const pink = s.mat({ color: 0xc8504c, rough: 0.55, side: true, emissive: 0x501010, emI: 1 }), tooth = s.mat({ color: 0xf0ead8, rough: 0.4 }), shape = new THREE.Shape(), bw = b => wd[b] * 0.82, sl = (u1 - uH);
+  shape.moveTo(0, -bw(0)); for (let b = 0; b < B; b++) shape.lineTo((b + 0.5) / B * sl, -bw(b)); shape.lineTo(sl * 0.98, 0); for (let b = B - 1; b >= 0; b--) shape.lineTo((b + 0.5) / B * sl, bw(b)); shape.lineTo(0, bw(0));
+  const plate = new THREE.ShapeGeometry(shape); plate.rotateX(Math.PI / 2); plate.scale(0.86, 1, 0.8); // x along the snout, z across it; kept inside the head
+  const slope = Math.atan2(mouth(u1 - sl * 0.12) - yH, sl * 0.88), fdir = dir.clone().multiplyScalar(Math.cos(slope)).add(V3(0, Math.sin(slope), 0)), fup = new THREE.Vector3().crossVectors(lat.clone().negate(), fdir).negate();
+  const basis = new THREE.Matrix4().makeBasis(fdir, fup.y < 0 ? fup.negate() : fup, lat.clone().negate());
+  const tongue = new THREE.Mesh(plate, pink); tongue.applyMatrix4(basis); tongue.position.copy(H).y -= 0.04; m.add(tongue);
+  const palate = new THREE.Mesh(plate, pink); palate.applyMatrix4(basis); palate.position.y = 0.01; pivot.add(palate);
+  const tg = new THREE.ConeGeometry(0.028, 0.09, 5);
+  for (let k = 1; k < 9; k++) for (const sd of [-1, 1]) { const f = k / 9.5, b = bin(uH + f * sl), w = wd[b] * 0.86 * sd, x = f * sl;
+    const t1 = new THREE.Mesh(tg, tooth); t1.position.copy(dir).multiplyScalar(x).addScaledVector(lat, w); t1.position.y = mouth(uH + x) - yH - 0.03; t1.rotation.x = Math.PI; pivot.add(t1); // upper teeth hang down
+    const t2 = new THREE.Mesh(tg, tooth); t2.position.copy(H).addScaledVector(dir, x + 0.05).addScaledVector(lat, w * 0.94); t2.position.y = mouth(uH + x + 0.05) + 0.02; m.add(t2); }
+  pivot.userData.lat = lat; const q = new THREE.Quaternion();
+  const inside = [tongue, palate, ...pivot.children.filter(o => o.geometry === tg), ...m.children.filter(o => o.geometry === tg)];
+  return { pivot, open(a) { pivot.quaternion.setFromAxisAngle(lat, a * 1.15); const show = a > 0.12; for (const o of inside) o.visible = show; } }; // lining and teeth only while the mouth is open
+}
+
 const raiders = {
   id: 'raiders_boulder', title: 'Rolling Stone', film: 'Raiders of the Lost Ark', year: 1981, tier: 1, pay: 2400, mode: 'run', art: 'bd_jungle', music: 'epic',
   role: 'Doubling the archaeologist — fedora, leather jacket, one golden idol',
@@ -233,7 +275,7 @@ const croc = {
   id: 'croc_run', title: 'Stepping Stones', film: 'Live and Let Die', year: 1973, tier: 2, pay: 3600, mode: 'run', art: 'bd_bayou', music: 'spy',
   role: 'Doubling 007 — safari suit, crocodile-skin shoes, six live crocodiles',
   brief: 'You are marooned on that little island and the only bridge has teeth. Run across their backs to the bank. They are real, they are hungry, and the farmer who owns them did this himself — five takes, one hundred and ninety-three stitches.',
-  tips: ['Hold <b>W</b> to run, <b>SPACE</b> to hop to the next back. Let go of W to stop — a back is only three metres long.', 'A croc that <b>thrashes its tail</b> is about to snap. Never land on — or stand on — a snapping croc.', 'Each one snaps every five seconds. Hop on just <b>after</b> a snap and be gone before the next — do not dither.'],
+  tips: ['Hold <b>W</b> to run, <b>SPACE</b> to hop to the next back. Let go of W to stop — a back is only three metres long.', 'Watch the <b>jaws</b>: a croc that opens wide is about to snap. Never land on — or stand on — one with its mouth open.', 'Hop on just <b>after</b> the jaws slam shut — you have three seconds before it opens up again.'],
   controls: `${K('W')} run &nbsp; ${K('A')}${K('D')} balance &nbsp; ${K('SPACE')} hop`, intro: { r: 9, h: 3.4, a0: 0.5 },
   assets: { models: ['ch_spy', 'crocodile'], tex: ['bd_bayou', 'tx_grass', 'tx_dirt', 'tx_wood'] },
   build(s) {
@@ -254,9 +296,9 @@ const croc = {
     s.trees('bush', 26, (r, i) => [i % 3 ? -sr(7, 17) : sr(14, 20), sr(-31, -4), -0.25], { h: [0.8, 1.5], seedv: 12, wide: 1.3 }); // reed clumps out in the pond, well off the croc line
     // the crocodiles
     const LEN = 5.2, OX = 0.3785 * LEN / 4.7, OZ = 0.2987 * LEN / 4.7; // the generated croc lies 12° off-axis and off-centre in its box
-    const P = 5.4, SNAP = 1.4, WARN = 0.8, lag = [0.8, 3.0, 6.0, 7.4, 10.6, 13.0], xs = [0, 0.5, -0.4, 0.4, -0.5, 0.1], crocs = [];
-    for (let i = 0; i < 6; i++) { const z = -5.3 - i * 4.9, m = s.put('crocodile', { x: xs[i], z, len: LEN }), sz = m.userData.size; const c = { m, i, x: xs[i], z, h: sz.y, top: 0.42, st: 'calm', rem: 9, lift: 0, ry: Math.PI + 0.205 + (i % 2 ? 0.07 : -0.06) }; c.piece = s.course.addPiece({ x0: c.x - 0.62, x1: c.x + 0.62, z0: z - 1.55, z1: z + 1.55, fn: () => c.top, step: 0.6 }); crocs.push(c); }
-    const run = s.run = new Run(s, { char: 'ch_spy', x: 0, z: 0.6, auto: false, sprint: 5.6, accel: 30, airAccel: 6, strafe: 3.0, jumpV: 6.6, slide: false, grab: false, fallDeath: 99, steps: false, cam: { dist: 6.4, height: 3.6, ahead: 5, up: 0.8, fov: 60 } });
+    const P = 5.8, SNAP = 1.1, WARN = 1.5, lag = [0.8, 3.0, 6.0, 7.4, 10.6, 13.0], xs = [0, 0.5, -0.4, 0.4, -0.5, 0.1], crocs = [];
+    for (let i = 0; i < 6; i++) { const z = -5.3 - i * 4.9, m = s.put('crocodile', { x: xs[i], z, len: LEN }), sz = m.userData.size; const c = { m, i, x: xs[i], z, h: sz.y, top: 0.42, st: 'calm', rem: 9, lift: 0, ry: Math.PI + 0.205 + (i % 2 ? 0.07 : -0.06) }; c.piece = s.course.addPiece({ x0: c.x - 0.62, x1: c.x + 0.62, z0: z - 1.55, z1: z + 1.55, fn: () => c.top, step: 0.6 }); c.jaw = crocJaw(s, m); crocs.push(c); }
+    const run = s.run = new Run(s, { char: 'ch_spy', x: 0, z: 0.6, auto: false, sprint: 5.6, accel: 30, airAccel: 6, strafe: 3.0, jumpV: 6.6, slide: false, grab: false, fallDeath: 99, steps: false, cam: { dist: 4.6, height: 3.0, side: 1.5, ahead: 4.2, up: 0.1, fov: 56 } }); // high and a little to the side, so the next croc's jaws are never hidden behind 007
     const state = (c, t) => { const ph = ((t - s.t0 - c.i * 0 - lag[c.i]) % P + P) % P; return ph < SNAP ? ['snap', SNAP - ph, 0] : ph > P - WARN ? ['warn', P - ph, P - ph] : ['calm', P - WARN - ph, P - ph]; }; // [state, time left in state, safe time left]
     s.safe = (i, a, b) => { if (i < 0 || i >= crocs.length) return true; const t = s.t, c = crocs[i]; for (let k = a; k <= b + 0.001; k += 0.1) if (state(c, t + k)[0] === 'snap') return false; return true; }; s.crocs = crocs;
     const on = () => crocs.find(c => run.grounded && Math.abs(run.pos.z - c.z) < 1.6 && Math.abs(run.pos.x - c.x) < 0.7);
@@ -269,9 +311,12 @@ const croc = {
       for (const c of crocs) {
         const [st, left] = s.started ? state(c, t) : ['calm', 9]; if (st !== c.st) { if (st === 'snap') { s.fx.splash(tp.set(c.x, 0.1, c.z + 2.1), 40, 0.55); s.audio.punch(); s.audio.splash(); if (last && last.i === c.i + 1 && t - lastT < 0.9 && !bitten) { heels++; s.msg('SNAP! Right at your heels', 'small'); } } c.st = st; }
         c.lift = damp(c.lift, st === 'snap' ? 1 : 0, st === 'snap' ? 16 : 5, dt); c.dip = damp(c.dip || 0, 0, 5, dt);
-        const bob = Math.sin(t * 1.7 + c.i * 2.1) * 0.035; c.top = 0.42 + bob - c.dip + c.lift * 0.2; c.m.position.y = c.top - c.h * 0.9; c.m.rotation.x = c.lift * 0.3 * Math.abs(Math.sin(left * 11)) + c.lift * 0.1;
-        const ry = c.m.rotation.y = c.ry + (st === 'warn' ? Math.sin(t * 22) * 0.06 : 0) + c.lift * Math.sin(t * 30) * 0.04, cs = Math.cos(ry), sn = Math.sin(ry); c.m.position.x = c.x - (OX * cs + OZ * sn); c.m.position.z = c.z - (-OX * sn + OZ * cs);
-        if (st === 'warn' && Math.random() < 0.5) s.fx.spray(tp.set(c.x + rnd(-0.4, 0.4), 0.05, c.z - 2.2), V3(0, 2, 0), 1, [0.8, 0.9, 0.8], 0.3); if (st === 'snap' && Math.random() < 0.6) s.fx.spray(tp.set(c.x + rnd(-0.5, 0.5), 0.1, c.z + 2), V3(0, 3, 1), 2, [0.9, 0.95, 1], 0.35);
+        const bob = Math.sin(t * 1.7 + c.i * 2.1) * 0.035; c.top = 0.42 + bob - c.dip + c.lift * 0.2; c.m.position.y = c.top - c.h * 0.9; // jaws tell the story: shut and lazy when calm, gaping wide when restless, slammed shut on the snap
+        const open = st === 'warn' ? smooth(WARN, WARN * 0.35, left) * (0.92 + 0.08 * Math.sin(t * 9)) : st === 'snap' ? (left > SNAP - 0.12 ? 1 : 0) : 0.06 + 0.04 * Math.sin(t * 0.9 + c.i);
+        c.jo = damp(c.jo ?? 0, open, open < (c.jo ?? 0) ? 30 : 4, dt); c.jaw?.open(c.jo);
+        c.m.rotation.x = c.lift * (0.16 - 0.1 * clamp((SNAP - left) * 6)) + (st === 'warn' ? 0.05 * c.jo : 0);
+        const ry = c.m.rotation.y = c.ry + c.lift * Math.sin(t * 26) * 0.03, cs = Math.cos(ry), sn = Math.sin(ry); c.m.position.x = c.x - (OX * cs + OZ * sn); c.m.position.z = c.z - (-OX * sn + OZ * cs);
+         if (st === 'snap' && Math.random() < 0.6) s.fx.spray(tp.set(c.x + rnd(-0.5, 0.5), 0.1, c.z + 2), V3(0, 3, 1), 2, [0.9, 0.95, 1], 0.35);
       }
       if (!s.started || s.ended) return;
       const c = on(); if (c && c.st === 'snap' && state(c, t)[1] < SNAP - 0.4 && t - lastT > 0.4) bite(c);
@@ -578,7 +623,7 @@ const bourne = {
 const EXTRA = {
   raiders_boulder: { goals: { shot: ['Press E when the swinging needle is dead centre to swap the idol', 'Run at the camera, holding W: SPACE over the 3 pits, S under the 3 beams, A/D round the 4 rock piles', 'Keep the BOULDER readout above 5 m', 'At the cave mouth a stone door drops — slide (S) under it into the daylight'], cut: ['The boulder flattens you', 'You fall into a spike pit', 'The door shuts you in'], stars: ['Idol swap timing', 'Footwork (each stumble costs)', 'Cutting the door fine', 'Lead over the boulder'] }, cine: ['front', { type: 'low', fov: 52 }, 'wide'] },
   temple_door: { goals: { shot: ['Sprint the spike corridor: A/D away from the wall spikes, SPACE over the 3 floor plates, S under the 2 ceiling blocks', 'Past the red line the door drops: ease off W so DOOR AT ARRIVAL reads 0.85–1.1 m', 'Press S about 4 m before the door to slide under it', 'Then press E at once to reach back for the hat'], cut: ['The door crushes you (gap under 0.8 m when you slide)'], stars: ['Close shave under the door (closer = more)', 'The hat', 'Spike corridor'] }, cine: ['front', { type: 'low', fov: 56 }, 'track'] },
-  croc_run: { goals: { shot: ['Hold W to walk, let go to stop — each croc back is only 3 m long', 'Look at NEXT CROC: hop (SPACE) onto it only when it reads CALM, just after it snaps', 'Cross all 6 crocodiles, then hop onto the far bank'], cut: ['A croc bites you (still on its back 0.4 s into a snap)', 'Falling in the water a third time'], stars: ['Footing (land in the middle of each back)', 'Pace (about 17 s)'] }, cine: [{ type: 'track', pos: [10.5, 1.15, -22], fov: 30, lookUp: 0.75, speed: 0.55, a: -0.1, b: 1.0 }, { type: 'low', side: 1 }, { type: 'rear', pos: [-2.2, 2.6, 4], fov: 24, lookUp: 0.6, speed: 0.7 }] },
+  croc_run: { goals: { shot: ['Hold W to walk, let go to stop — each croc back is only 3 m long', 'Watch the jaws (and NEXT CROC): hop (SPACE) on just after they slam shut — mouth closed means CALM', 'Cross all 6 crocodiles, then hop onto the far bank'], cut: ['A croc bites you (still on its back 0.4 s into a snap)', 'Falling in the water a third time'], stars: ['Footing (land in the middle of each back)', 'Pace (about 17 s)'] }, cine: [{ type: 'track', pos: [10.5, 1.15, -22], fov: 30, lookUp: 0.75, speed: 0.55, a: -0.1, b: 1.0 }, { type: 'low', side: 1 }, { type: 'rear', pos: [-2.2, 2.6, 4], fov: 24, lookUp: 0.6, speed: 0.7 }] },
   rumble_bronx: { goals: { shot: ['Hold W to sprint the car park — A/D round the 7 parked cars, SPACE over the low wall', 'SPACE at the first yellow line to jump down to the second roof', 'Line up with the green marker, then jump ON the far yellow line at 34+ km/h, holding SPACE', 'Steer onto the 2 m balcony across the alley'], cut: ['Falling short of the balcony (or off the roof)'], stars: ['Take-off point', 'Speed', 'Landing on the balcony', 'Run-up'] }, cine: [{ type: 'wide', pos: [14.5, 24.4, -134.5], fov: 44, lookUp: 0.7, speed: 0.5, a: 0.15, b: 0.85 }, { type: 'low', pos: [-3.5, 1.7, -133.5], fov: 34, lookUp: 0.6, speed: 0.4, a: 0.3, b: 0.75 }, { type: 'rear', pos: [-0.8, 25.4, -119], fov: 42, lookUp: 0.6, speed: 0.7, a: -0.1, b: 0.8 }] },
   die_hard: { goals: { shot: ['Run 94 m for the roof edge with the fireball behind you — A/D round the 4 vents', 'Ease off W so FIREBALL reads 2–4 m (never under 1 m)', 'SPACE to jump in the last 2 m of roof', 'On the hose, press E as you swing IN toward the glass with the needle in the green'], cut: ['The fireball catches you (under 1 m)'], stars: ['Heat on your back', 'Leap', 'Window timing', 'Clean run'] }, cine: [{ type: 'wide', pos: [7, 118.5, -97], fov: 44, lookUp: 0.8, speed: 0.4, a: 0.14, b: 0.36 }, { type: 'low', pos: [3.5, 99, -91], fov: 52, lookUp: 0.6, speed: 0.5, a: 0.25, b: 0.85 }, { type: 'track', pos: [-6.5, 107.4, -82.4], fov: 62, lookUp: 0.5, speed: 0.5, a: 0.6, b: 1.02 }] },
   casino_crane: { goals: { shot: ['Chase the bomb-maker along the jib, holding W — keep TARGET under 15 m', 'S to slide under the 3 yellow tie-frames, SPACE over the 3 cable drums', 'Jump from the last metre of each jib and hold SPACE for the 2 leaps between cranes', 'Corner him on the platform at the end of crane 3'], cut: ['You fall off the steel'], stars: ['On his tail', 'Footwork'] }, cine: [{ type: 'wide', pos: [26, 61, -151], fov: 26, lookUp: 0.7, speed: 0.45, a: -0.1, b: 1.0 }, { type: 'low', fov: 50 }, 'track'] },
