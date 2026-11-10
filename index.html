@@ -121,6 +121,35 @@ button{font-family:"Bebas Neue",Oswald;letter-spacing:.08em;cursor:pointer}
 #pause,#over{background:#000c;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center}
 #pause.on,#over.on{display:flex}
 #pause h1,#over h1{font-size:90px}#over h1{color:var(--red)}#over p{font-family:"Special Elite";max-width:560px;color:var(--paper);line-height:1.5}
+/* ---------- v2: goals, director, replay, takes ---------- */
+#brief .panel{top:50%;max-height:94vh;overflow-y:auto;padding-right:6px}
+#brief h1{font-size:58px}
+#brief .goals{background:#000b;border:1px solid #f2c14e55;border-radius:6px;padding:10px 16px 12px;margin-bottom:12px}
+#brief .goals h4{font:400 20px "Bebas Neue";letter-spacing:.12em;color:var(--gold);margin:2px 0 4px}
+#brief .goals ol{margin:0 0 6px;padding-left:22px}#brief .goals ol li{font:600 17px/1.35 Oswald;color:#fff;padding:2px 0;opacity:1;animation:none}
+#brief .goals ol li::before{content:none}
+#brief .goals h4.cut{color:#ff6b5e;font-size:16px;margin-top:6px}#brief .goals ul.cut{margin:0 0 4px;padding:0}#brief .goals ul.cut li{font:400 14px/1.3 Oswald;color:#ffb3ab;padding:1px 0 1px 18px;opacity:1;animation:none}#brief .goals ul.cut li::before{content:"✗";color:#ff6b5e}
+#brief .goals h4.st{color:#9be3b5;font-size:16px;margin-top:6px}#brief .goals div.st{font:300 14px Oswald;color:#cfeedd}
+#brief .tips{position:absolute;right:4vw;bottom:6vh;width:min(380px,30vw);background:#000a;border-left:3px solid #fff4;padding:10px 14px;border-radius:4px}
+#brief .tips h4{font:400 16px "Bebas Neue";letter-spacing:.14em;color:#fffa;margin:0 0 4px}#brief .tips ul{list-style:none;margin:0;padding:0}#brief .tips li{font:400 14px/1.35 Oswald;color:#fffd;padding:3px 0 3px 18px;position:relative;opacity:0;animation:fadein .4s forwards}#brief .tips li::before{content:"▸";position:absolute;left:2px;color:var(--gold)}
+#brief .deal{gap:18px;flex-wrap:wrap}#brief .deal b{font-size:26px}
+.onetake{font:600 14px Oswald;letter-spacing:.06em;color:#111;background:#ff8a3d;padding:6px 12px;border-radius:4px;margin:-6px 0 14px;display:inline-block}.onetake.soft{background:#fff2;color:#fff}
+#hud .dir{position:absolute;left:50%;bottom:150px;transform:translateX(-50%) translateY(10px);font:400 20px "Special Elite",monospace;color:var(--paper);background:#000c;border-left:3px solid var(--red);padding:8px 16px;opacity:0;transition:opacity .2s,transform .2s;white-space:nowrap}
+#hud .dir.on{opacity:1;transform:translateX(-50%)}#hud .dir b{color:var(--red);font-weight:400}
+#hud .shotcard{position:absolute;top:80px;left:50%;transform:translateX(-50%) scale(.96);background:#000c;border:1px solid #f2c14e88;border-radius:8px;padding:12px 26px 10px;opacity:0;transition:opacity .35s,transform .35s;min-width:420px}
+#hud .shotcard.on{opacity:1;transform:translateX(-50%) scale(1)}#hud .shotcard h4{margin:0 0 4px;font:400 22px "Bebas Neue";letter-spacing:.14em;color:var(--gold)}#hud .shotcard ol{margin:0;padding-left:22px}#hud .shotcard li{font:600 19px/1.4 Oswald}
+#hud .pop.bad.small{color:#ff8a80}
+#replay{pointer-events:none}
+#replay .cam{position:absolute;top:calc(10.5vh + 14px);left:38px;font:400 15px Oswald;letter-spacing:.25em;color:#fffd;text-shadow:0 1px 4px #000}#replay .cam i{display:inline-block;width:10px;height:10px;border-radius:50%;background:#58d68d;margin-right:8px;animation:blink 1s steps(2) infinite}
+#replay .ttl{position:absolute;bottom:calc(10.5vh + 16px);left:0;right:0;text-align:center;font:400 34px "Bebas Neue";letter-spacing:.14em;color:#fff;text-shadow:0 2px 12px #000}
+#replay .skip{position:absolute;bottom:calc(10.5vh + 18px);right:38px;font:300 14px Oswald;color:#fffa}
+#result .box{max-height:calc(100vh - 7vh - 190px);overflow-y:auto}
+#result .stars.small{font-size:18px;letter-spacing:3px;color:#fffb}
+#result .notes{margin:12px 0 4px;background:#0008;border-left:3px solid var(--gold);padding:8px 14px}#result .notes h4{margin:0 0 4px;font:400 17px "Bebas Neue";letter-spacing:.14em;color:var(--gold)}#result .notes p{margin:4px 0;font:400 16px/1.45 "Special Elite",monospace;color:var(--paper)}
+#result .btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}#result .btns .go{font-size:20px}#result .btns .go.sec{margin-left:0;font-size:17px}
+.nextup{margin:0 40px 6px;display:flex;align-items:center;gap:18px;background:linear-gradient(90deg,#f2c14e22,#0000);border-left:3px solid var(--gold);padding:10px 16px;border-radius:4px}
+.nextup span{font:300 12px Oswald;letter-spacing:.3em;color:var(--gold)}.nextup b{font:400 30px "Bebas Neue";letter-spacing:.04em}.nextup em{font:300 14px Oswald;color:#fffb;font-style:normal}.nextup .go{margin-left:auto;font-size:20px;padding:6px 16px}
+.card.next{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),0 0 30px #f2c14e55}
 </style>
 </head>
 <body>
@@ -130,8 +159,10 @@ button{font-family:"Bebas Neue",Oswald;letter-spacing:.08em;cursor:pointer}
   <div class="meters"></div><div class="read"></div><div class="prompt"></div>
   <div class="bar2d"><div class="zone"></div><div class="zone p"></div><div class="cur"></div></div>
   <div class="lane"><div class="hit"></div></div>
+  <div class="dir"></div><div class="shotcard"></div>
 </div>
-<div id="brief" class="layer"><div class="panel"></div></div>
+<div id="replay" class="layer"><div class="cam"></div><div class="ttl"></div><div class="skip"><kbd>SPACE</kbd> skip</div></div>
+<div id="brief" class="layer"><div class="panel"></div><div class="tips"></div></div>
 <div id="slate" class="layer"><div class="board"><div class="stick"></div><div class="stick2"></div><div class="body"></div></div><div class="action">ACTION!</div></div>
 <div id="result" class="layer"></div>
 <div id="menu" class="layer"></div>

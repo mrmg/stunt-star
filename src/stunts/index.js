@@ -7,4 +7,5 @@ import hang from './hang.js';
 import air from './air.js';
 import fight from './fight.js';
 import precision from './precision.js';
-export const STUNTS = [...drive1, ...drive2, ...drive3, ...foot, ...falls, ...hang, ...air, ...fight, ...precision].sort((a, b) => a.tier - b.tier || a.pay - b.pay);
+import { applyOrder } from './order.js';
+export const STUNTS = applyOrder([...drive1, ...drive2, ...drive3, ...foot, ...falls, ...hang, ...air, ...fight, ...precision]);

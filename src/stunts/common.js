@@ -26,7 +26,7 @@ export function street(s, o = {}) {
 // Scatter looping traffic on lanes. lanes: [[x, dir(+1 with player / -1 oncoming)], ...]
 export function traffic(s, movers, o) {
   const { lanes, n = 12, z0 = -80, z1 = -900, speed = [14, 20], models = TRAFFIC, seedv = 5, ahead = [260, 520], zEnd } = o; srand(seedv); const out = [];
-  for (let i = 0; i < n; i++) { const L = lanes[i % lanes.length], v = sr(speed[0], speed[1]) * L[1]; out.push(movers.add({ model: models[Math.floor(sr(models.length))], x: L[0], z: z0 + (z1 - z0) * ((i + sr(0.8)) / n), v, recycle: o.recycle === false ? null : [60, ahead[0], ahead[1]], zEnd, msg: o.msg || 'Head-on with the traffic', hardK: o.hardK })); }
+  for (let i = 0; i < n; i++) { const L = lanes[i % lanes.length], v = sr(speed[0], speed[1]) * L[1]; out.push(movers.add({ model: models[Math.floor(sr(models.length))], x: L[0], z: z0 + (z1 - z0) * ((i + sr(0.8)) / n), v, recycle: o.recycle === false ? null : [60, ahead[0], ahead[1]], zEnd, msg: o.msg || 'Head-on with the traffic', hardK: o.hardK, swerve: o.swerve ?? 1.5 })); }
   return out;
 }
 // autopilot helpers for test bots
@@ -54,4 +54,19 @@ export function tumbleScript(s, car, { rollRate = 9, pitchRate = 0, decel = 9, h
     if (st.v <= 0.05) { st.done = true; onDone?.(st); }
   });
   return st;
+}
+
+// On-foot chaser that follows the player's exact route with a delay — it jumps, slides and climbs
+// wherever the player did, so it can never clip through the obstacles the player had to avoid.
+// const p = pursuer(s, run.c, 'ch_goon', { delay: 1.6 });  p.gap() -> metres behind the player along the route
+export function pursuer(s, lead, id, { delay = 1.5, speedUp = 0 } = {}) {
+  const c = s.char(id, {}), H = []; let t = 0, d = delay; c.root.visible = false;
+  const KEYS = ['hip', 'sp', 'hd', 'body', 'aR', 'aL', 'lR', 'lL', 'ft'];
+  s.onUpdate(dt => {
+    if (!s.started) return; t += dt; d = Math.max(0.35, d - speedUp * dt);
+    H.push({ t, p: lead.root.position.clone(), h: lead.heading, pose: KEYS.map(k => lead.cur[k].slice()), sa: lead.spinAng.clone() }); if (H.length > 2400) H.splice(0, 600);
+    const tt = t - d; if (tt < H[0].t) return; let i = H.findIndex(e => e.t >= tt); if (i < 0) i = H.length - 1;
+    const e = H[i]; c.root.visible = true; c.root.position.copy(e.p); c.heading = e.h; c.cycle = null; c.target = Object.fromEntries(KEYS.map((k, j) => [k, e.pose[j]])); c.k = 40; c.spinAng.copy(e.sa);
+  });
+  return { c, gap: () => { const tt = t - d; const e = H.find(x => x.t >= tt); return e ? e.p.distanceTo(lead.root.position) : 99; }, set delay(v) { d = v; }, get delay() { return d; } };
 }

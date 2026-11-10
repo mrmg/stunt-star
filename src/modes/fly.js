@@ -17,7 +17,7 @@ export class Fly {
       const r = this.rotor = new THREE.Mesh(new THREE.CylinderGeometry(sz.z * 0.48, sz.z * 0.48, 0.05, 24), new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.35, depthWrite: false })); r.position.y = sz.y / 2 + 0.05; this.obj.add(r);
     }
     s.cam.follow(() => ({ pos: this.pos, heading: 0 }), { dist: Math.max(14, sz.z * 1.35), height: Math.max(3.2, sz.y * 1.1), ahead: 30, up: 0.5, stiff: 9, lookStiff: 14, fov: 66, ground: false, ...(o.cam || {}), snap: true });
-    s.onUpdate(dt => this.update(dt)); s.focus = this.pos;
+    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.obj;
   }
   crash(reason = 'Flew it into the ground', injury = 1) {
     if (this.dead) return; this.dead = true; const s = this.s; s.fx.explosion(this.pos, 2.2); s.audio.explosion(1.2); s.engine.addShake(2.2); s.engine.flash(0.8); this.mesh.visible = false; if (this.rotor) this.rotor.visible = false;

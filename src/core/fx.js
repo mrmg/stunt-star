@@ -9,8 +9,8 @@ const FS = /* glsl */`
   void main(){ vec2 p=gl_PointCoord-0.5; float d=length(p)*2.0; float a=smoothstep(1.0,uSoft,d); if(a<0.01) discard; gl_FragColor=vec4(vColor.rgb,vColor.a*a); }`;
 
 class Layer {
-  constructor(n, additive) {
-    this.n = n; this.i = 0; this.alive = 0;
+  constructor(n, additive, owner, id) {
+    this.owner = owner; this.id = id; this.n = n; this.i = 0; this.alive = 0;
     this.pos = new Float32Array(n * 3); this.col = new Float32Array(n * 4); this.size = new Float32Array(n);
     this.vel = new Float32Array(n * 3); this.life = new Float32Array(n); this.max = new Float32Array(n);
     this.p = new Array(n).fill(null);
@@ -22,6 +22,7 @@ class Layer {
     this.points = new THREE.Points(g, this.mat); this.points.frustumCulled = false; this.points.renderOrder = additive ? 11 : 10;
   }
   emit(x, y, z, vx, vy, vz, o) {
+    if (this.owner?.rec) this.owner.rec.push({ t: this.owner.recT(), L: this.id, a: [x, y, z, vx, vy, vz], o });
     const i = this.i; this.i = (i + 1) % this.n;
     this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z; this.vel[i * 3] = vx; this.vel[i * 3 + 1] = vy; this.vel[i * 3 + 2] = vz;
     this.life[i] = this.max[i] = o.life; this.p[i] = o;
@@ -47,15 +48,15 @@ const P = o => ({ life: 1, s0: 0.5, s1: 1.5, c0: [1, 1, 1], a: 0.5, drag: 1, gra
 
 export class FX {
   constructor(scene) {
-    this.scene = scene; this.smoke = new Layer(2600, false); this.fire = new Layer(1800, true);
-    scene.add(this.smoke.points, this.fire.points);
+    this.scene = scene; this.smoke = new Layer(2600, false, this, 0); this.fire = new Layer(1800, true, this, 1); this.rec = null; this.recT = () => 0;
+    this.smoke.points.userData.noRec = this.fire.points.userData.noRec = true; scene.add(this.smoke.points, this.fire.points);
     // debris: instanced boxes
     const N = this.dn = 260; this.deb = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.1 }), N);
     this.deb.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.deb.castShadow = true; this.deb.frustumCulled = false;
     this.dd = Array.from({ length: N }, () => ({ life: 0, p: new THREE.Vector3(), v: new THREE.Vector3(), r: new THREE.Euler(), w: new THREE.Vector3(), s: new THREE.Vector3(), floor: 0 }));
     this.di = 0; this._m = new THREE.Matrix4(); this._q = new THREE.Quaternion(); this._c = new THREE.Color();
     for (let i = 0; i < N; i++) { this._m.makeScale(0, 0, 0); this.deb.setMatrixAt(i, this._m); this.deb.setColorAt(i, this._c.set(0xffffff)); }
-    scene.add(this.deb);
+    this.deb.userData.noRec = true; scene.add(this.deb);
     this.lights = [];
   }
   setHeight(h) { const s = h * 0.9; this.smoke.mat.uniforms.uScale.value = s; this.fire.mat.uniforms.uScale.value = s; }
@@ -101,11 +102,26 @@ export class FX {
       d.w.set(R(-9, 9), R(-9, 9), R(-9, 9)); d.r.set(R(0, 6), R(0, 6), R(0, 6));
       const s = size * R(0.5, 1.5); d.s.set(s * R(0.6, 1.6), flat ? s * 0.12 : s * R(0.3, 1), s * R(0.6, 1.6)); d.floor = floor ?? (p.y - 1.2);
       this._c.set(color).multiplyScalar(R(0.7, 1.15)); this.deb.setColorAt(i, this._c);
+      if (this.rec) this.rec.push({ t: this.recT(), D: [d.life, d.p.toArray(), d.v.toArray(), d.w.toArray(), [d.r.x, d.r.y, d.r.z], d.s.toArray(), d.floor, this._c.getHex()] });
     }
     this.deb.instanceColor.needsUpdate = true;
   }
   light(p, color = 0xffaa55, intensity = 40, life = 0.4, dist = 30) {
-    const l = new THREE.PointLight(color, intensity, dist, 1.6); l.position.copy(p); l.position.y += 1; this.scene.add(l); this.lights.push({ l, life, max: life, i: intensity });
+    if (this.rec) this.rec.push({ t: this.recT(), Lt: [p.x, p.y, p.z, color, intensity, life, dist] });
+    const l = new THREE.PointLight(color, intensity, dist, 1.6); l.userData.noRec = true; l.position.copy(p); l.position.y += 1; this.scene.add(l); this.lights.push({ l, life, max: life, i: intensity });
+  }
+  // ---- replay support: wipe all live effects, then re-inject recorded events
+  clear() {
+    for (const L of [this.smoke, this.fire]) { L.life.fill(0); L._dirty = true; }
+    for (const d of this.dd) d.life = 0; this._dAny = true;
+    for (const L of this.lights) { this.scene.remove(L.l); L.l.dispose(); } this.lights.length = 0;
+  }
+  replay(ev) {
+    const rec = this.rec; this.rec = null;
+    if (ev.L != null) (ev.L ? this.fire : this.smoke).emit(...ev.a, ev.o);
+    else if (ev.D) { const [life, p, v, w, r, sz, floor, col] = ev.D, i = this.di, d = this.dd[i]; this.di = (i + 1) % this.dn; d.life = life; d.p.fromArray(p); d.v.fromArray(v); d.w.fromArray(w); d.r.set(r[0], r[1], r[2]); d.s.fromArray(sz); d.floor = floor; this.deb.setColorAt(i, this._c.setHex(col)); this.deb.instanceColor.needsUpdate = true; }
+    else if (ev.Lt) { const [x, y, z, c, I, life, dist] = ev.Lt; this.light(new THREE.Vector3(x, y, z), c, I, life, dist); }
+    this.rec = rec;
   }
   update(dt) {
     this.smoke.update(dt); this.fire.update(dt);

@@ -3,6 +3,7 @@ import { FX } from '../core/fx.js';
 import { tex, rawTex, model, MODEL_META } from '../core/assets.js';
 import { Character } from './character.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { Recorder, recordingAudio, liveCut } from './replay.js';
 
 export const V3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
@@ -69,6 +70,7 @@ class CamRig {
   _tp() { const t = this.target; if (!t) return null; if (typeof t === 'function') return t(); return { pos: t.position, heading: t.userData?.heading ?? t.rotation.y }; }
   update(dt) {
     const c = this.cam; if (this.mode === 'free') return;
+    if (this.mode === 'cine') { const k = this.cineFn(); c.position.copy(k.pos); c.up.set(0, 1, 0); c.lookAt(k.look); if (Math.abs(c.fov - k.fov) > 0.05) { c.fov = k.fov; c.updateProjectionMatrix(); } return; }
     const tp = this._tp(); if (!tp) return; const o = this.o, h = (tp.heading || 0) + (o.yaw || 0), sn = Math.sin(h), cs = Math.cos(h);
     this._l.set(tp.pos.x - sn * o.ahead, tp.pos.y + o.up, tp.pos.z - cs * o.ahead);
     if (this.mode === 'follow') {
@@ -85,6 +87,24 @@ class CamRig {
 
 const _box = new THREE.Box3(), _v = new THREE.Vector3();
 
+const KEEP_ROLLING = ['Keep rolling!', 'Keep going, keep going!', 'Do not stop!', 'Still rolling!'];
+const CUT_LINES = ['Cut! Cut!', 'Cut! Medic!', 'Cut it!'];
+const pickLine = a => a[Math.floor(Math.random() * a.length)];
+// generic director advice from the wording of a failure; stunts pass their own `advice` when they can say more
+export function adviceFor(reason = '', def) {
+  const r = reason.toLowerCase(), m = def?.mode;
+  if (/short|swim|river|street|dropped it in|fell short|came up/.test(r)) return 'You ran out of speed before the gap. Watch the speed readout and be in the green zone before the ramp — then do not lift.';
+  if (/nose|landing|rolled|flip|landed/.test(r)) return m === 'drive' ? 'In the air, feather W and S to keep the nose level with the landing. Land on all four wheels, not the bumper.' : 'Watch your body angle in the air and set up for the landing early.';
+  if (/speed|mph|slow|fast|too hot|not enough/.test(r)) return 'It is all in the speed. Watch the MPH readout and hold it in the green — small throttle changes, early.';
+  if (/late|early|timing|missed the|window|lightning/.test(r)) return 'Commit on the cue, not after it. Watch the marker and press as it hits the green.';
+  if (/grip|let go|lost your|slipp/.test(r)) return 'Only brace when the warning appears and rest in between — stamina is what keeps your hands on.';
+  if (/got away|lost (him|her|the)|too far|range/.test(r)) return 'Stay closer. Take the inside line and use the straights to make up the gap.';
+  if (/caught|crushed|blast|boulder|train|truck/.test(r)) return 'You were a fraction slow. Sprint earlier and keep your line clean so nothing costs you speed.';
+  if (/hit|crash|wreck|into|head-on|clipped|collect|scenery|wall|pillar|tree/.test(r)) return 'Look further ahead and pick your gap early. A smooth line beats a fast one.';
+  if (/fell|fall|drop|metres|edge|off the/.test(r)) return 'Keep to the middle and do not rush the jumps — the take is won at the edge.';
+  return 'Same marks, same speed — breathe, and go again.';
+}
+
 export class Stage {
   constructor(engine, input, audio, hud, def) {
     this.engine = engine; this.input = input; this.audio = audio; this.hud = hud; this.def = def;
@@ -94,7 +114,20 @@ export class Stage {
     this.scores = new Map(); this.bonuses = []; this.result = null; this.slow = { s: 1, t: 0 };
     this.mats = new Map(); this.focus = new THREE.Vector3(); this.disposables = [];
     this.lookName = 'neutral';
+    this.rec = new Recorder(this); this.audio = recordingAudio(audio, this); this.moments = []; this.flubs = []; this.subject = null; this.liveCine = true;
   }
+  // called on ACTION
+  begin() { this.started = true; this.t0 = this.t; this.rec.start(this.t); this.audio.space?.(this.soundSpace || 'open'); this.audio.ambience?.(this.ambience); this.audio.setIntensity?.(0.55); this.musicBoost = 0; }
+  // ---------------------------------------------------------------- key moments (for the replay edit)
+  // Mark the bit of the take worth showing again. w = how spectacular (highest wins); shots = ['wide','low','front',...] to match the film.
+  moment(label, { t0 = this.t, t1, dur = 2.5, w = 1, subject, shots, kind } = {}) { const m = { label, t0, t1: t1 ?? t0 + dur, w, subject: subject || this.subject, shots: shots || this.def.cine, kind }; this.moments.push(m); if (this.started && !this.ended && w >= 1) { this.audio.sting?.(); this.musicBoost = 3; } return m; }
+  bestMoment() {
+    if (this.result && !this.result.ok) { const t = this.endT; return { label: 'the crash', t0: t - 2.4, t1: Math.min(this.rec.end, t + 1.6), w: 1e3, subject: this.subject, kind: 'fail', shots: null }; }
+    let b = null; for (const m of this.moments) if (m.t1 > m.t0 && (!b || m.w >= b.w)) b = m;
+    return b || { label: 'the finish', t0: Math.max(this.rec.t0, (this.endT ?? this.t) - 4), t1: Math.min(this.rec.end, (this.endT ?? this.t) + 0.8), w: 0, subject: this.subject, shots: this.def.cine };
+  }
+  // live multi-angle cut while the player keeps control (pts: predicted path [{t,p}]); returns restore fn
+  cut(pts, type = 'wide', o = {}) { if (!this.liveCine || !this.subject) return () => { }; return liveCut(this, o.subject || this.subject, pts, type, o); }
   // ---------------------------------------------------------------- lifecycle helpers
   onUpdate(fn) { this.updaters.push(fn); return fn; }
   after(sec, fn) { this.timers.push({ t: this.t + sec, fn }); }
@@ -104,16 +137,27 @@ export class Stage {
   msg(text, kind = '') { this.hud.pop(text, kind); }
   objective(text) { this.hud.objective(text); }
   quality() { let s = 0, w = 0; for (const r of this.scores.values()) { s += r.v * r.w; w += r.w; } return w ? s / w : 0; }
+  // multiplier from mistakes the director let you roll through
+  flubMult() { return clamp(1 - this.flubs.reduce((a, f) => a + f.penalty, 0), 0.2, 1); }
+  // A recoverable mistake: the take keeps rolling, it just costs quality (stars). Use this instead of fail()
+  // for anything the performer could carry on from: missed speed window, dropped item, scraped a wall, late cue...
+  flub(reason, { penalty = 0.2, advice, label, quiet = false } = {}) {
+    if (this.ended) return; const last = this.flubs.at(-1); if (last && last.reason === reason && this.t - last.t < 1.5) return;
+    this.flubs.push({ reason, penalty, advice: advice || adviceFor(reason, this.def), label: label || reason, t: this.t });
+    if (!quiet) { this.hud.pop(reason.toUpperCase(), 'bad small'); this.hud.director('Keep rolling!'); this.audio.say?.(pickLine(KEEP_ROLLING)); this.audio.bad(); }
+  }
+  _advice(extra) { const out = []; if (extra) out.push(extra); for (const f of this.flubs) if (f.advice && !out.includes(f.advice)) out.push(f.advice); return out.slice(0, 3); }
   wrap(delay = 1.6, note) {
     if (this.ended) return; this.ended = true; this.endT = this.t;
-    this.result = { ok: true, scores: [...this.scores.values()], bonuses: this.bonuses, quality: this.quality(), note };
+    this.result = { ok: true, scores: [...this.scores.values()], bonuses: this.bonuses, quality: this.quality() * this.flubMult(), note, flubs: this.flubs, advice: this._advice() };
     this.audio.good(); this._finish(delay);
   }
-  fail(reason, { injury = 0.5, delay = 2.2, keepScore = false } = {}) {
+  // A take-ending failure (crash, fall, caught...). Scores so far are kept: if the production runs out of takes they "go with it".
+  fail(reason, { injury = 0.5, delay = 2.4, advice } = {}) {
     if (this.ended) return; this.ended = true; this.endT = this.t;
-    this.result = { ok: false, reason, injury, scores: keepScore ? [...this.scores.values()] : [], bonuses: [], quality: 0 };
+    this.result = { ok: false, reason, injury, scores: [...this.scores.values()], bonuses: [], quality: this.quality() * this.flubMult() * 0.6, flubs: this.flubs, advice: this._advice(advice || adviceFor(reason, this.def)) };
     if (injury > 0.15) this.engine.hurt(Math.min(1, injury + 0.3));
-    this.slowmo(0.35, 1.2); this._finish(delay);
+    this.audio.say?.(pickLine(CUT_LINES)); this.slowmo(0.35, 1.2); this._finish(delay);
   }
   _finish(delay) { this.finishAt = this.t + delay; }
   update(dt) {
@@ -126,10 +170,12 @@ export class Stage {
     this.fx.update(sdt);
     this.cam.update(Math.min(dt, 0.05));
     this._updateEnv(sdt);
+    this.rec.tick(this.t);
+    if (this.started && !this.ended) { this.musicBoost = Math.max(0, (this.musicBoost || 0) - dt); this.audio.setIntensity?.(this.slow.s < 0.7 || this.musicBoost > 0 ? 1 : 0.62); }
     if (this.ended && this.finishAt != null && this.t >= this.finishAt) { this.finishAt = null; this.onFinish?.(this.result); }
   }
   dispose() {
-    this.audio.stopLoops();
+    this.audio.stopLoops(); this.audio.stopAmbience?.();
     this.scene.traverse(o => { if (o.geometry) o.geometry.dispose(); const m = o.material; if (m) (Array.isArray(m) ? m : [m]).forEach(x => { for (const k in x) { const v = x[k]; if (v && v.isTexture && v.userData.own) v.dispose(); } x.dispose(); }); });
     this.envRT?.dispose(); this.scene.environment = null;
   }
@@ -184,6 +230,10 @@ export class Stage {
     const floor = new THREE.Mesh(new THREE.CircleGeometry(4000, 24), new THREE.MeshBasicMaterial({ color: new THREE.Color(E.ground ?? 0x4a4035).multiplyScalar(0.8) })); floor.rotation.x = -Math.PI / 2; floor.position.y = -30; es.add(floor);
     this.envRT = this.engine.pmrem.fromScene(es, 0, 1, 6000); sc.environment = this.envRT.texture; sc.environmentIntensity = (E.envI ?? 0.75) * E.amb;
     this.engine.setLook(E.look || 'neutral', E.lookOver || {}); this.lookName = E.look || 'neutral';
+    // sound of the place: reverb + ambience bed (stunts can override with o.space / o.ambience)
+    const bdn = E.backdrop || '', CITY = /turin|sf|vegas|smalltown|la|chicago|gotham|abudhabi|paris|brooklyn|nyc|dubai|hk|kl|old_la|stpetersburg|miami|rotterdam|tokyo/;
+    this.soundSpace = E.space || (preset === 'indoor' ? 'indoor' : preset === 'cave' ? 'cave' : CITY.test(bdn) ? 'city' : 'open');
+    this.ambience = E.ambience ?? (preset === 'indoor' || preset === 'cave' ? 'indoor' : preset === 'storm' ? 'storm' : CITY.test(bdn) ? 'city' : /beach|ocean|bayou/.test(bdn) ? 'sea' : /desert|wasteland|canyon|monument|egypt|snow|clouds|dam|norway/.test(bdn) || preset === 'high' || preset === 'desert' || preset === 'snow' ? 'desert' : 'nature');
     return this;
   }
   _updateEnv() {

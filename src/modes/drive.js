@@ -33,7 +33,7 @@ export class Drive {
     this.vis = { roll: 0, pitch: 0 }; this.camHead = this.heading; this._n = V3(); this._p = V3(); this.takeoff = null; this.gear = 0; this.offroad = false; this.movers = [];
     this.camO = { dist: Math.max(6.5, K.len * 1.55), height: Math.max(2.3, K.h * 1.45), ahead: 5, up: 1.0, stiff: 7, fov: 62, ...(o.cam || {}) };
     s.cam.follow(() => this._camT(), { ...this.camO, snap: true });
-    s.onUpdate(dt => this.update(dt)); s.focus = this.pos;
+    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.obj;
   }
   _camT() { return { pos: this.pos, heading: this.camHead }; }
   get kmh() { return Math.abs(this.v) * 3.6; } get mph() { return Math.abs(this.v) * 2.237; }
@@ -82,7 +82,7 @@ export class Drive {
     const yb = p.y + this.vy * dt - 0.5 * G * dt * dt * (this.gravK ?? 1);
     if (this.grounded) {
       if (g >= yb - 0.04 && g > -1e5) { const vyG = clamp((g - p.y) / dt, -30, Math.abs(vf) * 0.9 + 2); this.vy = lerp(this.vy, vyG, 0.6); p.y = g; }
-      else { this.grounded = false; this.airTime = 0; p.y = yb; this.vy -= G * dt; this.pitchRate = K.nose * 0.3; this.rollRate = this.twist ?? 0; this.takeoff = { x: px, z: pz, y: p.y, v: vf }; this.stats.jumps++; this.onAir?.(this.takeoff); }
+      else { this.grounded = false; this.airTime = 0; p.y = yb; this.vy -= G * dt; this.pitchRate = K.nose * 0.3; this.rollRate = this.twist ?? 0; this.takeoff = { x: px, z: pz, y: p.y, v: vf }; this.stats.jumps++; this.onAir?.(this.takeoff); this._airCine(); }
     } else {
       this.vy -= G * dt * (this.gravK ?? 1);
       if (g > -1e5 && yb <= g) { p.y = g; this._land(g, px, pz); } else p.y = yb;
@@ -92,7 +92,18 @@ export class Drive {
     if (!this.dead || this.wreck) this._collide(dt);
     this._visual(dt, steer, thr - brk);
   }
+  // predict the ballistic arc; big jumps become a marked replay moment and get a live cinematic cut
+  _airCine() {
+    const s = this.s; if (!s.started || this.dead || this.cineOff) return;
+    const pts = [{ t: s.t, p: this.pos.clone() }]; let x = this.pos.x, y = this.pos.y, z = this.pos.z, vy = this.vy, t = 0; const vx = this.vel.x, vz = this.vel.z, dt = 0.05;
+    while (t < 6) { t += dt; x += vx * dt; z += vz * dt; vy -= G * dt * (this.gravK ?? 1); y += vy * dt; pts.push({ t: s.t + t, p: V3(x, y, z) }); const g = s.course.height(x, z, y + 0.9); if (t > 0.15 && g > -1e5 && y <= g) break; if (y < s.course.kill) break; }
+    if (t < (this.cineMin ?? 1.0)) return;
+    this._mom = s.moment('jump', { t0: s.t - 0.7, dur: t + 1.3, w: t });
+    if (this.liveCine !== false) this._uncut = s.cut(pts, s.def.liveShot || (t > 1.9 ? 'low' : 'wide'));
+  }
   _land(g, px, pz) {
+    if (this._mom) { this._mom.t1 = this.s.t + 1.0; this._mom = null; }
+    if (this._uncut) { const u = this._uncut; this._uncut = null; this.s.after(0.45, u); }
     const s = this.s, K = this.k, c = s.course, p = this.pos; const sn = Math.sin(this.heading), cs = Math.cos(this.heading);
     const hf = c.height(p.x - sn * K.wb / 2, p.z - cs * K.wb / 2, p.y + 1.2), hr = c.height(p.x + sn * K.wb / 2, p.z + cs * K.wb / 2, p.y + 1.2);
     const slope = (hf > -1e5 && hr > -1e5) ? Math.atan2(hf - hr, K.wb) : 0;
@@ -103,7 +114,9 @@ export class Drive {
     this.lastLand = { ...info, pitch: +this.pitch.toFixed(2), slope: +slope.toFixed(2), vy: +this.vy.toFixed(1), v: +this.v.toFixed(1) }; (this.lands ||= []).push([+this.pos.z.toFixed(0), +this.airTime.toFixed(2), +pn.toFixed(2), +rollN.toFixed(2), +impact.toFixed(1), +this.pitch.toFixed(2), +slope.toFixed(2), this.dead ? 1 : 0]); this.s.dbg = () => this.lands;
     this.grounded = true; this.stats.air += this.airTime; this.stats.maxAir = Math.max(this.stats.maxAir, this.airTime);
     { const pt = K.pitchTol ?? 0.55, rt = K.rollTol ?? 0.6; info.clean = clamp(1 - (Math.abs(pn) - 0.1) / (pt - 0.1)) * clamp(1 - (Math.abs(rollN) - 0.08) / (rt - 0.08)) * clamp(1.4 - impact / (K.hard * 2.6)); }
-    const bad = Math.abs(pn) > (K.pitchTol ?? 0.55) || Math.abs(rollN) > (K.rollTol ?? 0.6) || impact > K.hard * 2.3;
+    // leeway: past tolerance is a rough (costly) landing; only well past it wrecks the car
+    const rough = Math.abs(pn) > (K.pitchTol ?? 0.55) || Math.abs(rollN) > (K.rollTol ?? 0.6) || impact > K.hard * 2.3;
+    const bad = Math.abs(pn) > (K.pitchTol ?? 0.55) * 1.6 || Math.abs(rollN) > (K.rollTol ?? 0.6) * 1.5 || impact > K.hard * 3.4;
     this.vy = this.dead ? 0 : this.v * Math.tan(slope); this.pitchRate = 0; this.rollRate = 0;
     if (this.dead) { this.roll = rollN * 0.5; return; }
     if (this.airTime > 0.25) {
@@ -112,8 +125,9 @@ export class Drive {
     }
     this.roll = rollN; this.pitch = slope + pn * 0.3;
     const handled = this.onLand?.(info);
+    if (rough && !bad && handled !== true && !this.dead && this.airTime > 0.4) { this.damage = clamp(this.damage + 0.25); s.fx.sparks(p, 30); s.engine.addShake(1.2); s.audio.crash(); s.flub('Rough landing', { penalty: 0.12, advice: 'Rough landing. In the air use W and S to match the nose to the landing slope before you touch down.' }); }
     if (bad && handled !== true && !this.dead) this.crash(Math.abs(rollN) > 0.6 ? 'Rolled it on landing' : 'Nose-dived the landing', { injury: clamp(0.35 + impact / 40, 0.3, 0.9) });
-    this.v *= bad ? 0.5 : (1 - clamp(impact / 60, 0, 0.25)); const sn2 = Math.sin(this.heading), cs2 = Math.cos(this.heading); this.vel.x = -sn2 * this.v; this.vel.z = -cs2 * this.v;
+    this.v *= bad ? 0.5 : rough ? 0.75 : (1 - clamp(impact / 60, 0, 0.25)); const sn2 = Math.sin(this.heading), cs2 = Math.cos(this.heading); this.vel.x = -sn2 * this.v; this.vel.z = -cs2 * this.v;
   }
   _collide(dt) {
     const s = this.s, K = this.k, p = this.pos, ah = Math.abs(Math.sin(this.heading));
@@ -137,7 +151,7 @@ export class Drive {
       const imp = -vn; this.stats.hits++;
       const cp = this._p.set(p.x - nx * hw, p.y + 0.6, p.z - nz * hd);
       if (this.dead) { this.vel.x -= nx * vn * 1.3; this.vel.z -= nz * vn * 1.3; return; }
-      if (imp > K.crashV * (sol.hardK ?? 1)) { s.fx.sparks(cp, 30); sol.on?.(this, sol, imp); if (this.onHit?.(sol, imp) !== true) this.crash(sol.msg || 'Wrecked the car', { injury: clamp(0.3 + imp / 45, 0.3, 1) }); this.vel.x -= nx * vn * 1.4; this.vel.z -= nz * vn * 1.4; return; }
+      if (imp > K.crashV * 1.3 * (sol.hardK ?? 1)) { s.fx.sparks(cp, 30); sol.on?.(this, sol, imp); if (this.onHit?.(sol, imp) !== true) this.crash(sol.msg || 'Wrecked the car', { injury: clamp(0.3 + imp / 45, 0.3, 1), advice: sol.advice }); this.vel.x -= nx * vn * 1.4; this.vel.z -= nz * vn * 1.4; return; }
       // scrape / bump
       this.vel.x -= nx * vn * 1.25; this.vel.z -= nz * vn * 1.25; this.vel.multiplyScalar(1 - clamp(imp / 40, 0.02, 0.3));
       this.damage = clamp(this.damage + imp / 55); this.stats.scrapes++; s.fx.sparks(cp, Math.round(4 + imp), { dir: this.fwd() }); if (imp > 2.5) { s.audio.impact(clamp(imp / 12, 0.2, 0.9)); s.engine.addShake(clamp(imp / 14, 0.1, 0.8)); }
@@ -146,13 +160,13 @@ export class Drive {
       const fx = -Math.sin(this.heading), fz = -Math.cos(this.heading); const side = fx * nz - fz * nx; this.heading += clamp(side, -1, 1) * 0.04 * (nx ? -1 : 1) * 0;
     });
   }
-  crash(reason = 'Wrecked', { injury = 0.6, fire = false, silent = false } = {}) {
+  crash(reason = 'Wrecked', { injury = 0.6, fire = false, silent = false, advice } = {}) {
     if (this.dead) return; this.dead = true; this.wreck = true; const s = this.s;
     s.audio.crash(); s.engine.addShake(1.4); s.fx.sparks(this.pos, 40); s.fx.smokePuff(this.pos, 10);
     if (!this.grounded || Math.abs(this.v) > 12) { this.grounded = false; this.vy = Math.max(this.vy, 3 + Math.abs(this.v) * 0.12); this.rollRate = rnd(-1, 1) > 0 ? 5 : -5; this.pitchRate = rnd(-2, 2); this.yawRate = rnd(-2, 2); }
     if (fire) { s.fx.explosion(this.pos, 1.2); s.audio.explosion(); }
     this.burning = fire || this.damage > 0.6;
-    if (!silent) s.fail(reason, { injury });
+    if (!silent) s.fail(reason, { injury, advice });
   }
   _visual(dt, steer, drive) {
     const s = this.s, K = this.k, p = this.pos, o = this.obj;
@@ -186,17 +200,50 @@ export class Movers {
     this.list.push(e); this._place(e, 0); return e;
   }
   _place(e, dt) {
-    const s = this.s; const x = e.path(e.z, e), dx = x - e.x; e.x = x; const y = e.y ?? s.course.height(x, e.z, 1e9);
+    const s = this.s; const x = e.path(e.z, e) + (e.ox || 0), dx = x - e.x; e.x = x; const y = e.y ?? s.course.height(x, e.z, 1e9);
     if (e.free) { e.m.position.y += e.vy * dt; e.vy -= 9.8 * dt; e.m.rotation.x += e.spin * dt; e.m.rotation.z += e.spin * 0.6 * dt; e.m.position.z -= e.v * dt; if (e.m.position.y < (e.floor ?? 0)) { e.m.position.y = e.floor ?? 0; e.vy *= -0.3; e.spin *= 0.5; e.v *= 0.7; } }
     else { e.m.position.set(x, y > -1e5 ? y : 0, e.z); const dir = e.v >= 0 ? 0 : Math.PI; if (dt > 0 && Math.abs(e.v) > 1) e.yaw = damp(e.yaw, Math.atan2(-dx, Math.abs(e.v) * dt), 6, dt); e.m.rotation.y = dir + (e.v >= 0 ? e.yaw : -e.yaw) + (e.o.ry || 0); }
     if (e.sol) { const p = e.m.position; Object.assign(e.sol, { x0: p.x - e.hw, x1: p.x + e.hw, y0: p.y, y1: p.y + e.h, z0: p.z - e.hd, z1: p.z + e.hd, vx: dt > 0 ? dx / dt : 0, vz: -e.v, dead: !e.alive }); }
+  }
+  // Obstacle avoidance for AI vehicles: never drive through the scenery the player has to avoid.
+  // Slide sideways into the nearest free gap (they may cheat physics to make it), otherwise brake and queue.
+  _steer(e, dt, pl) {
+    const s = this.s, dir = e.v >= 0 ? 1 : -1, sp = Math.abs(e.v); if (sp < 0.3) return;
+    const look = Math.max(10, sp * 1.8) + e.hd, y0 = e.m.position.y, y1 = y0 + e.h, base = e.path(e.z, e), z = e.z, M = e.o.margin ?? 0.45;
+    const obs = [];
+    const consider = (x0, x1, z0, z1, vz) => {
+      const gap = dir > 0 ? (z - e.hd) - z1 : z0 - (z + e.hd); if (gap > look || gap < -(z1 - z0) - 2 * e.hd) return;
+      const close = dir > 0 ? e.v + (vz || 0) : -e.v - (vz || 0); if (gap > 2 && close <= 0.3) return; // pulling away
+      obs.push({ x0: x0 - e.hw - M, x1: x1 + e.hw + M, gap, vAlong: dir > 0 ? -(vz || 0) : (vz || 0) });
+    };
+    for (const so of s.course.solids) { if (so.dead || so === e.sol || so.type === 'trigger' || so.soft || so.ghost) continue; if (so.y1 < y0 + 0.3 || so.y0 > y1 - 0.2) continue; consider(so.x0, so.x1, so.z0, so.z1, so.vz); }
+    if (e.o.avoidPlayer && pl && !pl.dead) { const w = pl.k.w / 2, l = pl.k.len / 2; consider(pl.pos.x - w, pl.pos.x + w, pl.pos.z - l, pl.pos.z + l, pl.vel.z); }
+    if (!obs.length) { e.ox = (e.ox || 0) * Math.exp(-1.2 * dt); return; }
+    const reach = e.o.swerve ?? 4.5, lo = e.o.xmin ?? -1e9, hi = e.o.xmax ?? 1e9, cur = e.x; let best = null, bc = 1e9;
+    for (let k = -Math.ceil(reach / 0.5); k <= Math.ceil(reach / 0.5); k++) {
+      const x = base + k * 0.5; if (x < lo || x > hi) continue; let free = true;
+      for (const o of obs) if (x > o.x0 && x < o.x1) { free = false; break; }
+      // the path between here and there must be clear of anything alongside
+      if (free) for (const o of obs) if (o.gap < 1.5 && Math.min(x, cur) < o.x1 && Math.max(x, cur) > o.x0) { free = false; break; }
+      if (!free) continue; const c = Math.abs(x - base) + 0.6 * Math.abs(x - cur); if (c < bc) { bc = c; best = x; }
+    }
+    const blocking = obs.filter(o => cur > o.x0 && cur < o.x1);
+    if (best != null) { const latMax = Math.max(3.5, sp * 0.45), want = best - base, d = want - (e.ox || 0); e.ox = (e.ox || 0) + Math.sign(d) * Math.min(Math.abs(d), latMax * dt); }
+    // whatever is still in the way when it arrives: match its speed and stop short of it
+    for (const o of blocking) { if (best != null && o.gap > sp * 0.6 + 2) continue; const allow = Math.max(0, o.vAlong) + Math.max(0, o.gap - 1.5) * 1.6; if (sp > allow) e.v = dir * Math.max(0, allow); }
+  }
+  // AI vehicles knock over soft breakables (cones, boxes, fences) rather than ghosting through them
+  _smash(e) {
+    const s = this.s, p = e.m.position;
+    s.course.hit(p.x, p.y + e.h / 2, p.z, e.hw, e.h / 2, e.hd, so => { if (so === e.sol || so.dead || so.type !== 'break' || so.mover) return; so.dead = true; if (so.obj) so.obj.visible = false; const c = V3((so.x0 + so.x1) / 2, (so.y0 + so.y1) / 2, (so.z0 + so.z1) / 2); if (so.glass) { s.fx.glass(c, 40, { dir: V3(0, 0, -Math.sign(e.v || 1)), speed: Math.abs(e.v) * 0.4 }); s.audio.glass(); } else { s.fx.debris(c, so.soft ? 4 : 10, { color: so.debris ?? 0x8a6a40, dir: V3(0, 0, -Math.sign(e.v || 1)), speed: Math.abs(e.v) * 0.4, floor: so.y0 }); s.audio.thud(); } });
   }
   // knock a mover flying (after being hit / blown up)
   fling(e, vy = 6) { e.free = true; e.vy = vy; e.spin = rnd(-4, 4); e.alive = false; if (e.sol) e.sol.dead = true; }
   update(dt) {
     const pl = this.player;
     for (const e of this.list) {
-      e.t += dt; if (e.o.ai) e.o.ai(e, dt, pl); if (!e.free) e.z -= e.v * dt; this._place(e, dt);
+      e.t += dt; if (e.o.ai) e.o.ai(e, dt, pl); if (!e.free && e.alive && e.o.avoid !== false && !e.o.rail && dt > 0) this._steer(e, dt, pl);
+      if (!e.free) e.z -= e.v * dt; this._place(e, dt); if (!e.free && e.alive && dt > 0) this._smash(e);
       if (pl && e.alive && !pl.dead && e.o.nearMiss !== false) {
         const dz = Math.abs(e.m.position.z - pl.pos.z), dx = Math.abs(e.m.position.x - pl.pos.x) - e.hw - pl.k.w / 2;
         if (dz < e.hd + 1 && dx < 1.3 && dx > 0 && Math.abs(pl.v - e.v) > 9 && pl.grounded) { if (!e.near) { e.near = true; pl.stats.near++; this.s.bonus('Near misses', this.nearPay ?? 150); this.s.msg('NEAR MISS', 'small'); this.s.audio.whoosh(); } } else if (dz > e.hd + 6) e.near = false;

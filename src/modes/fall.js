@@ -22,7 +22,7 @@ export class Fall {
     this._p = V3(); this._v = V3(); this.yaw = o.yaw ?? 0;
     s.cam.follow(() => ({ pos: this.pos, heading: this.yaw }), { ...(FALL_VIEWS[o.view] || FALL_VIEWS.chase), ...(o.cam || {}), snap: o.camSnap !== false });
     if (o.aim) { const r = o.aim.r ?? 1.2; const m = this.aim = new THREE.Mesh(new THREE.RingGeometry(r * 0.72, r, 28), new THREE.MeshBasicMaterial({ color: new THREE.Color(o.aim.color ?? 0xff3322).multiplyScalar(1.6), transparent: true, opacity: 0.85, depthWrite: false, depthTest: false, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; m.renderOrder = 8; m.visible = false; s.scene.add(m); }
-    s.onUpdate(dt => this.update(dt)); s.focus = this.pos;
+    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.c.root;
   }
   get alt() { return this.pos.y - this.ground(); }
   get speed() { return -this.vel.y; }

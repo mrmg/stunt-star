@@ -1,7 +1,7 @@
 // Keyboard + gamepad input with edge detection.
 const MAP = {
   KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
-  Space: 'a', KeyJ: 'a', ShiftLeft: 'b', ShiftRight: 'b', KeyK: 'b', KeyE: 'x', KeyL: 'x', KeyQ: 'y', Enter: 'start', Escape: 'pause', KeyR: 'retry',
+  Space: 'a', KeyJ: 'a', ShiftLeft: 'b', ShiftRight: 'b', KeyK: 'b', KeyE: 'x', KeyL: 'x', KeyQ: 'y', KeyV: 'v', Enter: 'start', Escape: 'pause', KeyR: 'retry',
 };
 export class Input {
   constructor() {
@@ -26,7 +26,7 @@ export class Input {
     this.x = Math.max(-1, Math.min(1, (d.right ? 1 : 0) - (d.left ? 1 : 0) + gx));
     this.y = Math.max(-1, Math.min(1, (d.up ? 1 : 0) - (d.down ? 1 : 0) - gy + (g.rt ? 1 : 0) - (g.lt ? 1 : 0)));
     this.a = this.enabled && !!(d.a || g.a); this.b = this.enabled && !!(d.b || g.b); this.xk = this.enabled && !!(d.x || g.x);
-    if (!this.enabled) { const keep = { start: this.pressed.start, pause: this.pressed.pause, retry: this.pressed.retry, a: this.pressed.a }; this.pressed = keep; }
+    if (!this.enabled) { const keep = { start: this.pressed.start, pause: this.pressed.pause, retry: this.pressed.retry, a: this.pressed.a, v: this.pressed.v }; this.pressed = keep; }
     if (this.auto) { this.press = k => { this.pressed[k] = true; }; this.auto(this); }
   }
   hit(k) { return !!this.pressed[k]; }

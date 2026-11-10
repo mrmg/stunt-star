@@ -34,7 +34,7 @@ const italian = {
     s.rate('Clean line', 1); let jumped = false, landed = false, stopped = false;
     car.onAir = t => { if (t.z < -140 && !jumped) { jumped = true; s.rate('Take-off speed', near(car.mph, 62, 7, 26), 1.5); s.slowmo(0.45, 0.9); s.msg(Math.round(car.mph) + ' MPH', 'good'); } };
     car.onLand = i => {
-      if (car.pos.y < 10) { car.crash(jumped ? 'Came up short and dropped into the street' : 'Drove off the roof', { injury: 0.9 }); return true; }
+      if (car.pos.y < 10) { car.crash(jumped ? 'Came up short and dropped into the street' : 'Drove off the roof', { injury: 0.75 }); return true; }
       if (jumped && !landed && car.pos.z < -165) { landed = true; s.rate('Landing', i.clean, 1.5); s.msg(i.clean > 0.8 ? 'PERFECT LANDING' : 'DOWN!', i.clean > 0.8 ? 'good' : ''); s.objective('Brake! Stop in the green box'); }
     };
     car.onHit = () => s.rate('Clean line', (s.scores.get('Clean line')?.v ?? 1) - 0.25);
@@ -61,11 +61,11 @@ const greatEscape = {
     s.ground({ tex: 'tx_grass', tile: 5, y: -0.4, base: false }); s.terrain({ x0: -170, x1: 170, z0: 90, z1: -560, res: 5, fn: hill, tex: "tx_grass", tile: 5 });
     const wood = s.mat({ tex: 'tx_wood', color: 0x9a8a70 }), wire = s.mat({ color: 0x555555, metal: 0.6, rough: 0.5 });
     // first fence with a gap on the right
-    for (let x = -60; x <= 60; x += 4) { if (x > 2 && x < 9) continue; s.box({ x, y: 0, z: -150, w: 0.22, h: 1.5, d: 0.22, mat: wood, solid: true, sol: { msg: 'Wrapped the Triumph round a fence post', hardK: 0.3 } }); if (!(x > -2 && x < 9)) s.box({ x: x + 2, y: 0.5, z: -150, w: 4, h: 0.9, d: 0.08, mat: wood, solid: true, sol: { msg: 'Rode straight into the fence', hardK: 0.3 } }); }
+    for (let x = -60; x <= 60; x += 4) { if (x > 2 && x < 9) continue; s.box({ x, y: 0, z: -150, w: 0.22, h: 1.5, d: 0.22, mat: wood, solid: 'break', sol: { debris: 0x8a7050, slow: 0.7, on: () => s.flub('Went through the fence', { penalty: 0.15, advice: 'Line up on the gap in the first fence early — it is on the right, by the flag.' }) } }); if (!(x > -2 && x < 9)) s.box({ x: x + 2, y: 0.5, z: -150, w: 4, h: 0.9, d: 0.08, mat: wood, solid: 'break', sol: { debris: 0x8a7050, slow: 0.85 } }); }
     // grass bank + the big double fence
     s.slope({ x: 0, w: 12, z0: -294, z1: -311, y0: 0, y1: 2.6, curve: 1.5, mat: { tex: 'tx_grass', rep: 0.12 } });
     for (const z of [-326, -333]) { for (let x = -80; x <= 80; x += 5) s.box({ x, y: 0, z, w: 0.25, h: 3.3, d: 0.25, mat: wood, cast: x > -30 && x < 30 }); for (let y = 0.5; y < 3.3; y += 0.55) s.box({ x: 0, y, z, w: 160, h: 0.04, d: 0.04, mat: wire, cast: false }); }
-    s.course.addSolid({ x0: -80, x1: 80, y0: 0, y1: 3.2, z0: -334, z1: -325, msg: 'Tangled in the barbed wire', hardK: 0.1 });
+    s.course.addSolid({ x0: -80, x1: 80, y0: 0, y1: 3.2, z0: -334, z1: -325, msg: 'Tangled in the barbed wire', hardK: 0.1, advice: 'You hit the bank too slow to clear the wire. Be over 50 mph before the bank and stay flat out up it.' });
     trees(s, 'pine_tree', 70, 60, -540, 22, 150, { h: [8, 15], seedv: 4 }); s.forest('rock_grey', 40, r => [(r() < .5 ? -1 : 1) * (16 + r() * 60), 40 - r() * 520], { h: [1, 2.6], seedv: 9 });
     s.put('ww2_truck', { x: -9, z: 52, ry: 0.5 }); s.crew({ x: 7, z: 30, ry: 0.9 }); s.crew({ x: -10, z: -350, ry: 2.6, people: false });
     s.line({ x: 0, z: -292, w: 12, d: 0.5, color: 0xffe14a }); s.line({ x: 0, z: -430, w: 30, d: 1, color: 0x30ff70 });
@@ -164,14 +164,20 @@ const bttf = {
       s.hud.readout('spd', 'MPH', Math.round(car.mph), Math.abs(car.mph - 88) < 2.5 ? 'ok' : '');
       if (car.mph > 84 && !done && Math.random() < 0.7) s.fx.sparks(V3(car.pos.x + rnd(-1, 1), car.pos.y + rnd(0.2, 1.2), car.pos.z + rnd(-2, 2)), 2, { speed: 3, color: [0.5, 0.8, 1] });
       pre -= dt; if (pre < 0 && left > 1.5) { pre = rnd(2.5, 6); s.engine.flash(0.25); s.after(rnd(0.6, 1.6), () => s.audio.thunder()); }
-      if (left <= 0 && !bolt.visible && !bolt.userData.used) { bolt.visible = true; bolt.userData.used = true; s.engine.flash(1); s.audio.thunder(); s.audio.explosion(0.6); s.engine.addShake(1); s.after(0.3, () => { bolt.visible = false; }); if (!done && dist > 60) { done = true; s.after(0.8, () => s.fail('Lightning struck and you were ' + Math.round(dist) + ' m short of the wire', { injury: 0.05 })); } }
+      if (left <= 0 && !bolt.visible && !bolt.userData.used) { bolt.visible = true; bolt.userData.used = true; s.engine.flash(1); s.audio.thunder(); s.audio.explosion(0.6); s.engine.addShake(1); s.after(0.3, () => { bolt.visible = false; }); if (!done && dist > 60) { s.flub('Missed the lightning', { penalty: 0.35, advice: `You were ${Math.round(dist)} m short when the bolt hit. Watch ARRIVAL: brake while it says early, floor it while it says late — get it to 0.0.` }); } }
       if (!done && dist <= 0) {
         done = true; const err = left, v = car.mph;
         if (Math.abs(err) < 1.1 && v > 85 && v < 96) {
           s.rate('Timing (' + (err > 0 ? 'early ' : 'late ') + Math.abs(err).toFixed(2) + 's)', near(Math.abs(err), 0, 0.1, 1.1), 2); s.rate('88 mph (' + v.toFixed(0) + ')', near(v, 88.5, 1.2, 6), 1.5);
           s.engine.flash(1.2); s.audio.explosion(0.8); s.audio.thunder(); s.fx.light(car.pos, 0x80c0ff, 300, 0.8, 60); car.obj.visible = false; car.frozen = true; car.silent = true; s.audio.set('veh', 'engine', 0, 0);
           const fp = V3(); let n = 0; s.onUpdate(() => { if (n++ < 150) for (const x of [-0.8, 0.8]) for (let k = 0; k < 3; k++) s.fx.flame(fp.set(car.pos.x + x, 0.05, WZ - rnd(0, 46)), 0.6); }); s.msg('88 MPH!', 'huge good'); s.wrap(2.6, 'Great Scott!');
-        } else s.fail(v <= 85 ? `Only ${v.toFixed(0)} mph at the wire — not enough for time travel` : v >= 96 ? `Too hot — ${v.toFixed(0)} mph snapped the hook off` : `Missed the lightning by ${Math.abs(err).toFixed(1)} seconds`, { injury: 0.05 });
+        } else {
+          s.rate('Timing (' + Math.abs(err).toFixed(1) + 's off)', near(Math.abs(err), 0, 0.1, 3), 2); s.rate('88 mph (' + v.toFixed(0) + ')', near(v, 88.5, 1.2, 15), 1.5);
+          if (v <= 85) s.flub(`Only ${v.toFixed(0)} mph at the wire`, { penalty: 0.3, advice: 'Not enough speed for time travel. You need 88 at the wire — keep your foot down earlier.' });
+          else if (v >= 96) s.flub(`${v.toFixed(0)} mph — too hot`, { penalty: 0.3, advice: 'Too fast — the hook would snap. Ease off so the needle sits on 88 as you cross.' });
+          else if (Math.abs(err) >= 1.1) s.flub('Missed the lightning', { penalty: 0.3, advice: `The bolt was ${Math.abs(err).toFixed(1)} s ${err > 0 ? 'after' : 'before'} you crossed. Use the ARRIVAL readout to time it.` });
+          s.msg('NO TIME TRAVEL', 'bad'); s.wrap(1.8, 'Well… the DeLorean is still in 1955.');
+        }
       }
     });
   },
@@ -192,12 +198,12 @@ const bullitt = {
     s.ground({ tex: 'tx_asphalt', y: -150, base: false, color: 0x8899aa }); s.course.kill = -500;
     s.terrain({ x0: -44, x1: 44, z0: 80, z1: -1260, res: 2.6, fn: (x, z) => hz(z), tex: 'tx_asphalt', tile: 9 });
     street(s, { z0: 80, z1: -1260, width: 15, lanes: 4, fac: ['tx_fac_sf'], height: [16, 22], yfn: hz, lamps: 0, bwidth: [14, 22], tints: [0xffffff, 0xe8d8c0, 0xcfe0e8, 0xf0d0c8, 0xd8e8c8], double: true });
-    srand(21); for (let z = -70; z > -1200; z -= 13) { if (sr() < 0.55) continue; const sd = sr() < 0.5 ? -1 : 1; const d = (-z - 40) % 105; if (d < 26) continue; s.put(TRAFFIC[Math.floor(sr(TRAFFIC.length))], { x: sd * 6.3, z, y: hz(z), rx: sd * 0, solid: true, sol: { msg: 'Ploughed into a parked car' } }).rotation.x = -Math.atan(12 / 83) * 1; }
+    srand(21); for (let z = -70; z > -1200; z -= 13) { if (sr() < 0.55) continue; const sd = sr() < 0.5 ? -1 : 1; const d = (-z - 40) % 105; if (d < 26) continue; s.put(TRAFFIC[Math.floor(sr(TRAFFIC.length))], { x: sd * 6.5, z, y: hz(z), rx: sd * 0, solid: true, sol: { msg: 'Ploughed into a parked car' } }).rotation.x = -Math.atan(12 / 83) * 1; }
     s.crew({ x: 6.6, z: 22, ry: 0.8 });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'mustang_green', x: -1.8, z: 30, hard: 12, pitchTol: 0.75 });
     const mv = new Movers(s, car); mv.nearPay = 120;
-    const ch = s.rival = mv.add({ model: 'charger_black', z: -6, path: (z, e) => 1.8 + Math.sin(z * 0.017) * 2.6, v: 0, nearMiss: false, hardK: 3, ai: (e, dt) => { if (!s.started) return; const gap = car.pos.z - e.z; const want = gap > 75 ? 24 : gap < 14 ? 42 : 33.5; e.v += (want - e.v) * Math.min(1, dt * 1.2); } });
-    traffic(s, mv, { lanes: [[-1.9, 1], [1.9, -1], [5.4, -1]], n: 9, z0: -160, z1: -1150, speed: [9, 13], zEnd: -1200, recycle: false, msg: 'Collected the traffic' });
+    const ch = s.rival = mv.add({ model: 'charger_black', z: -6, path: (z, e) => 1.8 + Math.sin(z * 0.017) * 2.6, v: 0, nearMiss: false, hardK: 3, ai: (e, dt) => { if (!s.started) return; const gap = car.pos.z - e.z; const want = gap > 140 ? 10 : gap > 75 ? 24 : gap < 14 ? 42 : 33.5; e.v += (want - e.v) * Math.min(1, dt * 1.2); } });
+    traffic(s, mv, { lanes: [[-1.9, 1], [1.9, -1], [4.0, -1]], n: 9, z0: -160, z1: -1150, speed: [9, 13], zEnd: -1200, recycle: false, msg: 'Collected the traffic' });
     let close = 0, tot = 0, lands = [], fin = false; s.rate('Clean driving', 1);
     car.onLand = i => { if (i.airTime > 0.35) { lands.push(i.clean); s.bonus('Airtime', Math.round(i.airTime * 220)); if (i.airTime > 0.8) s.msg('BIG AIR', 'small'); } };
     car.onHit = (sol, imp) => s.rate('Clean driving', (s.scores.get('Clean driving')?.v ?? 1) - 0.2);
@@ -205,7 +211,8 @@ const bullitt = {
     s.onUpdate(dt => {
       if (!s.started || s.ended) return; const gap = car.pos.z - ch.z; tot += dt; if (gap < 55 && gap > -10) close += dt;
       s.hud.readout('gap', 'Gap (m)', Math.max(0, Math.round(gap)), gap > 80 ? 'warn' : gap < 45 ? 'ok' : ''); s.hud.readout('spd', 'MPH', Math.round(car.mph));
-      if (gap > 170) return s.fail('Lost the Charger', { injury: 0 });
+      if (gap > 150 && !s.lost) { s.lost = true; s.flub('Lost the Charger', { penalty: 0.2, advice: 'Stay within 50 m of the Charger — take the straight line over the crests and only brake for traffic.' }); }
+      if (gap < 100) s.lost = false;
       if (car.pos.z < -1130 && !fin) { fin = true; s.rate('On his tail', clamp(close / tot / 0.85), 2); s.rate('Landings', lands.length ? lands.reduce((a, b) => a + b, 0) / lands.length : 0.5, 1.2); s.wrap(1.5); }
     });
   },
@@ -265,7 +272,7 @@ const boat = {
     b.onLand = i => { if (jumped && !landed && i.airTime > 0.5) { landed = true; const ft = ftOf(i.dist); s.rate('Jump (' + ft + ' ft)', near(ft, 112, 10, 60), 1.6); s.rate('Landing', i.clean, 1.2); s.msg(ft + ' FEET', 'good'); s.fx.splash(b.pos, 70, 2); s.audio.splash(); } };
     s.onUpdate(dt => {
       if (!s.started || s.ended) return; const d = Math.abs(b.pos.x - rcx(b.pos.z)) - W + 1; tot += dt;
-      if (b.grounded && b.pos.y < 0.5 && d > 0) { off += dt; b.vel.multiplyScalar(1 - Math.min(0.9, dt * 3)); s.engine.addShake(0.15); if (d > 3.5) { b.crash('Beached it on the bank', { injury: 0.35 }); } }
+      if (b.grounded && b.pos.y < 0.5 && d > 0) { off += dt; b.vel.multiplyScalar(1 - Math.min(0.9, dt * 3)); s.engine.addShake(0.15); if (d > 3.5) { s.flub('Beached it on the bank', { penalty: 0.15, advice: 'Boats slide wide. Start every turn early and stay in the middle of the channel.' }); const cx = rcx(b.pos.z); b.pos.x += Math.sign(cx - b.pos.x) * 1.2; b.v *= 0.6; b.heading = b.heading * 0.6; } }
       s.hud.readout('spd', 'MPH', Math.round(b.mph)); if (landed && b.pos.z < RZ - 150) { s.rate('Clean line', clamp(1 - off / 2.5)); s.wrap(1.2); }
     });
   },
@@ -293,10 +300,10 @@ const french = {
     const tr = new THREE.Group(), tm = s.mat({ tex: 'tx_metal', color: 0x8a8f86, metal: 0.5, rough: 0.5 }); for (let i = 0; i < 4; i++) { s.box({ parent: tr, x: 0, y: 0, z: i * 16.4, w: 2.9, h: 3.1, d: 15.8, mat: tm, tile: 3 }); s.box({ parent: tr, x: 0, y: 1.5, z: i * 16.4, w: 2.96, h: 0.9, d: 14.5, mat: s.mat({ color: 0x151a1e, rough: 0.2, metal: 0.8 }), cast: false }); } tr.userData.size = V3(2.9, 3.1, 16);
     s.crew({ x: 7.6, z: 26, ry: 0.9 });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'lemans', x: -2.2, z: 30, crashV: 14 });
-    const mv = new Movers(s, car); const train = mv.add({ obj: tr, x: 0, y: 8.1, z: 10, v: 0, solid: false, nearMiss: false, ai: (e, dt) => { if (s.started) e.v += (19 - e.v) * Math.min(1, dt * 0.5); } });
+    const mv = new Movers(s, car); const train = mv.add({ obj: tr, x: 0, y: 8.1, z: 10, v: 0, solid: false, nearMiss: false, ai: (e, dt) => { if (s.started) { const gap = car.pos.z - e.z; e.v += ((gap > 160 ? 6 : 19) - e.v) * Math.min(1, dt * 0.5); } } });
     traffic(s, mv, { lanes: [[-6.4, 1], [-2.2, 1], [2.2, -1], [6.4, -1]], n: 13, z0: -70, z1: Z1, speed: [9, 13], ahead: [200, 420], zEnd: Z1 - 40 });
     s.rate('Bodywork', 1); car.onHit = () => s.rate('Bodywork', (s.scores.get('Bodywork')?.v ?? 1) - 0.14); s.objective('Keep up with the train');
-    s.onUpdate(() => { if (!s.started || s.ended) return; const gap = car.pos.z - train.z; s.hud.readout('gap', gap > 0 ? 'Behind train (m)' : 'Ahead (m)', Math.abs(Math.round(gap)), gap > 60 ? 'warn' : 'ok'); s.hud.readout('spd', 'MPH', Math.round(car.mph)); if (gap > 230) return s.fail('The train got away', { injury: 0 }); if (car.pos.z < Z1) { s.rate('Kept up with the train', near(Math.max(0, gap), 0, 12, 150), 2); s.wrap(1.2); } });
+    s.onUpdate(() => { if (!s.started || s.ended) return; const gap = car.pos.z - train.z; s.hud.readout('gap', gap > 0 ? 'Behind train (m)' : 'Ahead (m)', Math.abs(Math.round(gap)), gap > 60 ? 'warn' : 'ok'); s.hud.readout('spd', 'MPH', Math.round(car.mph)); if (gap > 200 && !s.lost) { s.lost = true; s.flub('The train got away', { penalty: 0.2, advice: 'Stay under the train. Change lanes between the pillar rows and keep the speed up through the gaps.' }); } if (gap < 120) s.lost = false; if (car.pos.z < Z1) { s.rate('Kept up with the train', near(Math.max(0, gap), 0, 12, 150), 2); s.wrap(1.2); } });
   },
   bot(s, inp, B) {
     const c = s.car, z = c.pos.z; const ahead = L => { let d = 1e9; for (const sol of s.course.solids) { if (sol.dead || !sol.mover || (sol.vz || 0) > 0) continue; if (sol.x0 < L + 1.4 && sol.x1 > L - 1.4) { const dz = z - sol.z1; if (dz > -7 && dz < d) d = dz; } } return d; };
@@ -306,4 +313,16 @@ const french = {
   },
 };
 
-export default [italian, greatEscape, smokey, generalLee, bttf, bullitt, blues, boat, french];
+// What the player is asked to do, in plain numbers, plus the film's signature camera angles for the replay.
+const EXTRA = {
+  italian_job: { goals: { shot: ['Drive along the roof and hit the wooden ramp at 55–70 mph', 'Jump the gap and land on the far roof', 'Brake and stop inside the green box'], cut: ['You drop into the street (too slow at the ramp)'], stars: ['Take-off speed', 'Landing', 'Stopping on the mark', 'Missing the skylights'] }, cine: ['low', 'wide', 'front'] },
+  great_escape: { goals: { shot: ['Ride through the gap in the first fence', 'Be doing 50+ mph when you hit the grass bank', 'Clear the barbed wire and land, then ride on'], cut: ['You hit the wire (too slow at the bank)'], stars: ['Speed at the bank', 'Landing', 'Time'] }, cine: ['wide', 'low', 'track'] },
+  smokey: { goals: { shot: ['Drive straight down the dirt road, flat out', 'Smash the BRIDGE OUT barrier at 70+ mph', 'Fly the river and land on the far road'], cut: ['You land in the river (too slow)'], stars: ['Take-off speed', 'Landing', 'Not hitting anything'] }, cine: ['wide', 'low', 'front'] },
+  general_lee: { goals: { shot: ['Floor it down the dirt track to the ramp', 'Hold W in the air to keep the heavy nose up', 'Land on all four wheels past the patrol cars'], cut: ['You land nose-first and fold the car'], stars: ['Distance (feet)', 'Landing'] }, cine: ['wide', 'low', 'track'] },
+  bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: ['front', 'low', 'wide'], liveShot: 'front' },
+  bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving'] }, cine: ['front', 'low', 'track'] },
+  blues_brothers: { goals: { shot: ['Drive at the drawbridge as it starts to rise', 'The longer you wait, the steeper it gets — and the more you earn', 'Hold W in the air and land on the far side'], cut: ['You drop into the river'], stars: ['Nerve (bridge angle)', 'Landing'] }, cine: ['wide', 'low', 'front'] },
+  boat_jump: { goals: { shot: ['Follow the bayou channel at full throttle', 'Hit the earth ramp in the middle of the river', 'Jump the levee road — the record is 110 feet'], cut: ['You crash into the Sheriff'], stars: ['Jump distance vs the record', 'Landing', 'Staying off the banks'] }, cine: ['wide', 'low', 'track'] },
+  french_connection: { goals: { shot: ['Drive under the elevated railway, chasing the train above', 'Weave through the traffic and between the steel pillars', 'Stay level with the train to the end of the line'], cut: ['You hit a pillar or a car head-on'], stars: ['Keeping up with the train', 'Bodywork'] }, cine: ['track', 'front', 'rear'] },
+};
+export default [italian, greatEscape, smokey, generalLee, bttf, bullitt, blues, boat, french].map(d => Object.assign(d, EXTRA[d.id]));

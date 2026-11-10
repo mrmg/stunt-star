@@ -12,7 +12,7 @@ export class Run {
     this.c.setPose('ready', 0);
     this.camO = { dist: 6.2, height: 2.7, ahead: 3.5, up: 1.2, stiff: 7, fov: 62, ground: false, ...(o.cam || {}) };
     s.cam.follow(() => ({ pos: this.camPos(), heading: 0 }), { ...this.camO, snap: true }); this._cp = V3(); this.camY = this.pos.y;
-    s.onUpdate(dt => this.update(dt)); s.focus = this.pos;
+    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.c.root;
   }
   camPos() { return this._cp.set(this.pos.x * (this.o.camX ?? 0.7), this.camY, this.pos.z); }
   get h() { return this.slide > 0 ? 0.75 : 1.75; }

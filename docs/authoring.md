@@ -9,9 +9,45 @@ Three.js game. Each stunt is a plain object in `src/stunts/<file>.js` (default e
 - Collisions are AABB "solids": `type:'solid'` (crash/scrape), `'break'` (smash through; `soft`, `glass`, `debris`, `slow`, `on`), `'trigger'` (`on(mode, sol)` fires once).
 - Models come normalised: front faces -Z, sitting on y=0, scaled to real length.
 
+## v2 rules (read these first)
+The game now works in **shoots**: each stunt allows `def.takes` takes (set centrally in `src/stunts/order.js`, which also sets
+`order`, `tier`, `pay`, `resetCost` — do NOT set tier/pay in stunt files any more). After every take the game plays a multi-angle
+**replay** of the best moment, then shows a take screen with the **director's notes**, and the player can go again (costing the reset
+fee) or print it. A failed take still has value: if takes run out, "we go with it" and the player is paid on that take's partial score.
+
+1. **Leeway, not instant failure.** Use `s.flub(reason, { penalty: 0.1–0.35, advice })` for anything the performer could carry on from
+   (missed a speed window, dropped an item, scraped something, late cue, lost sight of the target, wrong move…). The take keeps rolling,
+   the director shouts "Keep rolling!", and the penalty comes off the take's quality (stars). Make sure the stunt can still finish after a
+   flub (e.g. let the target wait/slow down, bounce the player back on course, carry on to the end). Reserve `s.fail()` for real
+   catastrophes: crashes, falls, being crushed/caught/blown up. Rule of thumb: if the stunt fails today in a way that is not a big
+   physical disaster, convert it to a flub. Also widen harsh tolerances so a decent-but-imperfect run wraps with 2–3 stars.
+2. **Advice.** Every `s.fail(reason, { injury, advice })` and every flub should carry one specific, actionable sentence telling the player
+   what to do differently next take (numbers, keys, where to look). `Drive.crash(reason, { injury, advice })` and solids with
+   `sol: { msg, advice }` pass it through. Missing advice falls back to a generic line from `adviceFor()` in stage.js.
+3. **Goals.** Every stunt needs `goals: { shot: [...], cut: [...], stars: [...] }` — `shot` = 2–4 numbered, concrete instructions with numbers
+   (what to do, in order); `cut` = what ends the take; `stars` = what you are scored on. These lead the briefing and flash up at ACTION,
+   so they must be unambiguous. Keep `tips` as the coordinator's technique hints.
+4. **Moments & camera.** Call `s.moment(label, { t0, t1 | dur, w, shots })` around the spectacular beat (w = how big; highest wins; the replay
+   cuts it from several angles). Drive jumps over ~1 s of air are marked automatically (and get a live cinematic cut). Set
+   `cine: ['wide'|'low'|'track'|'front'|'top'|'chase'|'orbit'|'rear', ...]` on the def (or per moment) to match the film's signature shot,
+   e.g. Dark Knight truck flip = `['front','low','wide']`, Matrix dodge = `['orbit', ...]`. Scripted payoffs where the player has no control
+   (cannon rolls, flips, explosions) can use live cuts: `const done = s.cut(pathPts, 'low')` then `done()` to restore the game camera
+   (`pathPts` = [{t, p:Vector3}] predicted positions; see Drive._airCine in drive.js). `s.subject` is the replay subject (modes set it;
+   override for e.g. a truck you are riding).
+5. **AI must obey the course.** `Movers` now steer around solids and queue behind them automatically (options: `swerve` metres,
+   `xmin/xmax` lane bounds, `avoid:false` for rails, `avoidPlayer:true`). Never script a vehicle or person along a path that passes through
+   scenery the player must avoid. For on-foot chasers behind the player use `pursuer(s, run.c, 'ch_goon', { delay })` from common.js (replays
+   the player's own route). For a target running AHEAD of the player, script its path so it visibly jumps/slides/vaults every obstacle on
+   its line (or route it around them).
+6. Sound: `s.audio.say(text)` speaks a director line; `s.audio.sting()` hits a music stinger; `s.env(..., { space: 'open|city|indoor|cave|hall', ambience: 'city|nature|desert|indoor|crowd|sea|storm' })`
+   overrides the automatic reverb/ambience. Prefer `s.audio.crash/impact/explosion/metal/roar/cheer` for big beats.
+7. Testing: `node tools/play.mjs <id> 3 "3,8"` now ends at the take screen (state `take`) after the replay and prints flubs and
+   `replayShots=N`; `FRAMES=600 node tools/play.mjs <id> 3 99` also dumps `shots/<id>_fNN.jpg` frames through the replay. A good stunt:
+   bot wraps with q ≥ 0.7; an idle or sloppy player gets flubs and a low score rather than an instant fail (unless they crash).
+
 ## Stunt object
 ```js
-{ id, title, film, year, tier: 1..6, pay, mode: 'drive'|'run'|'fall'|'grip'|'fly'|'fight'|'custom',
+{ id, title, film, year, mode: 'drive'|'run'|'fall'|'grip'|'fly'|'fight'|'custom',
   art: 'bd_xxx' (menu card image), music: 'tension|spy|chase|western|silent|kungfu|synth|epic',
   role: 'one line', brief: 'director quote', tips: ['3 short html tips'], controls: CTL.xxx or html,
   intro: { r, h, speed, a0, up, fov }  // briefing orbit camera around s.focus (or s.introFocus)
@@ -19,7 +55,8 @@ Three.js game. Each stunt is a plain object in `src/stunts/<file>.js` (default e
   build(s) { ... },                       // build set, create the mode, wire scoring
   bot(s, inp, B) { ... } }                // autopilot for tests: set inp.x, inp.y (-1..1), inp.a/inp.b/inp.xk (held), inp.press('a'|'b'|'x'|'up'|'down'|'left'|'right') for edge presses. B = scratch object.
 ```
-Pay guide: tier1 1.5–2.6k, tier2 3–5k, tier3 6–9k, tier4 11–16k, tier5 20–30k, tier6 40–70k.
+(tier/pay in existing files are ignored — order.js decides them.)
+  goals: { shot: [...], cut: [...], stars: [...] }, cine: ['low','wide','front'], liveShot: 'wide',
 Input mapping: `inp.x` A/D, `inp.y` W/S, `inp.a` SPACE, `inp.b` SHIFT, `inp.xk` E; edges via `inp.hit('a')`, `inp.hit('x')`, `inp.hit('up')` etc.
 
 ## Stage API (`s`)

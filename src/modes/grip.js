@@ -15,7 +15,7 @@ export class Grip {
     this.kick = V3(); this.tired = false; this.seg = 0;
     this.stats = { hits: 0, braced: 0, perfect: 0, events: 0, wasted: 0 }; this._w = V3(); this.world = V3();
     if (o.rail) this.setRail(o.rail, o.p ?? 0);
-    this._place(); s.onUpdate(dt => this.update(dt)); s.focus = this.world;
+    this._place(); s.onUpdate(dt => this.update(dt)); s.focus = this.world; s.subject ??= this.c.root;
   }
   // ------------------------------------------------------------ rail
   setRail(pts, p = 0) { const R = this.rail = pts.map(a => [a[0], a[1], a[2] || 0]); const L = this.railL = [0]; for (let i = 1; i < R.length; i++) L.push(L[i - 1] + Math.hypot(R[i][0] - R[i - 1][0], R[i][1] - R[i - 1][1], R[i][2] - R[i - 1][2])); this.railLen = L[L.length - 1]; this.pMin = 0; this.pMax = this.railLen; this.p = p; this._rail(); }

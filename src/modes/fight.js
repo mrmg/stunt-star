@@ -11,7 +11,7 @@ export class Fight {
     this.beats = (o.beats || []).map(b => ({ ...b })).sort((a, b) => a.t - b.t); this.i = 0; this.t = -(o.lead ?? 1.2); this.hp = o.hp; this.combo = 0; this.maxCombo = 0; this.hits = 0; this.perfects = 0; this.misses = 0; this.dead = false; this.done = false; this.poseT = 0; this.pool = {}; this.active = [];
     this.lane = s.hud.lane; this.focusP = V3().copy(this.pos); s.focus = this.focusP;
     if (o.view === 'side') s.cam.fixed(V3(this.pos.x, this.pos.y + 1.7, this.pos.z + (o.camDist ?? 7.5)), () => ({ pos: this.focusP, heading: 0 }), { fov: o.fov ?? 48, up: 1.1, lookStiff: 6 });
-    s.onUpdate(dt => this.update(dt));
+    s.onUpdate(dt => this.update(dt)); s.subject ??= this.c.root;
   }
   _enemy(b) {
     const id = b.who || pick(this.o.enemies); const list = (this.pool[id] ||= []); let e = list.find(e => !e.busy);
