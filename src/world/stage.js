@@ -17,9 +17,9 @@ export const near = (v, target, perfect, worst) => clamp(1 - (Math.abs(v - targe
 let seed = 1; export const srand = s => { seed = s; }; export const sr = (a = 1, b) => { seed = (seed * 16807) % 2147483647; const r = (seed - 1) / 2147483646; return b === undefined ? r * a : a + r * (b - a); };
 
 const ENV = {
-  day: { top: 0x2a6fd6, hor: 0xbcd9f5, sun: [48, 35], sunCol: 0xfff3dd, sunI: 3.4, amb: 0.9, fog: 0.0011 },
+  day: { top: 0x2a6fd6, hor: 0xbcd9f5, sun: [33, 38], sunCol: 0xffecd2, sunI: 3.3, amb: 0.78, fog: 0.0011 }, // morning/afternoon sun: long shadows, warm key
   noon: { top: 0x1f62cf, hor: 0xcfe3f7, sun: [70, 20], sunCol: 0xffffff, sunI: 3.8, amb: 1.0, fog: 0.0009 },
-  golden: { top: 0x3a66b8, hor: 0xffc890, sun: [14, 60], sunCol: 0xffb060, sunI: 3.6, amb: 0.75, fog: 0.0014 },
+  golden: { top: 0x3a66b8, hor: 0xffc890, sun: [13, 60], sunCol: 0xffad5c, sunI: 3.8, amb: 0.68, fog: 0.0015 },
   dusk: { top: 0x1a2550, hor: 0xe07a50, sun: [5, 75], sunCol: 0xff7a40, sunI: 2.2, amb: 0.55, fog: 0.0016 },
   night: { top: 0x02040c, hor: 0x101a33, sun: [40, -30], sunCol: 0x8fa8ff, sunI: 0.7, amb: 0.28, fog: 0.0016, stars: 1 },
   overcast: { top: 0x7d8894, hor: 0xc5ccd2, sun: [55, 20], sunCol: 0xe8eef5, sunI: 1.6, amb: 1.15, fog: 0.0018 },
@@ -91,6 +91,27 @@ const KEEP_ROLLING = ['Keep rolling!', 'Keep going, keep going!', 'Do not stop!'
 const CUT_LINES = ['Cut! Cut!', 'Cut! Medic!', 'Cut it!'];
 const pickLine = a => a[Math.floor(Math.random() * a.length)];
 // generic director advice from the wording of a failure; stunts pass their own `advice` when they can say more
+// Break up big tiled ground: two octaves of world-space value noise darken/lighten the texture and mix in
+// patches of a second colour (dry grass, wet sand, oil stains). Applied to ground() and terrain() by default.
+const VARY_DEF = { tx_grass: { lo: 0.62, hi: 1.08, patch: 0xa89a62, amt: 0.45, tint: 0xb4c09a }, tx_sand: { lo: 0.78, hi: 1.06, patch: 0x9a8060, amt: 0.3 }, tx_dirt: { lo: 0.7, hi: 1.08, patch: 0x7a6248, amt: 0.3 },
+  tx_asphalt: { lo: 0.75, hi: 1.05, patch: 0x404448, amt: 0.25 }, tx_concrete: { lo: 0.8, hi: 1.05, patch: 0x8a8678, amt: 0.2 }, tx_rock: { lo: 0.7, hi: 1.1, patch: 0x6a6a5a, amt: 0.25 }, tx_snow: { lo: 0.86, hi: 1.04, patch: 0xc8d4e4, amt: 0.3 },
+  tx_jungle_floor: { lo: 0.65, hi: 1.08, patch: 0x5a4a2a, amt: 0.3 }, tx_cobble: { lo: 0.78, hi: 1.05, patch: 0x5a5448, amt: 0.2 } };
+export function varyMaterial(m, o = {}) {
+  const u = { uLo: { value: o.lo ?? 0.72 }, uHi: { value: o.hi ?? 1.08 }, uPatch: { value: new THREE.Color(o.patch ?? 0x9a8a60) }, uAmt: { value: o.amt ?? 0.3 }, uScale: { value: o.scale ?? 1 } };
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPv;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPv = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
+      varying vec3 vWPv; uniform float uLo, uHi, uAmt, uScale; uniform vec3 uPatch;
+      float vh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(vh(i), vh(i + vec2(1, 0)), f.x), mix(vh(i + vec2(0, 1)), vh(i + vec2(1, 1)), f.x), f.y); }
+      float vf(vec2 p){ return vn(p) * 0.55 + vn(p * 2.3 + 7.1) * 0.3 + vn(p * 5.1 + 3.3) * 0.15; }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+      { vec2 q = vWPv.xz * uScale; float n = vf(q * 0.018) * 0.65 + vf(q * 0.11) * 0.35; diffuseColor.rgb *= mix(uLo, uHi, n);
+        float pt = smoothstep(0.5, 0.78, vf(q * 0.03 + 11.0)); diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * uPatch * 1.6, pt * uAmt); }`);
+  };
+  m.customProgramCacheKey = () => 'vary'; return m;
+}
 export function adviceFor(reason = '', def) {
   const r = reason.toLowerCase(), m = def?.mode;
   if (/short|swim|river|street|dropped it in|fell short|came up/.test(r)) return 'You ran out of speed before the gap. Watch the speed readout and be in the green zone before the ramp — then do not lift.';
@@ -284,7 +305,9 @@ export class Stage {
   // Endless-looking textured ground that follows the camera
   ground(o = {}) {
     const size = o.size ?? 7000, tile = o.tile ?? ((o.tex ?? '') === 'tx_grass' ? 5 : 12), m = this.mat({ tex: o.tex ?? 'tx_asphalt', rep: size / tile, color: o.color, rough: o.rough ?? 0.95, fallback: o.fallback ?? 0x556055 });
-    const g = new THREE.Mesh(new THREE.PlaneGeometry(size, size), m); g.rotation.x = -Math.PI / 2; g.position.y = o.y ?? 0; g.receiveShadow = true; g.userData.tile = tile; this.scene.add(g);
+    const V = o.vary === false ? null : { ...(VARY_DEF[o.tex ?? 'tx_asphalt'] || {}), ...(o.vary || {}) }; let gm = m;
+    if (V) { gm = m.clone(); if (m.map) gm.map = m.map; if (o.color == null && V.tint != null) gm.color.set(V.tint); varyMaterial(gm, V); }
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(size, size), gm); g.rotation.x = -Math.PI / 2; g.position.y = o.y ?? 0; g.receiveShadow = true; g.userData.tile = tile; this.scene.add(g);
     if (o.follow !== false) this.bigGround = g; if (o.base !== false) { const y = o.y ?? 0; this.course.base = () => y; } return g;
   }
   water(o = {}) {
@@ -305,7 +328,9 @@ export class Stage {
     const { x0, x1, fn } = o, z0 = Math.min(o.z0, o.z1), z1 = Math.max(o.z0, o.z1), res = o.res ?? 4, nx = Math.ceil((x1 - x0) / res), nz = Math.ceil((z1 - z0) / res), tile = o.tile ?? 14;
     const g = new THREE.PlaneGeometry(x1 - x0, z1 - z0, nx, nz); g.rotateX(-Math.PI / 2); g.translate((x0 + x1) / 2, 0, (z0 + z1) / 2);
     const p = g.attributes.position, uv = g.attributes.uv; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getZ(i); p.setY(i, fn(x, z)); uv.setXY(i, x / tile, z / tile); }
-    g.computeVertexNormals(); const m = new THREE.Mesh(g, o.mat?.isMaterial ? o.mat : this.mat(o.mat || { tex: o.tex ?? 'tx_dirt' })); m.receiveShadow = true; m.castShadow = !!o.cast; this.scene.add(m);
+    g.computeVertexNormals(); let tm = o.mat?.isMaterial ? o.mat : this.mat(o.mat || { tex: o.tex ?? 'tx_dirt' }); const tk = o.mat?.tex ?? o.tex ?? (o.mat ? null : 'tx_dirt');
+    if (o.vary !== false && tk && VARY_DEF[tk]) { const map = tm.map; tm = tm.clone(); tm.map = map; varyMaterial(tm, { ...VARY_DEF[tk], ...(o.vary || {}) }); }
+    const m = new THREE.Mesh(g, tm); m.receiveShadow = true; m.castShadow = !!o.cast; this.scene.add(m);
     if (o.base !== false) { const prev = this.course.base; this.course.base = (x, z) => (x >= x0 && x <= x1 && z >= z0 && z <= z1) ? fn(x, z) : prev(x, z); }
     return m;
   }

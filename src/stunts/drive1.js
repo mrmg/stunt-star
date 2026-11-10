@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Drive, Movers, Convoy } from '../modes/drive.js';
 import { clamp, near, smooth, V3, rnd, sr, srand, lerp } from '../world/stage.js';
 import { K, CTL, street, traffic, botDrive, sign, TRAFFIC } from './common.js';
+import * as dress from '../world/dress.js';
 
 const ftOf = m => Math.round(m * 3.281);
 function rain(s, n = 6) { const p = V3(), v = V3(0, -38, 0); s.onUpdate(() => { const c = s.camera.position; for (let i = 0; i < n; i++) s.fx.streak(p.set(c.x + rnd(-14, 14), c.y + rnd(2, 9), c.z + rnd(-22, 4)), v, [0.75, 0.82, 1], 0.28, 0.07, 0.35); }); s.audio.set('rain', 'rain', 0.3, 0.12); }
@@ -95,7 +96,16 @@ const smokey = {
     s.slope({ x: 0, w: 7, z0: -317, z1: -334, y0: 0, y1: 2.0, curve: 1.5 }); // what is left of the bridge
     const red = s.mat({ color: 0xcc2211 }); for (const x of [-2.2, 0, 2.2]) s.box({ x, y: 0.5, z: -270, w: 2, h: 0.35, d: 0.12, mat: x ? s.mat({ color: 0xeeeeee }) : red, solid: 'break', sol: { soft: true, debris: 0xdddddd } });
     sign(s, 'BRIDGE OUT', { x: 0, y: 1.5, z: -269.9, w: 5, bg: '#d9a400', fg: '#111' });
-    trees(s, 'pine_tree', 60, 90, -680, 9, 110, { h: [9, 16], seedv: 2 }); trees(s, 'oak_tree', 26, 90, -680, 12, 90, { h: [7, 11], seedv: 6 });
+    trees(s, 'pine_tree', 30, 90, -680, 12, 110, { h: [9, 16], seedv: 2 }); trees(s, 'oak_tree', 18, 90, -680, 14, 90, { h: [7, 11], seedv: 6 });
+    // Georgia back road: pine woods closing in on both sides, poles, a ranch fence, a barn and baled fields
+    dress.treeLine(s, { x: -48, z0: 90, z1: -326, side: -1, depth: 22, step: 6, kinds: ['pine', 'oak', 'pine'], h: [10, 18], seed: 3 }); dress.treeLine(s, { x: 46, z0: 40, z1: -326, side: 1, depth: 22, step: 6, kinds: ['pine', 'oak'], h: [10, 17], seed: 4 });
+    dress.treeLine(s, { x: -24, z0: -376, z1: -700, side: -1, depth: 20, kinds: ['pine', 'oak'], seed: 5 }); dress.treeLine(s, { x: 24, z0: -376, z1: -700, side: 1, depth: 20, kinds: ['pine'], seed: 6 });
+    dress.hills(s, { z: -300, r: 520, h: 55, color: 0x4a5a3a, trees: 'pine', nTrees: 220 });
+    dress.poles(s, { x: -6.5, z0: 95, z1: -320 }); dress.poles(s, { x: -6.5, z0: -372, z1: -690 });
+    dress.fence(s, { x: 7, z0: 80, z1: -250, kind: 'rail' }); dress.fence(s, { x: -9, z0: -60, z1: -300, kind: 'wire' });
+    dress.barn(s, { x: 22, z: -40, w: 11, d: 16, h: 5.5, ry: 0.3 }); dress.barn(s, { x: 18, z: -70, w: 6, d: 7, h: 3, ry: 0.1, color: 0x6a6258 });
+    srand(14); dress.bales(s, Array.from({ length: 14 }, () => [sr(12, 27), sr(-120, -230), sr(3)]));
+    s.trees('bush', 70, (r, i) => { let x = sr(-40, 40); if (Math.abs(x) < 6) x += 10 * Math.sign(x || 1); return [x, i % 2 ? sr(-330, -336) : sr(-366, -372)]; }, { h: [1, 2.2], seedv: 21 }); // scrub along both banks
     s.crew({ x: 7, z: 12, ry: 1.0 }); s.crew({ x: -8, z: -385, ry: 2.5, people: false });
     const car = s.car = new Drive(s, { kind: 'muscle', model: 'transam', x: 0, z: 30 }); car.dustColor = [0.7, 0.5, 0.35]; car.k.dusty = true; car.k.grip = 4.2;
     const mv = new Movers(s, car); let sunk = false;
@@ -321,7 +331,7 @@ const french = {
 const EXTRA = {
   italian_job: { goals: { shot: ['Drive along the roof and hit the wooden ramp at 55–70 mph', 'Jump the gap and land on the far roof', 'Brake and stop inside the green box'], cut: ['You drop into the street (too slow at the ramp)'], stars: ['Take-off speed', 'Landing', 'Stopping on the mark', 'Missing the skylights'] }, cine: ['low', 'wide', 'front'] },
   great_escape: { goals: { shot: ['Ride through the gap in the first fence', 'Be doing 50+ mph when you hit the grass bank', 'Clear the barbed wire and land, then ride on'], cut: ['You hit the wire (too slow at the bank)'], stars: ['Speed at the bank', 'Landing', 'Time'] }, cine: ['wide', 'low', 'track'] },
-  smokey: { goals: { shot: ['Drive straight down the dirt road, flat out', 'Smash the BRIDGE OUT barrier at 70+ mph', 'Fly the river and land on the far road'], cut: ['You land in the river (too slow)'], stars: ['Take-off speed', 'Landing', 'Not hitting anything'] }, cine: ['wide', 'low', 'front'] },
+  smokey: { goals: { shot: ['Drive straight down the dirt road, flat out', 'Smash the BRIDGE OUT barrier at 70+ mph', 'Fly the river and land on the far road'], cut: ['You land in the river (too slow)'], stars: ['Take-off speed', 'Landing', 'Not hitting anything'] }, cine: [{ type: 'front', pos: [-30, 2.2, -351], fov: 36, lookUp: 0.4, speed: 0.4 }, 'low', { type: 'wide', speed: 0.8 }] },
   general_lee: { freeze: { line: 'Now most folks would have called it a day right there. Not this one.', shot: 1, at: 0.5 }, liveShots: ['low', 'track'], goals: { shot: ['Floor it down the dirt track to the ramp', 'Hold W in the air to keep the heavy nose up', 'Land on all four wheels past the patrol cars'], cut: ['You land nose-first and fold the car'], stars: ['Distance (feet)', 'Landing'] }, cine: ['wide', 'low', 'track'] },
   bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire — within 1.5 s of the bolt', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: ['front', 'low', 'wide'], liveShot: 'front' },
   bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving'] }, cine: ['front', 'low', 'track'] },
