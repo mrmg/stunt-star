@@ -105,7 +105,7 @@ export class Drive {
     while (t < 6) { t += dt; x += vx * dt; z += vz * dt; vy -= G * dt * (this.gravK ?? 1); y += vy * dt; pts.push({ t: s.t + t, p: V3(x, y, z) }); const g = s.course.height(x, z, y + 0.9); if (t > 0.15 && g > -1e5 && y <= g) break; if (y < s.course.kill) break; }
     if (t < (this.cineMin ?? 1.0)) return;
     this._mom = s.moment('jump', { t0: s.t - 0.7, dur: t + 1.3, w: t });
-    if (this.liveCine === false) return;
+    if (this.liveCine === false || this._liveCut) return; this._liveCut = true; // live cut-aways once per take: on repeated jumps they just interrupt the driving
     // two angles for a big jump: ground camera on the way up, then a tracking/wide shot for the landing
     const L = s.def.liveShots || [s.def.liveShot || (t > 1.9 ? 'low' : 'wide'), t > 1.4 ? 'track' : null];
     this._uncut = s.cut(pts, L[0]);

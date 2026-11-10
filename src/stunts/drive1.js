@@ -220,44 +220,63 @@ const bttf = {
 };
 
 // ---------------------------------------------------------------------------------------------
-const hz = z => { const d = -z - 40; if (d <= 0) return 0; const b = Math.floor(d / 105), r = d - b * 105; return -(b * 12) - (r < 22 ? 0 : (r - 22) / 83 * 12); };
+const hz = z => { const d = -z - 40; if (d <= 0) return 0; if (d >= 1155) return -132; const b = Math.floor(d / 105), r = d - b * 105; return -(b * 12) - (r < 22 ? 0 : (r - 22) / 83 * 12); };
 const bullitt = {
   id: 'bullitt', title: 'San Francisco Airtime', film: 'Bullitt', year: 1968, tier: 2, pay: 4600, mode: 'drive', art: 'bd_sf', music: 'chase',
   role: 'Doubling the Lieutenant — Highland Green Mustang GT 390',
-  brief: 'Stay on that black Charger down the hills. Every cross street is a launch pad — I want daylight under all four wheels, and I want you still pointing the right way when you land.',
-  tips: ['Keep the <b>black Charger</b> within sight — lose him and the scene is dead.', 'Each crest throws you in the air. Stay straight and off the brakes over the top.', 'Parked cars and traffic will end your day. Thread the gaps.'],
+  brief: 'Stay on that black Charger down the hills. Every cross street is a launch pad — I want daylight under all four wheels. At the bottom he runs wide into the gas station and the whole thing goes up. Be right behind him when it does, then stand on the brakes.',
+  tips: ['Keep the <b>black Charger</b> within sight — lose him and the scene is dead.', 'Each crest throws you in the air. Stay straight and off the brakes over the top.', 'Parked cars and traffic will end your day. Thread the gaps.', 'When the gas station goes up, <b>brake hard and keep left</b> — the sea wall is 100 m further on.'],
   controls: CTL.drive, intro: { r: 10, h: 2.5 },
   assets: { models: ['mustang_green', 'charger_black', 'street_lamp', ...TRAFFIC], tex: ['bd_sf', 'tx_asphalt', 'tx_fac_sf', 'tx_concrete', 'tx_roof'] },
   build(s) {
     // San Francisco, spring 1968: hazy afternoon sun low over the bay at the bottom of the hill, muted cool-green 60s stock
-    s.env('day', { backdrop: 'bd_sf', look: 'warm60s', sun: [32, 176], sunI: 3.1, amb: 0.98, fog: 0.0024, hz: 0.46, bdFollow: 0.3, lookOver: { sat: 0.84, contrast: 1.1, tint: [1.0, 1.02, 0.97] } });
+    s.env('day', { backdrop: 'bd_sf', look: 'warm60s', sun: [34, 40], sunI: 3.0, amb: 0.98, fog: 0.0024, hz: 0.46, bdFollow: 0.3, lookOver: { sat: 0.84, contrast: 1.1, tint: [1.0, 1.02, 0.97] } });
     s.ground({ tex: 'tx_asphalt', y: -150, base: false, color: 0x8899aa }); s.course.kill = -500;
-    s.terrain({ x0: -44, x1: 44, z0: 80, z1: -1260, res: 2.6, fn: (x, z) => hz(z), tex: 'tx_asphalt', tile: 9 });
-    street(s, { z0: 80, z1: -1260, width: 15, lanes: 4, fac: ['tx_fac_sf'], height: [16, 22], yfn: hz, lamps: 0, bwidth: [14, 22], tints: [0xffffff, 0xe8d8c0, 0xcfe0e8, 0xf0d0c8, 0xd8e8c8], double: true });
+    s.terrain({ x0: -44, x1: 44, z0: 80, z1: -1262, res: 2.6, fn: (x, z) => hz(z), tex: 'tx_asphalt', tile: 9 }); s.terrain({ x0: -90, x1: 90, z0: -1260, z1: -1470, res: 6, fn: () => -132, tex: 'tx_asphalt', tile: 9 });
+    street(s, { z0: 80, z1: -1272, width: 15, lanes: 4, fac: ['tx_fac_sf'], height: [16, 22], yfn: hz, lamps: 0, bwidth: [14, 22], tints: [0xffffff, 0xe8d8c0, 0xcfe0e8, 0xf0d0c8, 0xd8e8c8], double: true });
     srand(21); for (let z = -70; z > -1200; z -= 13) { if (sr() < 0.55) continue; const sd = sr() < 0.5 ? -1 : 1; const d = (-z - 40) % 105; if (d < 26) continue; s.put(TRAFFIC[Math.floor(sr(TRAFFIC.length))], { x: sd * 6.5, z, y: hz(z), rx: sd * 0, solid: true, sol: { msg: 'Ploughed into a parked car' } }).rotation.x = -Math.atan(12 / 83) * 1; }
     // Muni trolley wires and poles down both kerbs, following the hill
     dress.poles(s, { x: -8.6, z0: 70, z1: -1240, gap: 34, h: 9 }); dress.poles(s, { x: 8.6, z0: 53, z1: -1240, gap: 34, h: 9 });
     s.crew({ x: 6.6, z: 22, ry: 0.8 });
-    const car = s.car = new Drive(s, { kind: 'muscle', model: 'mustang_green', x: -1.8, z: 30, hard: 12, pitchTol: 0.75 });
+    const car = s.car = new Drive(s, { kind: 'muscle', model: 'mustang_green', x: -1.8, z: 30, hard: 12, pitchTol: 0.75, cam: { dist: 8.4, height: 3.9, ahead: 9, up: 0.6, fov: 64 } }); car.liveCine = false; // no cut-aways on every crest: the gas station is the scene's big moment
     const mv = new Movers(s, car); mv.nearPay = 120;
-    const ch = s.rival = mv.add({ model: 'charger_black', z: -6, path: (z, e) => 1.8 + Math.sin(z * 0.017) * 2.6, v: 0, nearMiss: false, hardK: 3, ai: (e, dt) => { if (!s.started) return; const gap = car.pos.z - e.z; const want = gap > 140 ? 10 : gap > 75 ? 24 : gap < 14 ? 42 : 33.5; e.v += (want - e.v) * Math.min(1, dt * 1.2); } });
+    const ch = s.rival = mv.add({ model: 'charger_black', z: -6, avoid: false, path: (z, e) => z > -1250 ? 1.8 + Math.sin(z * 0.017) * 2.6 : 1.8 + Math.sin(-1250 * 0.017) * 2.6 + smooth(-1250, -1338, z) * 15, v: 0, nearMiss: false, hardK: 3, ai: (e, dt) => { if (!s.started) return; if (s.bfin) { e.v = 0; return; } const gap = car.pos.z - e.z; const want = e.z < -1240 ? 34 : gap > 140 ? 10 : gap > 75 ? 24 : gap < 14 ? 42 : 33.5; e.v += (want - e.v) * Math.min(1, dt * 1.2); } });
     traffic(s, mv, { lanes: [[-1.9, 1], [1.9, -1], [4.0, -1]], n: 9, z0: -160, z1: -1150, speed: [9, 13], zEnd: -1200, recycle: false, msg: 'Collected the traffic' });
     let close = 0, tot = 0, lands = [], fin = false; s.rate('Clean driving', 1);
-    // signature shot: the long lens at the bottom of the block, looking back up as both cars fly the crest. Which crest
-    // becomes the replay moment is only known in play, so the hand-placed camera is fitted to it when the moment is made.
-    s.onUpdate(() => { const m = car._mom; if (m && !m._sig) { m._sig = 1; const zc = -62 - 105 * Math.max(0, Math.round((-car.pos.z - 62) / 105)), zp = zc - 78; m.shots = [{ type: 'front', pos: [0, hz(zp) + 1.3, zp], fov: 11, lookUp: 0.6, a: -0.25, b: 1.05, speed: 0.55 }, 'track', { type: 'low', side: -1 }]; } });
     car.onLand = i => { if (i.airTime > 0.35) { lands.push(i.clean); s.bonus('Airtime', Math.round(i.airTime * 220)); if (i.airTime > 0.8) s.msg('BIG AIR', 'small'); } };
     car.onHit = (sol, imp) => s.rate('Clean driving', (s.scores.get('Clean driving')?.v ?? 1) - 0.2);
     s.objective('Stay on the Charger');
     s.onUpdate(dt => {
+      if (car.pos.z < -1100 && !s.cleared) { s.cleared = true; for (const e of mv.list) if (e !== ch && e.z < -1180) { e.alive = false; e.m.visible = false; } }
+      if (s.cam.mode === 'follow') s.cam.o.up = 0.6 + clamp(hz(car.pos.z - 30) - hz(car.pos.z), -9, 0) * 0.45; // aim down over each crest so you can see what is coming up the hill
       if (!s.started || s.ended) return; const gap = car.pos.z - ch.z; tot += dt; if (gap < 55 && gap > -10) close += dt;
       s.hud.readout('gap', 'Gap (m)', Math.max(0, Math.round(gap)), gap > 80 ? 'warn' : gap < 45 ? 'ok' : ''); s.hud.readout('spd', 'MPH', Math.round(car.mph));
       if (gap > 150 && !s.lost) { s.lost = true; s.flub('Lost the Charger', { penalty: 0.2, advice: 'Stay within 50 m of the Charger — take the straight line over the crests and only brake for traffic.' }); }
       if (gap < 100) s.lost = false;
-      if (car.pos.z < -1130 && !fin) { fin = true; s.rate('On his tail', clamp(close / tot / 0.85), 2); s.rate('Landings', lands.length ? lands.reduce((a, b) => a + b, 0) / lands.length : 0.5, 1.2); s.wrap(1.5); }
+      // the finale: the Charger runs wide at the bottom of the hill and goes into the gas station
+      if (!fin && ch.z < -1336) { fin = true; boom(); s.rate('On his tail', clamp(close / tot / 0.85), 2); s.rate('Landings', lands.length ? lands.reduce((a, b) => a + b, 0) / lands.length : 0.5, 1.2); s.rate('In at the kill', near(gap, 20, 25, 140), 1); s.objective('Brake! Pull up short of the bay'); }
+      if (fin && Math.abs(car.v) < 1 && car.grounded) { s.rate('Pulled up', car.pos.z > -1440 ? 1 : 0.5, 0.6); s.wrap(1.8, 'Print it. Nobody does a car chase after this one.'); }
+      if (fin) for (let k = 0; k < 3; k++) s.fx.flame(V3(GX + rnd(-6, 6), Y0 + rnd(0, 2), GZ + rnd(-5, 5)), rnd(1.5, 3));
     });
+    // --- the gas station at the foot of the hill, and the bay wall beyond it
+    const Y0 = -132, GX = 20, GZ = -1342, red = s.mat({ color: 0xc8261e, rough: 0.5 }), white = s.mat({ color: 0xe8e4da, rough: 0.6 });
+    const station = new THREE.Group(); s.scene.add(station);
+    for (const [x, z] of [[-5, -4], [5, -4], [-5, 4], [5, 4]]) s.box({ parent: station, x: GX + x, y: Y0, z: GZ + z, w: 0.4, h: 4.6, d: 0.4, mat: white });
+    s.box({ parent: station, x: GX, y: Y0 + 4.6, z: GZ, w: 14, h: 0.7, d: 12, mat: red });
+    for (const [x, z] of [[-2.5, -2], [2.5, -2], [-2.5, 2], [2.5, 2]]) { s.box({ parent: station, x: GX + x, y: Y0, z: GZ + z, w: 0.9, h: 1.6, d: 0.6, mat: red }); s.box({ parent: station, x: GX + x, y: Y0 + 1.1, z: GZ + z + 0.31, w: 0.6, h: 0.35, d: 0.02, mat: white }); }
+    s.box({ x: GX + 13, y: Y0, z: GZ - 2, w: 9, h: 4, d: 12, fac: 'tx_fac_sf', mat: white, solid: true, sol: { msg: 'Drove into the gas station' } }); sign(s, 'GAS', { x: GX - 8, y: Y0 + 7, z: GZ + 7, w: 3, bg: '#c8261e', fg: '#fff' }); s.cyl({ x: GX - 8, y: Y0, z: GZ + 7, r: 0.15, h: 6.5, color: 0x888888 });
+    s.course.addSolid({ x0: GX - 7, x1: GX + 7, y0: Y0, y1: Y0 + 5, z0: GZ - 6, z1: GZ + 6, msg: 'Drove into the burning gas station', advice: 'Once the Charger goes in, brake hard and keep left — the station burns for a long time.' });
+    s.box({ x: 0, y: Y0, z: -1452, w: 180, h: 1.2, d: 2, mat: 'tx_concrete', solid: true, sol: { msg: 'Over the sea wall into the bay', advice: 'Brake as soon as the Charger goes in — you have about 100 m before the sea wall.' } }); s.water({ y: Y0 - 2, w: 400, d: 300, z: -1610, color: 0x2a4a58, size: 400 });
+    dress.poles(s, { x: -9, z0: -1275, z1: -1440, gap: 34, h: 9 }); dress.crowd(s, { x: -16, z0: -1300, z1: -1380, rows: 2, side: 1, face: Math.PI / 2, gaps: 0.5 });
+    const boom = () => {
+      s.bfin = true; const p = V3(GX, Y0 + 1.5, GZ); ch.v = 0; ch.alive = false; ch.m.rotation.z = 0.22; ch.m.rotation.x = -0.12; // stopped dead in the pumps
+      s.fx.explosion(p, 1.4); s.after(0.3, () => s.fx.explosion(p.clone().add(V3(3, 2, -2)), 1.1)); s.after(0.6, () => s.fx.explosion(p.clone().add(V3(-2, 3, 2)), 0.9)); s.fx.debris(p, 50, { color: 0x6a6058, speed: 16 }); s.fx.light(p, 0xffa040, 160, 1.0, 90);
+      s.audio.explosion(1); s.after(0.3, () => s.audio.explosion(0.8)); s.engine.addShake(1.2); s.slowmo(0.45, 1.2); s.msg('THE GAS STATION!', 'huge good');
+      station.children.forEach((o, k) => { if (k > 3) o.visible = false; }); // canopy and pumps blown away; the posts stay standing
+      s.moment('the gas station', { t0: s.t - 2.6, dur: 5.4, w: 12, subject: ch.m, shots: [{ type: 'front', pos: [-12, Y0 + 1.4, GZ - 16], fov: 38, lookUp: 0.5, a: 0, b: 0.75, speed: 0.45 }, { type: 'front', pos: [GX - 30, Y0 + 0.9, GZ + 9], fov: 30, lookUp: 0.8, speed: 0.3, a: 0.4, b: 0.8 }, { type: 'wide', speed: 0.7, a: 0.5, b: 1.05 }] });
+    };
   },
-  bot(s, inp) { const c = s.car; let tx = -1.9; for (const sol of s.course.solids) { if (sol.dead || sol.type === 'trigger') continue; const dz = c.pos.z - sol.z1; if (dz > 0 && dz < 42 && sol.x0 < tx + 1.4 && sol.x1 > tx - 1.4) tx = sol.x1 + 1.6 < 5 ? sol.x1 + 1.6 : sol.x0 - 1.6; } botDrive(c, inp, tx, 33, 0.07); if (!c.grounded) inp.x = 0; },
+  bot(s, inp) { const c = s.car; let tx = -1.9; for (const sol of s.course.solids) { if (sol.dead || sol.type === 'trigger') continue; const dz = c.pos.z - sol.z1; if (dz > 0 && dz < 42 && sol.x0 < tx + 1.4 && sol.x1 > tx - 1.4) tx = sol.x1 + 1.6 < 5 ? sol.x1 + 1.6 : sol.x0 - 1.6; } botDrive(c, inp, tx, 33, 0.07); if (!c.grounded) inp.x = 0; if (s.bfin) { botDrive(c, inp, -3, 0, 0.07); inp.y = c.v > 1 ? -1 : 0; } },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -381,7 +400,7 @@ const EXTRA = {
   smokey: { goals: { shot: ['Drive straight down the dirt road, flat out', 'Smash the BRIDGE OUT barrier at 70+ mph', 'Fly the river and land on the far road'], cut: ['You land in the river (too slow)'], stars: ['Take-off speed', 'Landing', 'Not hitting anything'] }, cine: [{ type: 'front', pos: [-30, 2.2, -351], fov: 36, lookUp: 0.4, speed: 0.4 }, 'low', { type: 'wide', speed: 0.8 }] },
   general_lee: { freeze: { line: 'Now most folks would have called it a day right there. Not this one.', shot: 1, at: 0.5 }, liveShots: ['low', 'track'], goals: { shot: ['Floor it down the dirt track to the ramp', 'Hold W in the air to keep the heavy nose up', 'Land on all four wheels past the patrol cars'], cut: ['You land nose-first and fold the car'], stars: ['Distance (feet)', 'Landing'] }, cine: [{ type: 'wide', pos: [21, 3, -238], fov: 36, speed: 1 }, { type: 'low', pos: [7, 0.4, -294], fov: 60, lookUp: 0.2, a: 0.36, b: 1.05, speed: 0.4 }, 'track'] },
   bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire — within 1.5 s of the bolt', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: [{ type: 'rear', pos: [-5.4, 0.8, -528], fov: 42, lookUp: 0.5, a: 0.45, b: 1.12, speed: 0.5 }, { type: 'front', pos: [2.6, 0.45, -614], fov: 30, lookUp: 0.3, a: 0.6, b: 1.2, speed: 0.5 }, { type: 'track', a: 0.2, b: 0.9, speed: 0.6 }], liveShot: 'front' },
-  bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving'] }, cine: [{ type: 'front', pos: [0, hz(-1190) + 1.3, -1190], fov: 11, lookUp: 0.6, a: 0.35, b: 1.0, speed: 0.55 }, 'track', { type: 'low', side: -1 }] },
+  bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic', 'At the bottom he loses it at the gas station: brake and pull up before the bay'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving', 'In at the kill'] }, cine: ['track', 'wide', { type: 'low', side: -1 }] },
   blues_brothers: { goals: { shot: ['Drive at the drawbridge as it starts to rise', 'The longer you wait, the steeper it gets — and the more you earn', 'Hold W in the air and land on the far side'], cut: ['You drop into the river'], stars: ['Nerve (bridge angle)', 'Landing'] }, cine: [{ type: 'wide', pos: [42, 7, -318], fov: 26, lookUp: 0.3, a: -0.12, b: 0.62, speed: 0.45 }, 'low', 'front'] },
   boat_jump: { goals: { shot: ['Follow the bayou channel at full throttle', 'Hit the earth ramp in the middle of the river', 'Jump the levee road — the record is 110 feet'], cut: ['You crash into the Sheriff'], stars: ['Jump distance vs the record', 'Landing', 'Staying off the banks'] }, cine: [{ type: 'wide', pos: [rcx(-696) + 11, 0.9, -715], fov: 46, lookUp: 0.3, a: 0.08, b: 0.8, speed: 0.4 }, { type: 'wide', side: -1 }, 'track'] },
   french_connection: { goals: { shot: ['Drive under the elevated railway, chasing the train above', 'Weave through the traffic and between the steel pillars', 'Stay level with the train to the end of the line'], cut: ['You hit a pillar or a car head-on'], stars: ['Keeping up with the train', 'Bodywork'] }, cine: [{ type: 'front', pos: [-7.9, 0.6, -1186], fov: 24, lookUp: 0.4, a: 0.45, b: 1.05, speed: 0.55 }, 'track', 'rear'] },
