@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>STUNT STAR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Oswald:wght@300;400;600&family=Special+Elite&display=swap" rel="stylesheet">
+<style>
+:root{--gold:#f2c14e;--red:#e23b2e;--ink:#0b0b0d;--paper:#efe6d2;--dim:#9a958a;--green:#58d68d}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:#fff;font-family:Oswald,system-ui,sans-serif;overflow:hidden;user-select:none}
+canvas#game{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+.layer{position:fixed;inset:0;display:none}
+.layer.on{display:block}
+h1,h2,h3,.bebas{font-family:"Bebas Neue",Oswald,sans-serif;letter-spacing:.04em;font-weight:400;margin:0}
+kbd{display:inline-block;min-width:1.7em;padding:.08em .45em;border:1px solid #fff8;border-bottom-width:3px;border-radius:5px;font:600 .85em Oswald;text-align:center;background:#0008;margin:0 .1em}
+button{font-family:"Bebas Neue",Oswald;letter-spacing:.08em;cursor:pointer}
+/* ---------- menu ---------- */
+#menu{background:radial-gradient(120% 90% at 50% -10%,#2a2019 0%,#0c0b0d 55%,#000 100%);overflow-y:auto}
+#menu .top{position:sticky;top:0;z-index:5;display:flex;align-items:flex-end;gap:28px;padding:20px 40px 14px;background:linear-gradient(#0b0a0cf2,#0b0a0cd0 70%,#0b0a0c00)}
+#menu .logo{font:400 78px/0.8 "Bebas Neue";color:var(--gold);text-shadow:0 0 30px #f2c14e55,3px 3px 0 #7a2a12}
+#menu .logo small{display:block;font:300 14px Oswald;letter-spacing:.5em;color:#fff9;margin-top:8px;text-shadow:none}
+#menu .stats{margin-left:auto;display:flex;gap:26px;align-items:flex-end}
+.stat{text-align:right}.stat b{display:block;font:400 34px/1 "Bebas Neue";color:#fff}.stat span{font:300 12px Oswald;letter-spacing:.25em;color:var(--dim);text-transform:uppercase}
+.stat.money b{color:var(--green)}.stat.neg b{color:var(--red)}
+.rankbar{width:230px;height:5px;background:#fff2;border-radius:3px;margin-top:6px;overflow:hidden}.rankbar i{display:block;height:100%;background:var(--gold)}
+#menu .opts{display:flex;gap:8px;margin-left:10px}
+#menu .opts button{background:#fff1;border:1px solid #fff3;color:#fffc;padding:6px 12px;font-size:15px;border-radius:4px}
+#menu .opts button:hover{background:#fff3}
+.tier{padding:6px 40px 18px}
+.tier h2{font-size:30px;color:#fff;display:flex;align-items:baseline;gap:14px;border-bottom:1px solid #fff2;padding-bottom:6px;margin-bottom:14px}
+.tier h2 em{font:300 13px Oswald;letter-spacing:.3em;color:var(--dim);font-style:normal;text-transform:uppercase}
+.tier.locked h2{color:#fff6}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.card{position:relative;height:158px;border-radius:6px;overflow:hidden;background:#17151a center/cover;border:1px solid #fff2;cursor:pointer;transition:transform .15s,border-color .15s,box-shadow .15s}
+.card:hover,.card.sel{transform:translateY(-3px) scale(1.015);border-color:var(--gold);box-shadow:0 10px 30px #000a,0 0 0 1px var(--gold)}
+.card::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,#0003 0%,#000c 62%,#000f 100%)}
+.card>*{position:relative}
+.card .yr{position:absolute;top:8px;left:10px;font:400 13px Oswald;letter-spacing:.2em;color:#fffc;background:#000a;padding:2px 7px;border-radius:3px}
+.card .pay{position:absolute;top:8px;right:10px;font:400 20px "Bebas Neue";color:var(--green);background:#000a;padding:0 8px;border-radius:3px}
+.card .info{position:absolute;left:12px;right:12px;bottom:10px}
+.card .t{font:400 25px/1 "Bebas Neue";letter-spacing:.04em}
+.card .m{font:300 13px Oswald;color:#fffb;letter-spacing:.06em;margin-top:2px}
+.card .stars{margin-top:5px;font-size:15px;letter-spacing:2px;color:var(--gold)}.card .stars i{color:#fff3;font-style:normal}
+.card .tag{position:absolute;right:10px;bottom:10px;font:400 11px Oswald;letter-spacing:.2em;color:#000;background:var(--gold);padding:1px 6px;border-radius:2px;text-transform:uppercase}
+.card.lock{cursor:not-allowed;filter:grayscale(1) brightness(.5)}
+.card.lock .t::after{content:" 🔒";font-size:16px}
+.foot{padding:10px 40px 40px;color:var(--dim);font:300 13px Oswald;letter-spacing:.08em}
+/* ---------- briefing ---------- */
+#brief{background:linear-gradient(90deg,#000d 0%,#0009 34%,#0000 62%)}
+#brief .panel{position:absolute;left:5vw;top:50%;transform:translateY(-50%);width:min(520px,44vw)}
+#brief .film{font:300 14px Oswald;letter-spacing:.42em;color:var(--gold);text-transform:uppercase}
+#brief h1{font-size:68px;line-height:.9;margin:6px 0 4px;text-shadow:0 4px 30px #000}
+#brief .role{font:300 17px Oswald;color:#fffc;margin-bottom:16px}
+#brief .dir{font-family:"Special Elite",monospace;font-size:16.5px;line-height:1.5;color:var(--paper);background:#0009;border-left:3px solid var(--gold);padding:12px 16px;margin-bottom:14px;min-height:70px}
+#brief .dir b{color:var(--gold);font-weight:400}
+#brief ul{list-style:none;margin:0 0 14px;padding:0}
+#brief li{font:400 16px/1.35 Oswald;color:#fff;padding:5px 0 5px 26px;position:relative;opacity:0;animation:fadein .4s forwards}
+#brief li::before{content:"▸";position:absolute;left:4px;color:var(--gold)}
+#brief .ctl{font:300 15px/2 Oswald;color:#fffd;background:#0008;padding:8px 14px;border-radius:5px;margin-bottom:14px}
+#brief .deal{display:flex;gap:24px;margin-bottom:18px}
+#brief .deal div{font:300 12px Oswald;letter-spacing:.2em;color:var(--dim);text-transform:uppercase}
+#brief .deal b{display:block;font:400 30px/1 "Bebas Neue";letter-spacing:.04em;color:var(--green)}#brief .deal .risk b{color:var(--red)}#brief .deal .take b{color:#fff}
+.go{font-size:26px;padding:10px 26px;background:var(--gold);color:#111;border:0;border-radius:4px;animation:pulse 1.2s infinite}
+.go.sec{background:#fff2;color:#fff;animation:none;margin-left:8px;font-size:20px}
+@keyframes pulse{50%{box-shadow:0 0 0 9px #f2c14e22}}
+@keyframes fadein{to{opacity:1}}
+#load{background:#000;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px}
+#load.on{display:flex}
+#load .bar{width:320px;height:3px;background:#fff2}#load .bar i{display:block;height:100%;width:0;background:var(--gold);transition:width .2s}
+#load .tx{font:300 13px Oswald;letter-spacing:.5em;color:#fff9;text-transform:uppercase}
+/* ---------- slate ---------- */
+#slate{pointer-events:none}
+#slate .board{position:absolute;left:50%;top:50%;width:440px;margin:-190px 0 0 -220px;transform-origin:50% 120%;filter:drop-shadow(0 30px 40px #000c)}
+#slate .stick{height:46px;background:repeating-linear-gradient(-55deg,#111 0 34px,#f4f4f4 34px 68px);border-radius:4px 4px 0 0;transform-origin:0% 100%;transform:rotate(-24deg);transition:transform .09s ease-in}
+#slate .stick.shut{transform:rotate(0)}
+#slate .stick2{height:22px;background:repeating-linear-gradient(55deg,#111 0 34px,#f4f4f4 34px 68px)}
+#slate .body{background:#141414;border:2px solid #333;padding:10px 16px 14px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 12px;font-family:"Special Elite",monospace;color:#f3f3f3}
+#slate .body .f{border-bottom:1px solid #555;padding:3px 0}#slate .body .f small{display:block;font:300 10px Oswald;letter-spacing:.3em;color:#aaa}#slate .body .w{grid-column:1/-1;font-size:22px}#slate .body .n{font-size:26px}
+#slate .action{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:400 190px "Bebas Neue";letter-spacing:.06em;color:#fff;text-shadow:0 0 60px var(--red),6px 6px 0 var(--red);opacity:0;transform:scale(1.6)}
+#slate .action.on{animation:act .9s forwards}
+@keyframes act{0%{opacity:0;transform:scale(1.9)}18%{opacity:1;transform:scale(1)}75%{opacity:1;transform:scale(1.04)}100%{opacity:0;transform:scale(1.15)}}
+/* ---------- hud ---------- */
+#hud{pointer-events:none}
+#hud .obj{position:absolute;top:26px;left:50%;transform:translateX(-50%);font:400 22px Oswald;letter-spacing:.08em;background:#000a;padding:7px 20px;border-radius:4px;border-bottom:2px solid var(--gold);white-space:nowrap;text-transform:uppercase;transition:opacity .3s}
+#hud .obj:empty{opacity:0}
+#hud .pops{position:absolute;top:27%;left:0;right:0;text-align:center}
+#hud .pop{font:400 76px "Bebas Neue";letter-spacing:.05em;color:#fff;text-shadow:0 0 30px #000,4px 4px 0 #000;animation:pop 1.3s forwards;position:absolute;left:0;right:0}
+#hud .pop.good{color:var(--gold)}#hud .pop.bad{color:var(--red)}#hud .pop.small{font-size:38px;top:70px;animation-duration:.9s}#hud .pop.huge{font-size:130px}
+@keyframes pop{0%{opacity:0;transform:scale(.6)}12%{opacity:1;transform:scale(1.12)}22%{transform:scale(1)}75%{opacity:1}100%{opacity:0;transform:translateY(-26px)}}
+#hud .read{position:absolute;right:38px;bottom:34px;display:flex;gap:26px;align-items:flex-end}
+#hud .ro{text-align:right;text-shadow:0 2px 8px #000}#hud .ro b{display:block;font:400 62px/0.85 "Bebas Neue";font-variant-numeric:tabular-nums}#hud .ro span{font:300 13px Oswald;letter-spacing:.3em;color:#fffc;text-transform:uppercase}
+#hud .ro.warn b{color:var(--red)}#hud .ro.ok b{color:var(--green)}
+#hud .meters{position:absolute;left:38px;bottom:34px;display:flex;flex-direction:column;gap:9px;width:270px}
+#hud .mt span{font:300 12px Oswald;letter-spacing:.3em;text-transform:uppercase;text-shadow:0 1px 4px #000}
+#hud .mt .b{height:9px;background:#0009;border:1px solid #fff5;border-radius:2px;overflow:hidden;position:relative}#hud .mt .b i{display:block;height:100%;width:50%;background:var(--gold);transition:width .08s linear}
+#hud .mt .b u{position:absolute;top:0;bottom:0;background:#58d68d66;border-left:1px solid #58d68d;border-right:1px solid #58d68d}
+#hud .prompt{position:absolute;left:50%;top:62%;transform:translateX(-50%);font:400 30px Oswald;letter-spacing:.1em;background:#000b;padding:8px 22px;border-radius:6px;text-transform:uppercase}
+#hud .prompt:empty{display:none}
+#hud .rec{position:absolute;top:28px;left:38px;font:400 15px Oswald;letter-spacing:.25em;color:#fffd;text-shadow:0 1px 4px #000}#hud .rec i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--red);margin-right:8px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+#hud .bar2d{position:absolute;left:50%;bottom:90px;width:520px;height:26px;margin-left:-260px;background:#000b;border:2px solid #fff8;border-radius:4px;display:none}
+#hud .bar2d .zone{position:absolute;top:0;bottom:0;background:#58d68d88}#hud .bar2d .zone.p{background:#f2c14ecc}#hud .bar2d .cur{position:absolute;top:-7px;bottom:-7px;width:4px;margin-left:-2px;background:#fff;box-shadow:0 0 8px #fff}
+#hud .lane{position:absolute;left:50%;bottom:120px;width:640px;height:74px;margin-left:-320px;display:none}
+#hud .lane .hit{position:absolute;left:50%;top:0;bottom:0;width:74px;margin-left:-37px;border:3px solid #fff;border-radius:10px;box-shadow:0 0 18px #fff8}
+#hud .lane .bt{position:absolute;top:7px;width:60px;height:60px;margin-left:-30px;border-radius:9px;background:#111d;border:2px solid var(--gold);font:400 34px/56px "Bebas Neue";text-align:center;color:var(--gold)}
+#hud .lane .bt.ok{background:var(--green);color:#000;border-color:#fff}#hud .lane .bt.miss{background:var(--red);color:#fff;border-color:var(--red)}
+/* ---------- result ---------- */
+#result{background:radial-gradient(90% 90% at 50% 50%,#000b,#000e)}
+#result .cut{position:absolute;top:7vh;left:0;right:0;text-align:center;font:400 120px/1 "Bebas Neue";letter-spacing:.06em;text-shadow:5px 5px 0 #000}
+#result .cut.ok{color:var(--gold)}#result .cut.bad{color:var(--red)}
+#result .sub{position:absolute;top:calc(7vh + 118px);left:0;right:0;text-align:center;font-family:"Special Elite",monospace;font-size:19px;color:var(--paper)}
+#result .box{position:absolute;left:50%;top:calc(7vh + 170px);width:620px;margin-left:-310px;background:#111c;border:1px solid #fff2;border-radius:8px;padding:18px 26px}
+#result .stars{text-align:center;font-size:44px;letter-spacing:8px;color:var(--gold);margin-bottom:8px}#result .stars i{color:#fff2;font-style:normal}
+.row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font:400 17px Oswald;border-bottom:1px solid #fff1}
+.row .lb{color:#fffc}.row .bar{flex:0 0 190px;height:7px;background:#fff2;border-radius:3px;overflow:hidden;margin:0 14px 0 auto}.row .bar i{display:block;height:100%;background:var(--gold)}
+.row b{font:400 22px "Bebas Neue";min-width:92px;text-align:right}.row.pos b{color:var(--green)}.row.neg b{color:var(--red)}.row.tot{border-top:2px solid #fff5;border-bottom:0;margin-top:6px;font-size:20px}.row.tot b{font-size:34px}
+#result .btns{text-align:center;margin-top:16px}
+#result .note{font:300 14px Oswald;color:var(--dim);text-align:center;margin-top:8px;letter-spacing:.06em}
+#pause,#over{background:#000c;display:none;align-items:center;justify-content:center;flex-direction:column;gap:16px;text-align:center}
+#pause.on,#over.on{display:flex}
+#pause h1,#over h1{font-size:90px}#over h1{color:var(--red)}#over p{font-family:"Special Elite";max-width:560px;color:var(--paper);line-height:1.5}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud" class="layer">
+  <div class="rec"><i></i><span></span></div><div class="obj"></div><div class="pops"></div>
+  <div class="meters"></div><div class="read"></div><div class="prompt"></div>
+  <div class="bar2d"><div class="zone"></div><div class="zone p"></div><div class="cur"></div></div>
+  <div class="lane"><div class="hit"></div></div>
+</div>
+<div id="brief" class="layer"><div class="panel"></div></div>
+<div id="slate" class="layer"><div class="board"><div class="stick"></div><div class="stick2"></div><div class="body"></div></div><div class="action">ACTION!</div></div>
+<div id="result" class="layer"></div>
+<div id="menu" class="layer"></div>
+<div id="pause" class="layer"><h1>PAUSED</h1><div><button class="go" data-a="resume">Resume</button><button class="go sec" data-a="retry">Restart take</button><button class="go sec" data-a="quit">Walk off set</button></div></div>
+<div id="over" class="layer"></div>
+<div id="load" class="layer"><div class="bebas" style="font-size:54px;color:var(--gold)">STUNT STAR</div><div class="bar"><i></i></div><div class="tx">Dressing the set…</div></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

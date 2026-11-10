@@ -1,0 +1,10 @@
+import drive1 from './drive1.js';
+import drive2 from './drive2.js';
+import drive3 from './drive3.js';
+import foot from './foot.js';
+import falls from './falls.js';
+import hang from './hang.js';
+import air from './air.js';
+import fight from './fight.js';
+import precision from './precision.js';
+export const STUNTS = [...drive1, ...drive2, ...drive3, ...foot, ...falls, ...hang, ...air, ...fight, ...precision].sort((a, b) => a.tier - b.tier || a.pay - b.pay);

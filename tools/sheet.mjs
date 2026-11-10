@@ -1,0 +1,4 @@
+// node tools/sheet.mjs out.jpg id_suffix,id_suffix,... [cols]
+import sharp from 'sharp'; const [, , out, list, cols = '4'] = process.argv; const ids = list.split(','), C = +cols, W = 480, H = 270;
+const bufs = await Promise.all(ids.map(async i => { try { const b = await sharp('shots/' + i + '.jpg').resize(W, H).toBuffer(); const svg = Buffer.from(`<svg width="${W}" height="20"><rect width="${W}" height="20" fill="#000a"/><text x="5" y="15" font-family="monospace" font-size="13" fill="#fff">${i}</text></svg>`); return sharp(b).composite([{ input: svg, left: 0, top: H - 20 }]).toBuffer(); } catch { return null; } }));
+await sharp({ create: { width: C * W, height: Math.ceil(ids.length / C) * H, channels: 3, background: '#000' } }).composite(bufs.map((b, i) => b && ({ input: b, left: (i % C) * W, top: Math.floor(i / C) * H })).filter(Boolean)).jpeg({ quality: 84 }).toFile(out);
