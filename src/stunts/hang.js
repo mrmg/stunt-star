@@ -47,8 +47,8 @@ const safetyLast = {
     sign(s, 'BOLTON BUILDING', { x: 0, y: 12.4, z: 0.5, w: 9, bg: '#1a1712', fg: '#e8dfc8', glow: 0.7 }); s.crew({ x: 6, z: 12, ry: 0.3 });
     // the clock: a dressed face with one giant, treacherous minute hand
     const clock = grp(s.scene, CX, CY, 0.5), face = grp(clock);
-    s.put('clock_tower_face', { parent: face, y: -2.9, z: -0.1, height: 5.8 });
-    const hand = grp(clock, 0, 0, 0.5); s.box({ parent: hand, x: 0, y: -HL, w: 0.17, h: HL + 0.35, d: 0.06, mat: dark }); s.cyl({ parent: clock, r: 0.2, h: 0.5, rx: Math.PI / 2, mat: dark, z: 0.4 });
+    s.put('clock_tower_face', { parent: face, y: -2.9, z: -0.23, height: 5.8 }).scale.z = 0.47; // flattened: the generated housing is 64 cm deep and swallowed the performer
+    const hand = grp(clock, 0, 0, 0.06); s.box({ parent: hand, x: 0, y: -HL, w: 0.17, h: HL + 0.35, d: 0.06, mat: dark }); s.cyl({ parent: clock, r: 0.2, h: 0.5, rx: Math.PI / 2, mat: dark, z: -0.1 });
     let ha = -1.62, haT = ha, haV = 0; hand.rotation.z = ha; // angle from straight down; negative = pointing left
     const tip = V3(), tipOf = () => tip.set(CX + Math.sin(ha) * (HL - 0.15), CY - Math.cos(ha) * (HL - 0.15), 0.72 + clock.rotation.x * 2);
 
