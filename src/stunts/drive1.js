@@ -164,22 +164,22 @@ const bttf = {
     s.objective('Cross the wire at 88 mph as the lightning strikes');
     s.onUpdate((dt, t) => {
       if (!s.started) return; const tt = t - s.t0, left = T - tt, dist = car.pos.z - WZ, eta = dist / Math.max(car.v, 3);
-      if (!done) { s.hud.readout('cd', 'Lightning in', Math.max(0, left).toFixed(1), left < 5 ? 'warn' : ''); if (car.v > 12) { const e = eta - left; s.hud.readout('eta', e > 0 ? 'Arrival: late' : 'Arrival: early', (e > 0 ? '+' : '') + e.toFixed(1), Math.abs(e) < 0.35 ? 'ok' : 'warn'); } }
-      s.hud.readout('spd', 'MPH', Math.round(car.mph), Math.abs(car.mph - 88) < 2.5 ? 'ok' : '');
+      if (!done) { s.hud.readout('cd', 'Lightning in', Math.max(0, left).toFixed(1), left < 5 ? 'warn' : ''); if (car.v > 12) { const e = eta - left; s.hud.readout('eta', e > 0 ? 'Arrival: late' : 'Arrival: early', (e > 0 ? '+' : '') + e.toFixed(1), Math.abs(e) < 0.5 ? 'ok' : 'warn'); } }
+      s.hud.readout('spd', 'MPH', Math.round(car.mph), Math.abs(car.mph - 88) < 3 ? 'ok' : '');
       if (car.mph > 84 && !done && Math.random() < 0.7) s.fx.sparks(V3(car.pos.x + rnd(-1, 1), car.pos.y + rnd(0.2, 1.2), car.pos.z + rnd(-2, 2)), 2, { speed: 3, color: [0.5, 0.8, 1] });
       pre -= dt; if (pre < 0 && left > 1.5) { pre = rnd(2.5, 6); s.engine.flash(0.25); s.after(rnd(0.6, 1.6), () => s.audio.thunder()); }
       if (left <= 0 && !bolt.visible && !bolt.userData.used) { bolt.visible = true; bolt.userData.used = true; s.engine.flash(1); s.audio.thunder(); s.audio.explosion(0.6); s.engine.addShake(1); s.after(0.3, () => { bolt.visible = false; }); if (!done && dist > 60) { s.flub('Missed the lightning', { penalty: 0.35, advice: `You were ${Math.round(dist)} m short when the bolt hit. Watch ARRIVAL: brake while it says early, floor it while it says late — get it to 0.0.` }); } }
       if (!done && dist <= 0) {
         done = true; const err = left, v = car.mph;
-        if (Math.abs(err) < 1.1 && v > 85 && v < 96) {
-          s.rate('Timing (' + (err > 0 ? 'early ' : 'late ') + Math.abs(err).toFixed(2) + 's)', near(Math.abs(err), 0, 0.1, 1.1), 2); s.rate('88 mph (' + v.toFixed(0) + ')', near(v, 88.5, 1.2, 6), 1.5);
+        if (Math.abs(err) < 1.6 && v > 84 && v < 96) {
+          s.rate('Timing (' + (err > 0 ? 'early ' : 'late ') + Math.abs(err).toFixed(2) + 's)', near(Math.abs(err), 0, 0.3, 1.8), 2); s.rate('88 mph (' + v.toFixed(0) + ')', near(v, 88, 2.5, 10), 1.5);
           s.engine.flash(1.2); s.audio.explosion(0.8); s.audio.thunder(); s.fx.light(car.pos, 0x80c0ff, 300, 0.8, 60); car.obj.visible = false; car.frozen = true; car.silent = true; s.audio.set('veh', 'engine', 0, 0);
           const fp = V3(); let n = 0; s.onUpdate(() => { if (n++ < 150) for (const x of [-0.8, 0.8]) for (let k = 0; k < 3; k++) s.fx.flame(fp.set(car.pos.x + x, 0.05, WZ - rnd(0, 46)), 0.6); }); s.msg('88 MPH!', 'huge good'); s.wrap(2.6, 'Great Scott!');
         } else {
-          s.rate('Timing (' + Math.abs(err).toFixed(1) + 's off)', near(Math.abs(err), 0, 0.1, 3), 2); s.rate('88 mph (' + v.toFixed(0) + ')', near(v, 88.5, 1.2, 15), 1.5);
-          if (v <= 85) s.flub(`Only ${v.toFixed(0)} mph at the wire`, { penalty: 0.3, advice: 'Not enough speed for time travel. You need 88 at the wire — keep your foot down earlier.' });
+          s.rate('Timing (' + Math.abs(err).toFixed(1) + 's off)', near(Math.abs(err), 0, 0.3, 3), 2); s.rate('88 mph (' + v.toFixed(0) + ')', near(v, 88, 2.5, 15), 1.5);
+          if (v <= 84) s.flub(`Only ${v.toFixed(0)} mph at the wire`, { penalty: 0.3, advice: 'Not enough speed for time travel. You need 88 at the wire — keep your foot down earlier.' });
           else if (v >= 96) s.flub(`${v.toFixed(0)} mph — too hot`, { penalty: 0.3, advice: 'Too fast — the hook would snap. Ease off so the needle sits on 88 as you cross.' });
-          else if (Math.abs(err) >= 1.1) s.flub('Missed the lightning', { penalty: 0.3, advice: `The bolt was ${Math.abs(err).toFixed(1)} s ${err > 0 ? 'after' : 'before'} you crossed. Use the ARRIVAL readout to time it.` });
+          else if (Math.abs(err) >= 1.6) s.flub('Missed the lightning', { penalty: 0.3, advice: `The bolt was ${Math.abs(err).toFixed(1)} s ${err > 0 ? 'after' : 'before'} you crossed. Use the ARRIVAL readout to time it.` });
           s.msg('NO TIME TRAVEL', 'bad'); s.wrap(1.8, 'Well… the DeLorean is still in 1955.');
         }
       }
@@ -323,7 +323,7 @@ const EXTRA = {
   great_escape: { goals: { shot: ['Ride through the gap in the first fence', 'Be doing 50+ mph when you hit the grass bank', 'Clear the barbed wire and land, then ride on'], cut: ['You hit the wire (too slow at the bank)'], stars: ['Speed at the bank', 'Landing', 'Time'] }, cine: ['wide', 'low', 'track'] },
   smokey: { goals: { shot: ['Drive straight down the dirt road, flat out', 'Smash the BRIDGE OUT barrier at 70+ mph', 'Fly the river and land on the far road'], cut: ['You land in the river (too slow)'], stars: ['Take-off speed', 'Landing', 'Not hitting anything'] }, cine: ['wide', 'low', 'front'] },
   general_lee: { freeze: { line: 'Now most folks would have called it a day right there. Not this one.', shot: 1, at: 0.5 }, liveShots: ['low', 'track'], goals: { shot: ['Floor it down the dirt track to the ramp', 'Hold W in the air to keep the heavy nose up', 'Land on all four wheels past the patrol cars'], cut: ['You land nose-first and fold the car'], stars: ['Distance (feet)', 'Landing'] }, cine: ['wide', 'low', 'track'] },
-  bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: ['front', 'low', 'wide'], liveShot: 'front' },
+  bttf: { goals: { shot: ['Wait, then drive at the wire so you arrive as the countdown hits 0', 'Be doing 88 mph (85–95) as you cross the wire — within 1.5 s of the bolt', 'Use ARRIVAL: early = slow down, late = speed up'], cut: ['You crash into a parked car'], stars: ['Timing to the lightning', 'Exactly 88 mph'] }, cine: ['front', 'low', 'wide'], liveShot: 'front' },
   bullitt: { goals: { shot: ['Chase the black Charger down the San Francisco hills', 'Stay within 50 m of it (GAP readout)', 'Fly the crests and land straight — avoid traffic'], cut: ['You wreck the Mustang'], stars: ['Staying on his tail', 'Clean landings', 'Clean driving'] }, cine: ['front', 'low', 'track'] },
   blues_brothers: { goals: { shot: ['Drive at the drawbridge as it starts to rise', 'The longer you wait, the steeper it gets — and the more you earn', 'Hold W in the air and land on the far side'], cut: ['You drop into the river'], stars: ['Nerve (bridge angle)', 'Landing'] }, cine: ['wide', 'low', 'front'] },
   boat_jump: { goals: { shot: ['Follow the bayou channel at full throttle', 'Hit the earth ramp in the middle of the river', 'Jump the levee road — the record is 110 feet'], cut: ['You crash into the Sheriff'], stars: ['Jump distance vs the record', 'Landing', 'Staying off the banks'] }, cine: ['wide', 'low', 'track'] },
