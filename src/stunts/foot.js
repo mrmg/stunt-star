@@ -179,7 +179,10 @@ const temple = {
     s.crew({ x: 2.2, z: 9, ry: 0.5 });
     const run = s.run = new Run(s, { char: 'ch_adventurer', x: 0, z: 0, xmin: -W / 2 + 0.75, xmax: W / 2 - 0.75, cam: { dist: 5.6, height: 2.4, ahead: 4, fov: 64 } });
     const key = s.light({ x: 0, y: 3, z: 0, color: 0xffd0a0, i: 12, dist: 11, bulb: false });
-    const hat = new THREE.Group(); { const m = s.mat({ color: 0x5a3c22, rough: 0.9 }); s.cyl({ parent: hat, r: 0.3, h: 0.025, mat: m }); s.cyl({ parent: hat, r: 0.15, r1: 0.13, h: 0.14, mat: m }); } hat.visible = false; s.scene.add(hat);
+    // his own hat comes off the model (split from the mesh); the loose copy is what flies, lands and gets snatched back
+    const hat = new THREE.Group(); if (run.c.splitHat()) hat.add(run.c.hatProp); else { const m = s.mat({ color: 0x5a3c22, rough: 0.9 }); s.cyl({ parent: hat, r: 0.3, h: 0.025, mat: m }); s.cyl({ parent: hat, r: 0.15, r1: 0.13, h: 0.14, mat: m }); } hat.visible = false; s.scene.add(hat);
+    let inHand = false; const HP = V3(), FA = V3();
+    run.c.post = () => { if (!inHand) return; const c = run.c, hb = c.bones.RightHand, fa = c.bones.RightForeArm; if (!hb) return; hb.updateWorldMatrix(true, false); hb.getWorldPosition(HP); if (fa) HP.addScaledVector(FA.subVectors(HP, fa.getWorldPosition(FA)).normalize(), 0.07); hat.position.copy(HP); hat.position.y -= 0.05; hat.rotation.set(0.25, c.heading, 0); };
     let passed = false, hatT = 0, hatGot = false, shave = 0, slideZ = null, hv = V3(), doorM = null;
     let bumped = false, sealed = false;
     dsol.on = r => {
@@ -188,7 +191,7 @@ const temple = {
       r.stumble(0.6, 0); r.v = 0; r.pos.z = Math.max(r.pos.z, DZ + 1.3); s.audio.impact(0.6); s.engine.addShake(0.5);
       if (!bumped) { bumped = true; s.flub('Ran into the door instead of sliding', { penalty: 0.2, advice: 'You cannot run under it — press S to slide about four metres before the door.' }); } return true;
     };
-    run.onSlide = () => { if (run.pos.z < DZ + 9 && !hat.visible) { hat.visible = true; hat.position.set(run.pos.x, 1.2, run.pos.z); hv.set(0.4, 1.5, -Math.max(0, (run.pos.z - (DZ + 1.6)) * 1.5)); } };
+    run.onSlide = () => { if (run.pos.z < DZ + 9 && !hat.visible) { hat.visible = true; run.c.setHat(false); run.c.bonePos('Head', hat.position); hat.position.y += 0.12; hat.rotation.set(0, run.c.heading, 0); hv.set(0.4, 1.5, -Math.max(0, (run.pos.z - (DZ + 1.6)) * 1.5)); } };
     s.rate('Spike corridor', 1, 1); run.onStumble = () => s.rate('Spike corridor', 1 - run.stats.stumbles * 0.4, 1);
     s.onAction = () => s.objective('Sprint the spike corridor'); s.dbg = () => ({ z: +run.pos.z.toFixed(1), yb: +yb.toFixed(2), shave: +shave.toFixed(2), v: +run.v.toFixed(1) });
     s.onUpdate((dt, t) => {
@@ -199,17 +202,24 @@ const temple = {
       if (!closing && z < TRIG) { closing = true; s.msg('THE DOOR!', 'bad'); s.objective('Slide under the door — cut it fine'); s.audio.set('rumble', 'rumble', 0.5, 0.5); }
       if (closing && yb === 0 && !passed && !sealed && !s.ended) { sealed = true; run.control = false; run.speedK = 0; s.rate('Close shave', 0, 2); s.rate('The hat', 0, 1); s.flub('The door sealed before you got under it', { penalty: 0.45, advice: 'Too slow to the door. Keep sprinting (W) through the spike room, then use DOOR AT ARRIVAL — under about 0.85 m means slide NOW.' }); s.wrap(1.6, 'No way through. Again, please.'); }
       if (closing && yb > 0) { yb = Math.max(0, yb - RATE * dt); door.position.y = yb + 2.3; dsol.y0 = yb; dsol.y1 = yb + 4.6; if (Math.random() < 0.4) s.fx.dust(V3(rnd(-3, 3), yb, DZ), 1, { size: 1, a: 0.3, up: 0.2 }); if (yb === 0) { s.audio.impact(1); s.engine.addShake(1); s.audio.set('rumble', 'rumble', 0.5, 0); s.fx.dust(V3(0, 0.1, DZ), 24, { spread: 4 }); } }
-      if (hat.visible && !hatGot) { if (hat.position.y > 0.03) { hv.y -= 12 * dt; hat.position.addScaledVector(hv, dt); hat.rotation.x += 5 * dt; } else { hat.position.y = 0.02; hat.rotation.x = 0; } hat.position.z = Math.max(hat.position.z, DZ + 0.9); }
+      if (hat.visible && !hatGot) { if (hat.position.y > 0.03) { hv.y -= 12 * dt; hat.position.addScaledVector(hv, dt); hat.rotation.x += 5 * dt; } else { hat.position.y = 0.02; hat.rotation.x = 0; } hat.position.z = Math.max(hat.position.z, DZ + 0.62); }
       if (!passed && !s.ended) {
         const eta = (z - DZ) / Math.max(3, run.v), pred = closing ? yb - RATE * eta : Y0 - RATE * (z - DZ - (TRIG - DZ) > 0 ? (TRIG - DZ) / 9.6 : eta);
         s.hud.readout('door', 'Door gap (m)', yb.toFixed(2), yb < 1.1 ? 'warn' : ''); if (closing) s.hud.readout('eta', 'Door at arrival', Math.max(0, pred).toFixed(2), pred < 0.84 ? 'warn' : pred < 1.12 ? 'ok' : ''); s.pred = pred;
         let w = ''; for (const [wz, txt, k] of warn) { const d = z - wz; if (d > 1 && d < 15) { w = `${K(k)} ${txt}`; break; } } if (z < DZ + 13) w = `${K('S')} SLIDE!`; s.hud.prompt(w);
-        if (z < DZ - 0.8) { passed = true; shave = yb - 0.8; run.control = false; run.speedK = 0; run.v = Math.min(run.v, 4); s.rate('Close shave (' + Math.round(shave * 100) + ' cm)', near(shave, 0.1, 0.15, 1.15), 2); doorM = s.moment('under the door', { t0: s.t - 1.8, dur: 3.6, w: 3 }); s.msg(shave < 0.2 ? 'BY A WHISKER!' : shave < 0.4 ? 'CLOSE!' : 'THROUGH', 'good'); s.slowmo(0.5, 0.6); s.objective('The hat! Reach back for it'); if (!hat.visible) { hat.visible = true; hat.position.set(run.pos.x, 0.02, DZ + 1.1); hv.set(0, 0, 0); } }
+        if (z < DZ - 0.8) { passed = true; shave = yb - 0.8; run.control = false; run.speedK = 0; run.v = Math.min(run.v, 4); s.rate('Close shave (' + Math.round(shave * 100) + ' cm)', near(shave, 0.1, 0.15, 1.15), 2); doorM = s.moment('under the door', { t0: s.t - 1.8, dur: 3.6, w: 3 }); s.msg(shave < 0.2 ? 'BY A WHISKER!' : shave < 0.4 ? 'CLOSE!' : 'THROUGH', 'good'); s.slowmo(0.5, 0.6); s.objective('The hat! Reach back for it'); if (!hat.visible) { hat.visible = true; run.c.setHat(false); hat.position.set(run.pos.x, 0.02, DZ + 1.1); hv.set(0, 0, 0); } }
       } else if (passed && !s.ended) {
         hatT += dt; s.hud.readout('door', 'Door gap (m)', yb.toFixed(2), 'warn'); s.hud.prompt(hatGot ? '' : `${K('E')} GRAB THE HAT`);
         if (hatT > 0.25 && run.v < 2.5 && !run.c.cycle) run.c.heading = damp(run.c.heading, Math.PI, 8, dt);
-        if (run.v < 1) { run.frozen = true; run.c.setPose(hatGot ? 'crouch' : 'duck', 0.2); run.c.heading = damp(run.c.heading, Math.PI, 8, dt); }
-        if (!hatGot && s.input.hit('x') && hatT > 0.15) { if (yb > 0.12) { if (doorM) doorM.t1 = s.t + 1.4; hatGot = true; s.audio.whoosh(1); s.msg('GOT THE HAT', 'good'); s.rate('The hat', 1, 1); s.bonus('Hat grab with ' + Math.round(yb * 100) + ' cm of door left', Math.round(near(yb, 0.22, 0.1, 0.9) * 400)); run.frozen = true; run.c.setPose({ hip: [-0.5, 0.5, 0, 0], sp: [0.7, 0, 0], aR: [0.1, -0.5, 1, 0.05, -0.4, 1], lR: [0.25, -0.25, 1, 0.05, -1, -0.7], lL: [0.25, -0.25, 1, 0.05, -1, -0.7] }, 0.12); s.after(0.25, () => { hat.position.set(run.pos.x + 0.1, 1.2, run.pos.z + 0.35); hat.rotation.x = 0.3; }); s.wrap(1.5, 'And he kept the hat'); } }
+        if (run.v < 1 && !hatGot) { run.frozen = true; run.c.setPose('duck', 0.2); run.c.heading = damp(run.c.heading, Math.PI, 8, dt); }
+        if (!hatGot && s.input.hit('x') && hatT > 0.15) { if (yb > 0.12) { if (doorM) doorM.t1 = s.t + 2.2; hatGot = true; s.audio.whoosh(1); s.msg('GOT THE HAT', 'good'); s.rate('The hat', 1, 1); s.bonus('Hat grab with ' + Math.round(yb * 100) + ' cm of door left', Math.round(near(yb, 0.22, 0.1, 0.9) * 400)); run.frozen = true; run.c.setPose({ hip: [-0.5, 0.5, 0, 0], sp: [0.7, 0, 0], aR: [0.1, -0.5, 1, 0.05, -0.4, 1], lR: [0.25, -0.25, 1, 0.05, -1, -0.7], lL: [0.25, -0.25, 1, 0.05, -1, -0.7] }, 0.12); s.hud.prompt(''); const side = [clamp(run.pos.x > 0 ? run.pos.x - 3 : run.pos.x + 3, -3.1, 3.1), 0.9, run.pos.z - 2.6];
+          s.cut([{ t: s.t, p: run.pos.clone() }, { t: s.t + 3, p: run.pos.clone() }], 'front', { pos: side, fov: 50, R: 2.2 }); // see the snatch while you play
+          if (doorM) doorM.shots = [{ type: 'front', speed: 0.5, a: 0.12, b: 0.45, fov: 30 }, { type: 'low', fov: 56, speed: 0.35, a: 0.2, b: 0.6 }, { type: 'front', pos: side, lookUp: 0.55, fov: 46, speed: 0.8, a: 0.5, b: 1.02 }];
+          { const g0 = s.t, gx = hat.position.x; s.onUpdate(dt => { const k = s.t - g0; if (k > 2.3) return; run.c.heading = damp(run.c.heading, Math.PI, 12, dt); if (k < 0.6) { run.pos.z = damp(run.pos.z, DZ - 0.85, 8, dt); run.pos.x = damp(run.pos.x, gx, 6, dt); } }); } // turn to the door and lunge back under it
+          s.after(0.28, () => { inHand = true; s.audio.whoosh(0.5); });
+          s.after(0.8, () => run.c.setPose({ hip: [-0.12, 0.15, 0, 0], sp: [0.12, 0, 0], aR: [0.55, 0.6, 0.35, -0.55, 0.65, -0.05], lR: [0.15, -1, 0.2, 0.05, -1, -0.3], lL: [0.15, -1, -0.1, 0.05, -1, -0.3] }, 0.18));
+          s.after(1.2, () => { inHand = false; hat.visible = false; run.c.setHat(true); s.msg('NEVER LEAVE THE HAT', 'good'); });
+          s.wrap(2.1, 'And he kept the hat'); } }
         if (!hatGot && yb <= 0.1) { s.rate('The hat', 0.2, 1); s.msg('LOST THE HAT', 'bad'); s.hud.prompt(''); s.flub('Left the hat behind', { penalty: 0.12, advice: 'Once you are through, press E straight away to reach back under the door for the hat.' }); s.wrap(1.4, 'Wardrobe will want a word about the hat'); }
       }
     });

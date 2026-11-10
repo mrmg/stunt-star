@@ -176,6 +176,33 @@ export class Character {
     const walk = b => { for (const ch of b.children) { if (!ch.isBone) continue; const w = W[ch.name], pw = W[b.name]; if (w && pw) ch.quaternion.copy(_q1.copy(pw).invert()).multiply(w); walk(ch); } };
     walk(hips);
   }
+  // Generated performers have their hat baked into the body mesh. Split the hat triangles (above the brim, measured
+  // along the head axis) into their own SkinnedMesh so it can come off, and add a hair cap to close the crown.
+  splitHat({ t0 = 0.5, t1 = 0.2, rBrim = 0.46, capT = 0.33, hair = 0x4a3424 } = {}) {
+    const B = this.bones; if (!this.ok || !B.Head || !B.head_end || this.hatMesh) return false;
+    this.root.updateWorldMatrix(true, true); const inv = this.root.matrixWorld.clone().invert();
+    const hp = B.Head.getWorldPosition(V()).applyMatrix4(inv), he = B.head_end.getWorldPosition(V()).applyMatrix4(inv), ax = he.clone().sub(hp), L = ax.length(); ax.normalize();
+    let mesh = null; this.inner.traverse(o => { if (o.isSkinnedMesh && (!mesh || o.geometry.attributes.position.count > mesh.geometry.attributes.position.count)) mesh = o; }); if (!mesh) return false;
+    const g = mesh.geometry = mesh.geometry.clone(), P = g.attributes.position, n = P.count, hat = new Uint8Array(n), v = V(), d = V(); // own copy: the loaded geometry is shared by every clone of this performer
+    const rs = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { mesh.getVertexPosition(i, v).applyMatrix4(mesh.matrixWorld).applyMatrix4(inv); v.toArray(rs, i * 3); d.subVectors(v, hp); const t = d.dot(ax) / L, r = d.addScaledVector(ax, -t * L).length() / L; hat[i] = t > t0 || (t > t1 && r > rBrim) ? 1 : 0; }
+    const idx = g.index ? g.index.array : Array.from({ length: n }, (_, i) => i), body = [], top = [];
+    for (let k = 0; k < idx.length; k += 3) { const a = idx[k], b = idx[k + 1], c = idx[k + 2]; (hat[a] + hat[b] + hat[c] >= 2 ? top : body).push(a, b, c); }
+    if (top.length < 30) return false;
+    g.setIndex(body); const g2 = new THREE.BufferGeometry(); for (const k in g.attributes) g2.setAttribute(k, g.attributes[k]); g2.setIndex(top);
+    const hm = this.hatMesh = new THREE.SkinnedMesh(g2, mesh.material); hm.castShadow = true; hm.frustumCulled = false; hm.position.copy(mesh.position); hm.quaternion.copy(mesh.quaternion); hm.scale.copy(mesh.scale); mesh.parent.add(hm); hm.bind(mesh.skeleton, mesh.bindMatrix);
+    // hair cap where the crown was: a flattened half-sphere on the head bone
+    const cap = this.hatCap = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: hair, roughness: 0.85 }));
+    cap.scale.set(L * 0.37, L * 0.3, L * 0.37); cap.position.copy(hp).addScaledVector(ax, L * capT); cap.position.z += L * 0.06; cap.quaternion.setFromUnitVectors(V(0, 1, 0), ax); cap.castShadow = true; cap.visible = false;
+    this.root.add(cap); cap.updateWorldMatrix(true, false); B.Head.attach(cap);
+    // a loose copy of the same hat (static, upright, pivot at the brim) for when it flies off and gets picked up
+    const map = new Map(), pos = [], uv = [], UV = g.attributes.uv, ix = [], up = new THREE.Quaternion().setFromUnitVectors(ax, V(0, 1, 0));
+    for (const i of top) { if (!map.has(i)) { map.set(i, map.size); v.fromArray(rs, i * 3).sub(hp).applyQuaternion(up); pos.push(v.x, v.y, v.z); if (UV) uv.push(UV.getX(i), UV.getY(i)); } ix.push(map.get(i)); }
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); if (UV) sg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); sg.setIndex(ix); sg.computeBoundingBox();
+    const bb = sg.boundingBox; sg.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2); sg.computeVertexNormals();
+    this.hatProp = new THREE.Mesh(sg, mesh.material); this.hatProp.castShadow = true; return true;
+  }
+  setHat(on) { if (this.hatMesh) { this.hatMesh.visible = on; this.hatCap.visible = !on; } }
   bonePos(name, out) { return this.bones[name] ? this.bones[name].getWorldPosition(out) : out.copy(this.root.position); }
   setVisible(v) { this.root.visible = v; }
 }

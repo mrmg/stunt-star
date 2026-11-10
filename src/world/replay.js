@@ -106,7 +106,7 @@ export function makeShot(s, type, pts, R, o = {}) {
   const look = t => pathAt(pts, t).add(_v.set(0, up, 0));
   const subj = o.subject, tryBest = (cands, f) => { let best = null, bs = 1e9; for (const c of cands) { let sc = 0; const W = [0.4, 1, 2.5, 1.5, 0.8]; for (let i = 0; i <= 4; i++) sc += W[i] * blockedFrac(s, f(c, lerp(pts[0].t, pts.at(-1).t, i / 4)), look(lerp(pts[0].t, pts.at(-1).t, i / 4)), subj); sc = sc / 6.2 + (c.pen || 0) + (inAvoid(s, f(c, lerp(pts[0].t, pts.at(-1).t, 0.5))) ? 5 : 0); if (sc < bs) { bs = sc; best = c; } if (sc === 0 && !c.pen) break; } return best; };
   const side = o.side;
-  if (o.pos) { const P = V3(...o.pos); return { type, cam: t => ({ pos: P, look: look(t), fov: o.fov ?? 30 }) }; } // a fixed, hand-placed camera (signature shots)
+  if (o.pos) { const P = V3(...o.pos); return { type, cam: t => ({ pos: P, look: look(t).add(_v.set(0, o.lookUp ?? 0, 0)), fov: o.fov ?? 30 }) }; } // a fixed, hand-placed camera (signature shots)
   if (type === 'wide' || type === 'front' || type === 'low' || type === 'top') {
     let pos;
     if (type === 'wide') { const C = []; for (const dk of [0.6, 1, 0.4, 0.25, 1.4]) for (const sd of side ? [side] : [1, -1]) for (const h of [0.08, 0.35, 0.8, 1.4]) C.push({ sd, h, dk, d: clamp(span * 0.5, Math.max(12, R * 5), 50) * dk * (o.dist ?? 1), pen: h * 0.06 + Math.abs(dk - 0.8) * 0.08 }); const P = c => { const q = mid.clone().addScaledVector(N, c.sd * c.d); q.y = Math.max(groundAt(s, q.x, q.z, q.y + 50) + 1.6, lerp(mid.y, peak, 0.3) + 1.6) + c.h * c.d; return q; }; const c = tryBest(C, P); pos = P(c); }
