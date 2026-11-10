@@ -17,13 +17,19 @@ export const KINDS = {
   sled: { top: 40, accel: 0, brake: 3, grip: 2.5, steer: 1.2, w: 1.6, h: 0.8, wb: 2.2, nose: 0, air: 0.2, crashV: 12, hard: 14, cg: 0.3 },
 };
 
+// Handlebar wrist targets per model in vehicle-body space: [half-width, height, fwd(-z)], optional elbow pole.
+const GRIPS = { triumph: [0.34, 0.47, -0.22], fatboy: [0.38, 0.46, -0.2], ducati: [0.27, 0.36, -0.42, [0.8, -0.55, -0.1]], enduro_bike: [0.38, 0.57, -0.22, [0.85, -0.45, -0.1]], bmw_bike: [0.36, 0.5, -0.24] };
+
 export class Drive {
   constructor(s, o = {}) {
     this.s = s; const K = this.k = { ...KINDS[o.kind || 'car'], ...o }; this.o = o; this.kind = o.kind || 'car';
     this.obj = new THREE.Group(); this.body = new THREE.Group(); this.obj.add(this.body); this.body.position.y = K.cg; this.obj.rotation.order = 'YXZ';
     if (o.model) { this.mesh = model(o.model, { len: o.len }); this.mesh.position.y = -K.cg + (o.ride ?? 0); this.body.add(this.mesh); const sz = this.mesh.userData.size; K.len = sz.z; K.w = o.w ?? sz.x * 0.92; K.h = o.h ?? sz.y; K.wb = o.wb ?? sz.z * 0.6; }
     else K.len = o.len ?? 1.2;
-    if (o.driver) { this.driver = s.char(o.driver, { parent: this.body }); this.driver.root.position.set(...(o.driverPos || [0, 0.25 - K.cg, 0.1])); this.driver.setPose(o.driverPose || (this.kind === 'bike' ? 'bike' : 'sit'), 0); }
+    if (o.driver) { this.driver = s.char(o.driver, { parent: this.body }); this.driver.root.position.set(...(o.driverPos || [0, 0.25 - K.cg, 0.1])); this.driver.setPose(o.driverPose || (this.kind === 'bike' ? 'bike' : 'drive'), 0);
+      const g = o.grips ?? GRIPS[o.model]; // wrists locked onto the handlebar grips (body space, right hand; left is mirrored)
+      if (g && this.driver.ok) { const mk = x => { const m = new THREE.Object3D(); m.position.set(x * g[0], g[1], g[2]); this.body.add(m); return m; }; this.driver.ik = { aR: mk(1), aL: mk(-1), pole: g[3] }; }
+    }
     s.scene.add(this.obj);
     this.pos = this.obj.position; this.pos.set(o.x || 0, 0, o.z || 0); this.pos.y = s.course.height(this.pos.x, this.pos.z); if (this.pos.y < -1e5) this.pos.y = o.y ?? 0; if (o.y != null) this.pos.y = o.y;
     this.heading = o.heading || 0; this.vel = V3(); this.v = o.speed0 || 0; this.lat = 0; this.vy = 0; this.grounded = true; this.pitch = 0; this.roll = 0; this.pitchRate = 0; this.rollRate = 0; this.yawRate = 0;
@@ -258,21 +264,30 @@ export class Movers {
 }
 
 // Formation followers that replay the lead vehicle's exact path with a time delay (convoys, pursuers).
+// Follow-the-leader formation: followers drive along the lead's exact path (so they copy the line and the jumps),
+// trailing by distance, not time, so they can never close on the lead or each other when it brakes or waits.
 export class Convoy {
-  constructor(s, lead, list, { delay = 0.6, gap = 5 } = {}) {
-    this.s = s; this.lead = lead; this.delay = delay; this.hist = []; this.t = 0; this.cars = [];
-    const back = V3(Math.sin(lead.heading), 0, Math.cos(lead.heading)), n = list.length, D = delay * n, vf = gap / delay;
-    for (let k = 0; k <= 40; k++) { const t = -D + D * k / 40; this.hist.push({ t, p: lead.pos.clone().addScaledVector(back, -t * vf), q: lead.obj.quaternion.clone() }); }
-    list.forEach((o, i) => { const g = new THREE.Group(); const m = model(o.model, { len: o.len }); m.position.y = (o.ride ?? 0); g.add(m); s.scene.add(g); this.cars.push({ g, d: delay * (i + 1), i: 0, ...o }); });
+  constructor(s, lead, list, { delay = 0.6, gap = 5, minGap } = {}) {
+    this.s = s; this.lead = lead; this.delay = delay; this.gap = gap; this.minGap = minGap ?? Math.max(gap * 0.9, (lead.k.len || 3) + 1.1); this.hist = []; this.cars = []; this.sl = 0;
+    const back = V3(Math.sin(lead.heading), 0, Math.cos(lead.heading)), n = list.length;
+    for (let k = 40; k >= 1; k--) { const d = k * (n + 2) * gap / 40; this.hist.push({ s: -d, p: lead.pos.clone().addScaledVector(back, d), q: lead.obj.quaternion.clone() }); }
+    this.hist.push({ s: 0, p: lead.pos.clone(), q: lead.obj.quaternion.clone() });
+    list.forEach((o, i) => { const g = new THREE.Group(); const m = model(o.model, { len: o.len }); m.position.y = (o.ride ?? 0); g.add(m); s.scene.add(g); this.cars.push({ g, at: -(i + 1) * gap, i: 0, ...o }); });
     s.onUpdate(dt => this.update(dt)); this.update(0);
   }
   update(dt) {
-    const L = this.lead, H = this.hist; if (this.s.started && !this.stop) { this.t += dt; H.push({ t: this.t, p: L.pos.clone(), q: L.obj.quaternion.clone() }); if (H.length > 900) H.splice(0, 300); }
-    for (const c of this.cars) {
-      if (c.free) { c.g.position.addScaledVector(c.vel, dt); c.vel.y -= 9.8 * dt; c.g.rotation.x += dt * 2; continue; }
-      const tt = this.t - c.d; let i = Math.min(c.i, H.length - 2); if (H[i].t > tt) i = 0; while (i < H.length - 2 && H[i + 1].t < tt) i++; c.i = i;
-      const a = H[i], b = H[i + 1], f = clamp((tt - a.t) / Math.max(1e-4, b.t - a.t)); c.g.position.lerpVectors(a.p, b.p, f); c.g.quaternion.slerpQuaternions(a.q, b.q, f);
+    const L = this.lead, H = this.hist, last = H.at(-1);
+    if (this.s.started && !this.stop) { const d = L.pos.distanceTo(last.p); if (d > 0.05) { this.sl += d; H.push({ s: this.sl, p: L.pos.clone(), q: L.obj.quaternion.clone() }); if (H.length > 1500) { H.splice(0, 500); for (const c of this.cars) c.i = 0; } } else last.q.copy(L.obj.quaternion); }
+    const trail = Math.max(this.gap, Math.abs(L.v) * this.delay);
+    let ahead = this.sl;
+    this.cars.forEach((c, k) => {
+      if (c.free) { c.g.position.addScaledVector(c.vel, dt); c.vel.y -= 9.8 * dt; c.g.rotation.x += dt * 2; return; }
+      // ease towards the formation slot; never reverse, never closer than minGap to the car in front
+      const want = this.sl - (k + 1) * trail; if (dt > 0) c.at += Math.max(0, Math.abs(L.v) * dt + (want - c.at) * Math.min(1, dt * 2.5));
+      c.at = Math.min(c.at, ahead - this.minGap); ahead = c.at;
+      let i = Math.min(c.i, H.length - 2); if (H[i].s > c.at) i = 0; while (i < H.length - 2 && H[i + 1].s < c.at) i++; c.i = i;
+      const a = H[i], b = H[i + 1], f = clamp((c.at - a.s) / Math.max(1e-4, b.s - a.s)); c.g.position.lerpVectors(a.p, b.p, f); c.g.quaternion.slerpQuaternions(a.q, b.q, f);
       if (c.dx) c.g.position.x += c.dx;
-    }
+    });
   }
 }

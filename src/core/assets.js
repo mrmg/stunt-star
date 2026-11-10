@@ -59,6 +59,18 @@ export const rawTex = id => ready.tex.get(id) || null;
 
 const box = new THREE.Box3(), v = new THREE.Vector3();
 // Static model normalised: centred on x/z, sitting on y=0, front toward -Z, scaled to length (len) or height.
+// Bits of generated models that shouldn't be there (e.g. the trailer chocks under the speedboat's hull):
+// drop any triangle with a vertex below y (fraction of model height) whose centre lies inside the z range (raw model units).
+const TRIM = { speedboat: { y: 0.105, z: [-9, 0.37] } };
+function trimBelow(scene, { y, z }) {
+  scene.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(scene), thr = bb.min.y + y * (bb.max.y - bb.min.y), w = new THREE.Vector3();
+  scene.traverse(o => {
+    if (!o.isMesh) return; const g = o.geometry, P = g.attributes.position, idx = g.index ? g.index.array : [...Array(P.count).keys()], keep = [];
+    const wy = new Float32Array(P.count), wz = new Float32Array(P.count); for (let i = 0; i < P.count; i++) { w.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); wy[i] = w.y; wz[i] = w.z; }
+    for (let t = 0; t < idx.length; t += 3) { const a = idx[t], b = idx[t + 1], c = idx[t + 2], cz = (wz[a] + wz[b] + wz[c]) / 3; if (Math.min(wy[a], wy[b], wy[c]) < thr && cz > z[0] && cz < z[1]) continue; keep.push(a, b, c); }
+    g.setIndex(keep);
+  });
+}
 export function model(id, { len, height, yaw = 0, shadow = true, fit } = {}) {
   const g = ready.glb.get(id);
   const holder = new THREE.Group(); holder.name = id;
@@ -67,6 +79,7 @@ export function model(id, { len, height, yaw = 0, shadow = true, fit } = {}) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(L * 0.4, L * 0.3, L), new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 0.6 }));
     m.position.y = L * 0.15; m.castShadow = true; holder.add(m); holder.userData.size = new THREE.Vector3(L * 0.4, L * 0.3, L); holder.userData.placeholder = true; return holder;
   }
+  if (TRIM[id] && !g.userData.trimmed) trimBelow(g.scene, TRIM[id]), g.userData.trimmed = true;
   const inner = g.scene.clone(true);
   const meta = MODEL_META[id] || {};
   inner.updateMatrixWorld(true); box.setFromObject(inner); box.getSize(v);

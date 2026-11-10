@@ -411,7 +411,7 @@ export class Stage {
   char(id, o = {}) { const c = new Character(id, o); c.root.position.set(o.x || 0, o.y || 0, o.z || 0); c.heading = o.heading ?? 0; (o.parent || this.scene).add(c.root); this.chars.push(c); if (o.pose) c.setPose(o.pose, 0); return c; }
   // Film crew dressing: camera on tripod, light, chair, crew figure
   crew(o = {}) {
-    const { x = 0, z = 0, y = 0, ry = 0 } = o; const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry; this.scene.add(g);
+    const { x = 0, z = 0, y = 0, ry = 0 } = o; const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry; this.scene.add(g); (this.camAvoid ||= []).push(g);
     this.put('camera_crew', { parent: g, x: 0, z: 0, height: 1.7 }); this.put('film_light', { parent: g, x: 2.2, z: 0.8, height: 3.2, ry: 0.4 }); this.put('director_chair', { parent: g, x: -1.6, z: 0.9, height: 1.15, ry: -0.5 });
     if (o.people !== false) { const c = this.char(o.who || 'ch_stunt', { parent: g, x: -0.2, z: 0.9, heading: 0 }); c.setPose('idle', 0); }
     const l = new THREE.SpotLight(0xfff2dd, o.light ?? 0, 60, 0.5, 0.6, 1.2); if (o.light) { l.position.set(2.2, 3, 0.8); l.target.position.set(2.2, 0.5, -14); g.add(l, l.target); }

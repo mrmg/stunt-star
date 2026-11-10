@@ -291,7 +291,7 @@ const deathProof = {
     const wood = s.mat({ tex: 'tx_wood', color: 0x8a7a66 }); for (let z = 60; z > -1900; z -= 55) { s.cyl({ x: -7.2, y: 0, z, r: 0.13, h: 8, mat: wood }); s.box({ x: -7.2, y: 7.2, z, w: 1.8, h: 0.1, d: 0.1, mat: wood }); }
     for (const [x, z] of [[30, -260], [-36, -640], [34, -1100], [-30, -1500]]) { s.building({ x, z, w: 12, d: 16, h: 6, fac: 'tx_wood', solid: false, facTile: 5, roofMat: { color: 0x7a2a22 } }); }
     s.crew({ x: 7.5, z: 6, ry: 0.9 });
-    const car = grp(s.scene, 0, 0, 12), bad = grp(s.scene, -3.4, 0, 22); s.put('challenger_white', { parent: car }); s.put('charger_black', { parent: bad }); s.char('ch_stunt', { parent: car, x: -0.42, y: 0.05, z: 0.25, pose: 'sit' });
+    const car = grp(s.scene, 0, 0, 12), bad = grp(s.scene, -3.4, 0, 22); s.put('challenger_white', { parent: car }); s.put('charger_black', { parent: bad }); s.char('ch_stunt', { parent: car, x: -0.42, y: 0.05, z: 0.25, pose: 'drive' });
     let v = 0, t = 0, x0 = 0, jolt = 0, joltV = 0, px = 0, pvx = 0, ax = 0, side = -1, sideT = -1, rx = -3.4, rz = 9, swing = 0, uv = 0, sumU = 0, nU = 0, edgeT = 0, over = false, onEdge = false; const P = V3(), Q = V3(), carry = V3();
     const swerve = tt => { const k = smooth(2, 6, tt); return k * (1.05 * Math.sin(tt * 0.9) + 0.55 * Math.sin(tt * 2.3 + 1)); };
     s.onUpdate(dt => {
@@ -496,7 +496,7 @@ const raidersTruck = {
     const mud = s.mat({ tex: 'tx_temple', color: 0xe0c898 }); srand(31); for (let z = -60; z > -1300; z -= sr(70, 150)) { const sd = sr() < 0.5 ? -1 : 1, x = sd * sr(12, 26), w = sr(5, 9), h = sr(3, 5.5); s.box({ x, y: 0, z, w, h, d: sr(5, 9), mat: mud, tile: 5 }); s.box({ x: x + sd * 1.5, y: h, z: z + 1, w: w * 0.5, h: 1.6, d: 3, mat: mud, tile: 5 }); }
     for (const [x, z] of [[-14, -240], [15, -700]]) for (let i = 0; i < 4; i++) { s.cyl({ x: x + i * 2.6 * Math.sign(-x), y: 0, z: z - i * 0.4, r: 0.55, h: 6.5 - (i % 2) * 2.5, mat: mud, seg: 12 }); }
     s.crew({ x: 7, z: 4, ry: 1.2 });
-    const truck = grp(s.scene, 0, 0, 0), lead = grp(s.scene, 0, 0, -24); s.put('ww2_truck', { parent: truck }); s.put('jeep_gc', { parent: lead }); s.char('ch_goon', { parent: truck, x: -0.45, y: 0.95, z: -1.05, pose: 'sit' });
+    const truck = grp(s.scene, 0, 0, 0), lead = grp(s.scene, 0, 0, -24); s.put('ww2_truck', { parent: truck }); s.put('jeep_gc', { parent: lead }); s.char('ch_goon', { parent: truck, x: -0.45, y: 0.95, z: -1.05, pose: 'drive' });
     let v = 0, t = 0, bounce = 0, bV = 0, sway = 0, swayV = 0; const carry = V3(), P = V3(), Q = V3();
     s.onUpdate(dt => {
       if (s.started) { t = s.t - s.t0; v = damp(v, 17, 1.5, dt); } truck.position.z -= v * dt; lead.position.z = truck.position.z - 24 + Math.sin(s.t * 0.5) * 3;

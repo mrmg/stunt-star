@@ -83,10 +83,13 @@ function occluders(s, subject) {
   const skip = new Set([s.sky, s.backdrop, s.bigGround]); occl = s.scene.children.filter(o => !skip.has(o) && !o.isLight && !o.userData.noRec && o !== subject && (o.isMesh || o.isGroup || o.isInstancedMesh || o.children.length));
   occlSubj = subject; occlScene = s.scene; return occl;
 }
+// never put a camera inside the crew's own kit (it's parked right by the action)
+function inAvoid(s, p) { for (const g of s.camAvoid || []) { if (!g.userData.box) g.userData.box = new THREE.Box3().setFromObject(g).expandByScalar(0.8); if (g.userData.box.containsPoint(p)) return true; } return false; }
 function blockedFrac(s, a, b, subject) {
   const c = s.course, g = c.height(a.x, a.z, a.y); if (g > -1e5 && a.y < g + 0.2) return 1;
   const d = _dir.subVectors(b, a), L = d.length(); if (L < 0.5) return 0; d.multiplyScalar(1 / L);
-  ray.set(a, d); ray.near = 0.3; ray.far = L - 1.2; const list = occluders(s, subject);
+  if (inAvoid(s, a)) return 1;
+  ray.set(a, d); ray.near = 0.05; ray.far = L - 1.2; const list = occluders(s, subject);
   for (const h of ray.intersectObjects(list, true)) { let o = h.object, mine = false; while (o) { if (o === subject) { mine = true; break; } o = o.parent; } if (!mine && h.object.visible !== false) return 1; }
   return 0;
 }
@@ -99,13 +102,13 @@ export function makeShot(s, type, pts, R, o = {}) {
   const N = V3(D.z, 0, -D.x), up = R * 0.45, span = Math.max(L, R * 4);
   let peak = -1e9; for (const q of pts) peak = Math.max(peak, q.p.y);
   const look = t => pathAt(pts, t).add(_v.set(0, up, 0));
-  const subj = o.subject, tryBest = (cands, f) => { let best = null, bs = 1e9; for (const c of cands) { let sc = 0; const W = [0.4, 1, 2.5, 1.5, 0.8]; for (let i = 0; i <= 4; i++) sc += W[i] * blockedFrac(s, f(c, lerp(pts[0].t, pts.at(-1).t, i / 4)), look(lerp(pts[0].t, pts.at(-1).t, i / 4)), subj); sc = sc / 6.2 + (c.pen || 0); if (sc < bs) { bs = sc; best = c; } if (sc === 0 && !c.pen) break; } return best; };
+  const subj = o.subject, tryBest = (cands, f) => { let best = null, bs = 1e9; for (const c of cands) { let sc = 0; const W = [0.4, 1, 2.5, 1.5, 0.8]; for (let i = 0; i <= 4; i++) sc += W[i] * blockedFrac(s, f(c, lerp(pts[0].t, pts.at(-1).t, i / 4)), look(lerp(pts[0].t, pts.at(-1).t, i / 4)), subj); sc = sc / 6.2 + (c.pen || 0) + (inAvoid(s, f(c, lerp(pts[0].t, pts.at(-1).t, 0.5))) ? 5 : 0); if (sc < bs) { bs = sc; best = c; } if (sc === 0 && !c.pen) break; } return best; };
   const side = o.side;
   if (type === 'wide' || type === 'front' || type === 'low' || type === 'top') {
     let pos;
     if (type === 'wide') { const C = []; for (const dk of [0.6, 1, 0.4, 0.25, 1.4]) for (const sd of side ? [side] : [1, -1]) for (const h of [0.08, 0.35, 0.8, 1.4]) C.push({ sd, h, dk, d: clamp(span * 0.5, Math.max(12, R * 5), 50) * dk * (o.dist ?? 1), pen: h * 0.06 + Math.abs(dk - 0.8) * 0.08 }); const P = c => { const q = mid.clone().addScaledVector(N, c.sd * c.d); q.y = Math.max(groundAt(s, q.x, q.z, q.y + 50) + 1.6, lerp(mid.y, peak, 0.3) + 1.6) + c.h * c.d; return q; }; const c = tryBest(C, P); pos = P(c); }
     else if (type === 'front') { const d = Math.max(12, R * 6) + span * 0.25; const C = []; for (const sd of [0.12, -0.12, 0.35, -0.35]) for (const h of [0.6, 2.5]) C.push({ sd, h }); const c = tryBest(C, c => B.clone().addScaledVector(D, d).addScaledVector(N, c.sd * d).setY(groundAt(s, B.x + D.x * d, B.z + D.z * d, B.y + 3) + c.h)); pos = B.clone().addScaledVector(D, d).addScaledVector(N, c.sd * d); pos.y = groundAt(s, pos.x, pos.z, B.y + 3) + c.h; }
-    else if (type === 'low') { const at = pathAt(pts, lerp(pts[0].t, pts.at(-1).t, o.at ?? 0.62)); const C = []; for (const sd of side ? [side] : [1, -1]) for (const f of [1, 2]) C.push({ sd, f }); const c = tryBest(C, c => at.clone().addScaledVector(N, c.sd * R * 2.2 * c.f).addScaledVector(D, R * 2.5).setY(groundAt(s, at.x, at.z, at.y) + 0.35)); pos = at.clone().addScaledVector(N, c.sd * R * 2.2 * c.f).addScaledVector(D, R * 2.5); pos.y = groundAt(s, pos.x, pos.z, at.y) + 0.35; if (pos.y < at.y - 25) pos.y = at.y - 3; }
+    else if (type === 'low') { const at = pathAt(pts, lerp(pts[0].t, pts.at(-1).t, o.at ?? 0.62)); const C = []; for (const f of [1, 0.6, 2, 1.4]) for (const fw of [2.5, 1.2, 4]) for (const sd of side ? [side] : [1, -1]) C.push({ sd, f, fw, pen: Math.abs(f - 1) * 0.04 + Math.abs(fw - 2.5) * 0.02 }); const LP = c => at.clone().addScaledVector(N, c.sd * R * 2.2 * c.f).addScaledVector(D, R * c.fw); const c = tryBest(C, c => { const q = LP(c); return q.setY(groundAt(s, q.x, q.z, at.y) + 0.35); }); pos = LP(c); pos.y = groundAt(s, pos.x, pos.z, at.y) + 0.35; if (pos.y < at.y - 25) pos.y = at.y - 3; }
     else { pos = mid.clone().addScaledVector(N, span * 0.15); pos.y = peak + Math.max(20, span * 0.7); }
     const fov = type === 'wide' ? clamp(2 * Math.atan(span * 0.6 / pos.distanceTo(mid)) * 57.3, 24, 68) : type === 'low' ? 74 : type === 'front' ? 34 : 46;
     if (type === 'wide' || type === 'front') { const fr = R * (type === 'wide' ? 5.5 : 4.5) + 3; return { type, cam: t => { const lk = look(t); return { pos, look: lk, fov: o.fov ?? clamp(2 * Math.atan(fr / Math.max(1, pos.distanceTo(lk))) * 57.3, 16, type === 'wide' ? 58 : 45) }; } }; }

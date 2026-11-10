@@ -6,6 +6,7 @@ import { skinned } from '../core/assets.js';
 // Whole-body orientation (flips, lying, diving) is `body:[pitch(fwd+), roll(right+), yaw]` about the hips.
 const Q = () => new THREE.Quaternion(), V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const _e = new THREE.Euler(), _q1 = Q(), _q2 = Q(), _v1 = V(), _v2 = V(), _m = new THREE.Matrix4();
+const _ik = Array.from({ length: 8 }, () => V()), _qp = Q();
 const eq = (out, p, y, r) => out.setFromEuler(_e.set(-p, y, -r, 'YXZ'));
 
 const BASE = {
@@ -33,7 +34,9 @@ export const POSES = {
   cling: P({ sp: [0.2, 0, 0], aR: [0.5, 0.8, 0.5, -0.1, 0.6, 0.8], aL: [0.5, 0.8, 0.5, -0.1, 0.6, 0.8], lR: [0.35, -0.6, 0.7, 0.05, -1, -0.5], lL: [0.35, -0.9, 0.4, 0.05, -1, -0.4] }),
   flag: P({ body: [1.35, 0, 0], hd: [-0.6, 0, 0], aR: [0.2, 1, 0.1, 0.03, 1, 0.08], aL: [0.2, 1, 0.1, 0.03, 1, 0.08], lR: [0.12, -1, -0.12, 0.05, -1, -0.2], lL: [0.12, -1, 0.02, 0.05, -1, -0.12] }),
   sit: P({ hip: [-0.42, 0, 0, 0], sp: [-0.08, 0, 0], aR: [0.22, -0.55, 0.8, -0.08, 0.05, 1], aL: [0.22, -0.55, 0.8, -0.08, 0.05, 1], lR: [0.16, -0.12, 1, 0.04, -1, 0.35], lL: [0.16, -0.12, 1, 0.04, -1, 0.35] }),
+  drive: P({ hip: [-0.42, 0, 0, 0], sp: [-0.12, 0, 0], aR: [0.22, -0.55, 0.8, -0.08, 0.05, 1], aL: [0.22, -0.55, 0.8, -0.08, 0.05, 1], lR: [0.12, 0.08, 1, 0.03, -0.45, 0.9], lL: [0.12, 0.08, 1, 0.03, -0.45, 0.9] }),
   bike: P({ hip: [-0.2, 0.25, 0, 0], sp: [0.4, 0, 0], hd: [-0.5, 0, 0], aR: [0.28, -0.5, 0.9, 0.0, -0.25, 1], aL: [0.28, -0.5, 0.9, 0.0, -0.25, 1], lR: [0.3, -0.45, 0.9, 0.0, -1, -0.35], lL: [0.3, -0.45, 0.9, 0.0, -1, -0.35] }),
+  bikeSport: P({ hip: [-0.2, 0.5, 0, 0], sp: [0.65, 0, 0], hd: [-1.0, 0, 0], lR: [0.3, -0.35, 0.9, 0.0, -1, -0.5], lL: [0.3, -0.35, 0.9, 0.0, -1, -0.5] }),
   bikeStand: P({ hip: [-0.05, 0.3, 0, 0], sp: [0.35, 0, 0], hd: [-0.5, 0, 0], aR: [0.28, -0.75, 0.7, 0.0, -0.6, 0.8], aL: [0.28, -0.75, 0.7, 0.0, -0.6, 0.8], lR: [0.28, -0.85, 0.5, 0.0, -1, -0.3], lL: [0.28, -0.85, 0.5, 0.0, -1, -0.3] }),
   ski: P({ hip: [-0.38, 0.5, 0, 0], sp: [0.55, 0, 0], hd: [-0.8, 0, 0], aR: [0.3, -0.6, 0.6, 0.1, -0.2, 0.9], aL: [0.3, -0.6, 0.6, 0.1, -0.2, 0.9], lR: [0.14, -0.55, 0.85, 0.03, -1, -0.55], lL: [0.14, -0.55, 0.85, 0.03, -1, -0.55] }),
   guard: P({ hip: [-0.08, 0.05, -0.3, 0], sp: [0.12, 0.25, 0], aR: [0.3, -0.75, 0.45, -0.25, 0.85, 0.5], aL: [0.25, -0.6, 0.65, -0.2, 0.8, 0.65], lR: [0.15, -1, -0.3, 0.05, -1, -0.3], lL: [0.12, -1, 0.35, 0.03, -1, -0.15] }),
@@ -126,7 +129,29 @@ export class Character {
     const a = 1 - Math.exp(-this.k * dt);
     for (const k of KEYS) { const t = T[k] || BASE[k], c = this.cur[k]; for (let i = 0; i < t.length; i++) c[i] += (t[i] - c[i]) * a; }
     if (this.spin.lengthSq() > 0) this.spinAng.addScaledVector(this.spin, dt); else if (this.spinAng.lengthSq() > 0 && this.settle) this.spinAng.multiplyScalar(Math.exp(-8 * dt));
-    this.apply();
+    this.apply(); if (this.ik) this.solveIK(); this.post?.(dt); // post: attach props to bones after the pose is final
+  }
+  // Two-bone arm IK: after the pose is applied, pull each hand onto a world-space target (e.g. handlebar grips).
+  // ik = { aR: Object3D, aL: Object3D, pole?: [out, up, fwd] }. Targets parented to the same vehicle body, so no lag.
+  solveIK() {
+    const ik = this.ik; if (!this.ok || !this.root.visible) return;
+    this.root.updateWorldMatrix(true, true);
+    const pl = ik.pole || [0.7, -0.75, -0.25];
+    for (const k of ['aR', 'aL']) {
+      const tgt = ik[k]; if (!tgt) continue; const [u, f, h, side] = LIMB[k], U = this.bones[u], F = this.bones[f], H = this.bones[h]; if (!U || !F || !H) continue;
+      const S = U.getWorldPosition(_ik[0]), E0 = F.getWorldPosition(_ik[1]), H0 = H.getWorldPosition(_ik[2]), T = tgt.getWorldPosition(_ik[3]);
+      const L1 = S.distanceTo(E0), L2 = E0.distanceTo(H0), dir = _ik[4].subVectors(T, S); let d = dir.length(); if (d < 1e-4) continue; dir.divideScalar(d);
+      d = Math.min(d, (L1 + L2) * 0.999); d = Math.max(d, Math.abs(L1 - L2) + 1e-3);
+      const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d), hh = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+      const pole = _ik[5].set(side * pl[0], pl[1], -pl[2]).transformDirection(this.root.matrixWorld); pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+      const E = _ik[6].copy(S).addScaledVector(dir, a).addScaledVector(pole, hh), Tc = _ik[7].copy(S).addScaledVector(dir, d);
+      const aim = (bone, from, curTip, want) => { // rotate bone so (curTip-from) points along (want-from)
+        _v1.subVectors(curTip, from).normalize(); _v2.subVectors(want, from).normalize();
+        const dq = _q1.setFromUnitVectors(_v1, _v2), wq = bone.getWorldQuaternion(_q2); wq.premultiply(dq);
+        bone.quaternion.copy(bone.parent.getWorldQuaternion(_qp).invert().multiply(wq)); bone.updateMatrixWorld(true);
+      };
+      aim(U, S, E0, E); const E1 = F.getWorldPosition(_ik[1]), H1 = H.getWorldPosition(_ik[2]); aim(F, E1, H1, Tc);
+    }
   }
   apply() {
     const c = this.cur, sa = this.spinAng;
