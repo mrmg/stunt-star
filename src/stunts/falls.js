@@ -49,7 +49,7 @@ const butch = {
       if (!clean) s.flub('Stumbled off the edge', { penalty: 0.15, advice: 'Press SPACE when the EDGE readout turns green (under 10 ft) — run off the rim without jumping and you tumble.' });
       f.launch(0, clean ? 4.2 : 0, -(v + (clean ? 2 : -3))); f.poseLock = true; f.c.setCycle('flail', 0.75); f.view('top', { dist: 5, height: 10.5, ahead: 4, up: -6, fov: 66 });
       pal.frozen = false; pal.vy = 3.6; pal.vz = -(v + 1); pal.c.setCycle('flail', 0.8); s.objective('Hit the deep channel — hold SPACE to go in feet first');
-      leapM = s.moment('the leap', { t0: s.t - 1.6, dur: 8, w: 3 }); f.cine('front', 1.1); // a beat from across the canyon, then back to you
+      leapM = s.moment('the leap', { t0: s.t - 1.6, dur: 8, w: 3 }); f.cine('front', 1.1, { pos: [-26, 139.5, -84], fov: 16 }); // a beat from across the canyon, then back to you
     };
     s.onUpdate((dt, t) => {
       if (!s.started || s.ended) return;
@@ -532,7 +532,7 @@ const cliff = {
 const EXTRA = {
   butch_cliff: {
     goals: { shot: ['Hold W to sprint for the rim and press SPACE in the last 3 m (EDGE readout green, under 10 ft)', 'In the air, steer (WASD) the red ring into the yellow ring inside the orange buoys — the wind drags you left, so lean on D', 'From about 200 ft (HEIGHT readout), hold SPACE to straighten up feet first until the FEET FIRST meter is green'], cut: ['Landing on the rocks, a boulder, or more than 10 ft outside the deep channel'], stars: ['Take-off at the lip', 'Distance from the centre of the deep channel', 'Feet-first entry'] },
-    cine: [{ type: 'front', fov: 15, a: -0.1, b: 0.6, speed: 1 }, { type: 'track', fov: 58, a: 0.3, b: 0.85, speed: 0.55 }, { type: 'low', fov: 42, a: 0.65, b: 1.05, speed: 0.5 }],
+    cine: [{ type: 'front', pos: [-26, 139.5, -84], fov: 16, a: -0.1, b: 0.6, speed: 1 }, { type: 'track', fov: 58, a: 0.3, b: 0.85, speed: 0.55 }, { type: 'low', fov: 42, a: 0.65, b: 1.05, speed: 0.5 }],
     freeze: { line: 'You crazy? The fall\'ll probably kill ya!', shot: 1, at: 0.45 },
   },
   lethal_weapon: {

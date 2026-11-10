@@ -120,7 +120,7 @@ export class FX {
     const rec = this.rec; this.rec = null;
     if (ev.L != null) (ev.L ? this.fire : this.smoke).emit(...ev.a, ev.o);
     else if (ev.D) { const [life, p, v, w, r, sz, floor, col] = ev.D, i = this.di, d = this.dd[i]; this.di = (i + 1) % this.dn; d.life = life; d.p.fromArray(p); d.v.fromArray(v); d.w.fromArray(w); d.r.set(r[0], r[1], r[2]); d.s.fromArray(sz); d.floor = floor; this.deb.setColorAt(i, this._c.setHex(col)); this.deb.instanceColor.needsUpdate = true; }
-    else if (ev.Lt) { const [x, y, z, c, I, life, dist] = ev.Lt; this.light(new THREE.Vector3(x, y, z), c, I, life, dist); }
+    else if (ev.Lt) { const [x, y, z, c, I, life, dist] = ev.Lt; this.light(new THREE.Vector3(x, y, z), c, I * 0.35, life, dist); } // replays run in slow motion with cameras close in: a full-strength flash whites out the shot
     this.rec = rec;
   }
   update(dt) {

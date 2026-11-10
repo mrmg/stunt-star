@@ -2,9 +2,9 @@
 // Pay, tier and the production's take budget are derived from position here, so stunt files only need gameplay.
 export const ORDER = [
   // Tier 1 — Background Extra: hold a speed, go straight, one simple skill
-  'smokey', 'general_lee', 'great_escape', 'steamboat', 'butch_cliff', 'italian_job', 'boat_jump', 'raiders_boulder', 'lethal_weapon', 'blues_brothers',
+  'smokey', 'general_lee', 'great_escape', 'steamboat', 'butch_cliff', 'italian_job', 'boat_jump', 'golden_gun', 'lethal_weapon', 'blues_brothers',
   // Tier 2 — Stunt Trainee: steering, traffic, first timing tests
-  'safety_last', 'enter_dragon', 'temple_door', 'croc_run', 'bullitt', 'golden_gun', 'thelma', 'french_connection', 'police_story', 'diamonds',
+  'safety_last', 'enter_dragon', 'temple_door', 'croc_run', 'bullitt', 'raiders_boulder', 'thelma', 'french_connection', 'police_story', 'diamonds',
   // Tier 3 — Stunt Performer: precision and nerve
   'rumble_bronx', 'gone60', 'bttf', 'oldboy', 't2_canal', 'goldeneye_dam', 'raiders_truck', 'die_hard', 'who_am_i', 'ronin',
   // Tier 4 — Stunt Double: hard skills, tight windows

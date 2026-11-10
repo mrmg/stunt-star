@@ -57,7 +57,7 @@ const raiders = {
   id: 'raiders_boulder', title: 'Rolling Stone', film: 'Raiders of the Lost Ark', year: 1981, tier: 1, pay: 2400, mode: 'run', art: 'bd_jungle', music: 'epic',
   role: 'Doubling the archaeologist — fedora, leather jacket, one golden idol',
   brief: 'You lift the idol, the temple takes it personally. Twelve feet of fibreglass boulder is coming down that tunnel behind you and it does not stop for anybody. Run at the camera and do not look back.',
-  tips: [`Swap the idol with ${K('E')} when the needle is <b>dead centre</b> — a clean swap buys you a head start.`, 'You run <b>towards the camera</b>: watch the warnings — <b>jump</b> the pits, <b>slide</b> under the beams, dodge the rubble.', 'Hold <b>W</b> to sprint. Every stumble lets the boulder gain four metres.'],
+  tips: [`Swap the idol with ${K('E')} when the needle is <b>dead centre</b> — a clean swap buys you a head start.`, 'You run <b>towards the camera</b>: watch the warnings — <b>jump</b> the pits, <b>slide</b> under the beams, dodge the rubble.', 'Hold <b>W</b> to sprint. Every stumble lets the boulder gain four metres.', 'At the cave mouth a stone door drops: <b>slide</b> under it — the later you cut it, the better the shot.'],
   controls: RUNE, intro: { r: 6.5, h: 2.2, a0: 2.6 },
   assets: { models: ['ch_adventurer', 'golden_idol', 'rock_grey'], tex: ['bd_jungle', 'tx_cave', 'tx_temple', 'tx_rock', 'tx_jungle_floor', 'tx_wood'] },
   build(s) {
@@ -66,7 +66,7 @@ const raiders = {
     const stone = s.mat({ tex: 'tx_temple', color: 0xb8a888 }), cave = s.mat({ tex: 'tx_cave', color: 0xa89880 }), wood = s.mat({ tex: 'tx_wood', color: 0x6a5238 });
     // hazards
     const pits = [[-40, 3.4], [-88, 3.6], [-136, 3.8]], beams = [-60, -104, -150], rubble = [[-24, -1], [-74, 1], [-114, -1], [-126, 1]];
-    s.plan = []; const warn = [];
+    s.plan = []; const warn = []; const DZ = END + 0.7, DTOP = 4.3, DTRIG = END + 34; // the last trap: a stone slab drops across the cave mouth
     // floor in segments with the pits cut out
     let z = 20; for (const [pz, len] of [...pits, [END - 46, 0]]) { s.box({ x: 0, y: -7, z: (z + pz) / 2, w: 16, h: 7, d: z - pz, mat: stone, tile: 3.2, top: true, solid: true }); if (len) { s.plan.push({ z: pz + 0.9, act: 'jump' }); warn.push([pz, 'PIT', 'SPACE']); for (let i = 0; i < 9; i++) s.cyl({ x: -2.6 + i * 0.65, y: -5.4, z: pz - len / 2 + (i % 2 ? 0.6 : -0.5), r: 0.16, r1: 0.01, h: 1.9, color: 0x8a8272, seg: 6 }); } z = pz - len; }
     s.box({ x: 0, y: -7.4, z: -80, w: W + 2, h: 2, d: 220, mat: cave }); // pit bottoms
@@ -77,12 +77,24 @@ const raiders = {
     const web = s.mat({ color: 0xd8d8d0, opacity: 0.28, side: true });
     for (const bz of beams) { s.box({ x: 0, y: 1.1, z: bz, w: W, h: 0.5, d: 0.5, mat: wood, rz: 0.03, solid: true, sol: { soft: true, once: true } }); s.box({ x: 0.4, y: 1.6, z: bz, w: W * 0.8, h: 3.9, d: 0.02, mat: web, cast: false }); s.box({ x: -2.2, y: 0, z: bz + 0.1, w: 0.4, h: 1.2, d: 0.4, mat: wood }); s.plan.push({ z: bz + 4.2, act: 'slide' }); warn.push([bz, 'BEAM', 'S']); }
     for (const [rz, sd] of rubble) { for (const [dx, dz, h] of [[1.9, 0, 1.5], [0.8, 0.5, 1.1], [2.6, -0.7, 1.0]]) s.put('rock_grey', { x: sd * dx, z: rz + dz, height: h, ry: dx * 3 }); s.course.addSolid({ x0: sd > 0 ? 0.25 : -3.2, x1: sd > 0 ? 3.2 : -0.25, y0: 0, y1: 1.3, z0: rz - 0.8, z1: rz + 0.8, soft: true, once: true }); s.plan.push({ z0: rz + 10, z1: rz - 1, x: -sd * 1.7 }); warn.push([rz, sd > 0 ? 'ROCKS — GO RIGHT' : 'ROCKS — GO LEFT', sd > 0 ? 'D' : 'A']); }
+    s.plan.push({ z: DZ + 4.2, act: 'slide' }); warn.push([DZ, 'DOOR — SLIDE', 'S']);
     // torches
     const torches = []; for (let tz = 6; tz > END + 8; tz -= 21) { const sx = (Math.round(tz / 21) % 2 ? 1 : -1), x = sx * (W / 2 - 0.15); s.box({ x, y: 2.3, z: tz, w: 0.14, h: 0.6, d: 0.14, mat: wood, rz: sx * 0.35, cast: false }); s.light({ x: x - sx * 0.3, y: 3.2, z: tz, color: 0xff9a40, i: 26, dist: 19, bulb: false }); torches.push(V3(x - sx * 0.12, 2.95, tz)); }
     // cave mouth and the jungle outside
     for (const sx of [-1, 1]) s.box({ x: sx * 13.3, y: -2, z: END - 1.5, w: 22, h: 20, d: 5, mat: { tex: 'tx_rock', color: 0xffffff }, tile: 7 }); s.box({ x: 0, y: 4.3, z: END - 1.5, w: 4.6, h: 13.7, d: 5, mat: { tex: 'tx_rock', color: 0xffffff }, tile: 7 });
     s.box({ x: 0, y: -0.02, z: END - 26, w: 70, h: 0.05, d: 44, mat: { tex: 'tx_jungle_floor' }, tile: 6, cast: false, top: true });
-    const sunL = s.light({ x: 0, y: 7, z: END - 13, color: 0xfff0d0, i: 0, dist: 70, bulb: false }); s.forest('tree:jungle', 46, r => { const x = (r() - 0.5) * 64, zz = END - 5 - r() * 40; return Math.abs(x) < 4 ? null : [x, zz, 0]; }, { h: [7, 13], seedv: 5 }); s.forest('tree:bush', 30, r => { const x = (r() - 0.5) * 50; return Math.abs(x) < 3.4 ? null : [x, END - 4 - r() * 30, 0]; }, { h: [1, 2.2], seedv: 8 });
+    const slab = s.box({ x: 0, y: DTOP, z: DZ, w: 5.2, h: 4.6, d: 0.9, mat: stone, tile: 1.6 }); for (const sx of [-1, 1]) s.box({ x: sx * 2.45, y: 0, z: DZ, w: 0.35, h: DTOP, d: 1.1, mat: wood, cast: false }); // the slab and its guide posts
+    const door = { y: DTOP, v: 0, on: false, t: 0, shut: false, under: null };
+    { // the cave mouth from outside: rock masses breaking up the cliff, vines over the opening, undergrowth
+      srand(41); for (const [x, y, h, z] of [[-4.3, -0.4, 2.6, 0.5], [4.4, -0.4, 3, 0.6], [-7, 0.5, 3.6, 1.2], [7.4, 1, 4, 1.3], [-10.5, -0.5, 4.5, 1.6], [11, -0.5, 4.8, 1.7]]) s.put('rock_grey', { x, y, z: END - 4 + z, height: h, ry: sr(6) });
+      const vine = s.mat({ color: 0x1e2e14, rough: 0.95 }), leaf = s.mat({ color: 0x24401a, rough: 0.9, side: true });
+      for (let i = 0; i < 26; i++) { const x = sr(-4.6, 4.6), L = sr(1.2, Math.abs(x) < 2.3 ? 2.2 : 5), y = Math.abs(x) < 2.3 ? DTOP + 0.2 : sr(3, 8); const v = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.04, L, 4), vine); v.position.set(x, y + 0.3 - L / 2, END - 4.1 - sr(0.3)); v.rotation.z = sr(-0.08, 0.08); s.scene.add(v);
+        for (let j = 0; j < L * 2; j++) { const l = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.11), leaf); l.position.set(x + sr(-0.12, 0.12), y + 0.3 - j * 0.5 - sr(0.2), END - 4.15 - sr(0.3)); l.rotation.set(sr(-1, 1), sr(-1, 1), sr(3)); s.scene.add(l); } }
+      s.forest('tree:bush', 26, r => { const x = (r() - 0.5) * 22; return Math.abs(x) < 2.6 ? null : [x, END - 3 - r() * 9, 0]; }, { h: [0.7, 1.6], seedv: 12 });
+    }
+    const dsol = s.course.addSolid({ x0: -2.6, x1: 2.6, y0: DTOP, y1: DTOP + 5, z0: DZ - 0.45, z1: DZ + 0.45, deadly: true, msg: 'Shut in with the boulder', injury: 0.9, grab: false,
+      advice: 'The door starts dropping 34 m out. Hold W (sprint) all the way from the last beam and slide (S) about 4 m before it.' });
+    const sunL = s.light({ x: 2, y: 13, z: END - 16, color: 0xfff0d0, i: 0, dist: 60, bulb: false }); s.forest('tree:jungle', 46, r => { const x = (r() - 0.5) * 64, zz = END - 5 - r() * 40; return Math.abs(x) < 4 ? null : [x, zz, 0]; }, { h: [7, 13], seedv: 5 }); s.forest('tree:bush', 30, r => { const x = (r() - 0.5) * 50; return Math.abs(x) < 3.4 ? null : [x, END - 4 - r() * 30, 0]; }, { h: [1, 2.2], seedv: 8 });
     // idol chamber
     s.box({ x: 1.05, y: 0, z: -0.5, w: 0.7, h: 1.05, d: 0.7, mat: stone, tile: 1.5 }); const idol = s.put('golden_idol', { x: 1.05, y: 1.05, z: -0.5, height: 0.5, ry: Math.PI / 2 }); s.light({ x: 1.2, y: 2.6, z: -1.4, color: 0xffd070, i: 14, dist: 7, bulb: false });
     s.crew({ x: -3.6, z: 7.5, ry: -2.5 });
@@ -116,10 +128,21 @@ const raiders = {
       const close = clamp(1 - gap / 16); s.audio.set('rumble', 'rumble', 0.6 + close * 0.5, jam ? 0 : 0.25 + close * 0.6); shakeT -= dt; if (shakeT < 0 && !jam) { shakeT = 0.16; s.engine.addShake(0.08 + close * 0.3); }
       if (!s.ended) { minGap = Math.min(minGap, gap); s.hud.readout('gap', 'Boulder (m)', Math.max(0, gap).toFixed(1), gap < 5 ? 'warn' : gap > 9 ? 'ok' : ''); let w = ''; for (const [wz, txt, k] of warn) { const d = run.pos.z - wz; if (d > 1.5 && d < 17) { w = `${K(k)} ${txt}`; break; } } s.hud.prompt(w); }
       if (gap < 0.25 && !s.ended && !run.dead) { run.c.setPose('prone', 0.08); run.dead = true; run.v = 0; s.engine.addShake(1.5); s.audio.impact(1); s.fail('Flattened by the boulder', { injury: 0.9, advice: 'Hold W (sprint) the whole way and read the warnings early — every stumble lets the boulder gain four metres. Keep the BOULDER readout above 5 m.' }); }
-      if (bz < END + R + 1.2 && !jam) { jam = true; bv = 0; s.audio.impact(1); s.audio.explosion(0.5); s.engine.addShake(1.6); s.fx.dust(V3(0, 2, END - 3), 50, { spread: 5, size: 4, up: 4 }); s.fx.debris(V3(0, 2, END - 4), 26, { color: 0x8a8070, speed: 9, dir: V3(0, 0, -1), floor: 0 }); }
+      // the last trap: the slab grinds down once you're 34 m out; slide under it and it seals the boulder in behind you
+      if (!door.on && run.pos.z < DTRIG && !run.dead) { door.on = true; s.msg('THE DOOR!', 'bad'); s.objective('Slide under the door!'); s.audio.set('door', 'rumble', 0.35, 0.45); s.engine.addShake(0.5); s.fx.dust(V3(0, DTOP, DZ + 0.6), 14, { spread: 2.4, size: 1.6 }); }
+      if (door.on && !door.shut) { door.t += dt; door.y = Math.max(0, DTOP - 0.75 * door.t); slab.position.y = door.y + 2.3; dsol.y0 = door.y; if (Math.random() < 0.3) s.fx.dust(V3(rnd(-2.3, 2.3), door.y + 0.1, DZ + 0.5), 1, { size: 1, a: 0.2, color: [0.5, 0.45, 0.38] });
+        if (door.y === 0) { door.shut = true; s.audio.set('door', 'rumble', 0, 0); s.audio.impact(0.9); s.engine.addShake(0.9); s.fx.dust(V3(0, 0.2, DZ - 0.9), 26, { spread: 3, size: 2.2 }); s.fx.dust(V3(0, 0.2, DZ + 0.9), 18, { spread: 3, size: 2 }); } }
+      { const kc = door.on ? smooth(DZ + 16, DZ + 5, run.pos.z) * (1 - smooth(DZ - 2, DZ - 8, run.pos.z)) : 0; const co = s.cam.o; co.height = lerp(2.9, 0.45, kc); co.up = lerp(1.3, 0.7, kc); co.dist = lerp(8.6, 7, kc); co.fov = lerp(64, 70, kc); }
+      if (door.on && !door.under && !run.dead && run.pos.z > DZ && run.pos.z - DZ < 1.5) {
+        const gapH = door.y - run.pos.y;
+        if (run.slide > 0 && gapH > 0.8 || gapH > 1.8) { door.under = { gap: gapH }; run.pass(dsol, 1.2); }
+        else if (gapH > 0.45) { door.under = { gap: gapH, scraped: true }; run.pass(dsol, 1.5); run.stumble(0.45, 0.8); s.flub(run.slide > 0 ? 'Scraped under the door' : 'Took the door on the head', { penalty: 0.12, advice: 'Slide (S) when the DOOR warning shows — about 4 m before it — and sprint (W) the whole last stretch so there is room under it.' }); }
+        if (door.under) { s.rate('Under the door', near(gapH, 0.9, 0.3, 2.6), 1.2); s.moment('under the door', { t0: s.t - 1.5, dur: 3.4, w: 3.5, shots: [{ type: 'front', speed: 0.3, a: -0.1, b: 0.7 }, { type: 'low', speed: 0.3, side: 1, a: 0.25, b: 0.75 }, { type: 'front', speed: 0.7, a: 0.45, b: 1.25, fov: 55 }] }); s.slowmo(0.35, 0.9); s.msg(gapH < 1.15 ? 'BY AN INCH!' : 'UNDER!', 'good'); }
+      }
+      if (bz < DZ + 0.45 + R + 0.1 && !jam) { jam = true; bv = 0; s.audio.impact(1); s.audio.explosion(0.5); s.engine.addShake(1.6); s.fx.dust(V3(0, 2, DZ + 1.2), 40, { spread: 4, size: 3.5, up: 3 }); s.fx.dust(V3(0, 0.3, DZ - 1.2), 22, { spread: 3.2, size: 2.4 }); s.fx.debris(V3(0, 3, DZ + 1.4), 18, { color: 0x8a8070, speed: 5, dir: V3(0, 0, 1), floor: 0 }); }
       // daylight
-      const k = smooth(END + 26, END - 4, run.pos.z); s.sun.intensity = lerp(E0.sun, 3.2, k); s.hemi.intensity = lerp(E0.hemi, 0.75, k); s.scene.fog.color.copy(E0.fog).lerp(dayFog, k); s.scene.fog.density = lerp(E0.dens, 0.004, k); s.scene.environmentIntensity = lerp(E0.env, 0.8, k); key.intensity = 16 * (1 - k); sunL.intensity = 320 * k;
-      if (run.pos.z < END && !out) { out = true; s.moment('out of the cave', { t0: s.t - 2.2, dur: 4.4, w: 3 }); s.msg('DAYLIGHT!', 'good'); s.slowmo(0.45, 0.9); s.hud.prompt(''); }
+      const k = smooth(END + 26, END - 4, run.pos.z); s.sun.intensity = lerp(E0.sun, 3.2, k); s.hemi.intensity = lerp(E0.hemi, 0.75, k); s.scene.fog.color.copy(E0.fog).lerp(dayFog, k); s.scene.fog.density = lerp(E0.dens, 0.004, k); s.scene.environmentIntensity = lerp(E0.env, 0.8, k); key.intensity = 16 * (1 - k); sunL.intensity = 150 * k;
+      if (run.pos.z < END && !out) { out = true; s.moment('out of the cave', { t0: s.t - 2.2, dur: 4.4, w: 1.5 }); s.hud.prompt(''); }
       if (run.pos.z < END - 9 && !done && !run.dead) { done = true; s.rate('Lead over the boulder', clamp(gap / 7), 1); s.bonus('Closest shave ' + minGap.toFixed(1) + ' m', Math.round(clamp(1 - minGap / 8) * 300)); run.speedK = 0.01; s.wrap(1.6, 'The idol is in the bag'); }
     });
   },
@@ -521,7 +544,7 @@ const bourne = {
 
 // What the player is asked to do, in plain numbers, plus the film's signature camera angles for the replay.
 const EXTRA = {
-  raiders_boulder: { goals: { shot: ['Press E when the swinging needle is dead centre to swap the idol', 'Run at the camera, holding W: SPACE over the 3 pits, S under the 3 beams, A/D round the 4 rock piles', 'Keep the BOULDER readout above 5 m', 'Burst out into the daylight at the end of the 176 m tunnel'], cut: ['The boulder flattens you', 'You fall into a spike pit'], stars: ['Idol swap timing', 'Footwork (each stumble costs)', 'Lead over the boulder'] }, cine: ['front', { type: 'low', fov: 52 }, 'wide'] },
+  raiders_boulder: { goals: { shot: ['Press E when the swinging needle is dead centre to swap the idol', 'Run at the camera, holding W: SPACE over the 3 pits, S under the 3 beams, A/D round the 4 rock piles', 'Keep the BOULDER readout above 5 m', 'At the cave mouth a stone door drops — slide (S) under it into the daylight'], cut: ['The boulder flattens you', 'You fall into a spike pit', 'The door shuts you in'], stars: ['Idol swap timing', 'Footwork (each stumble costs)', 'Cutting the door fine', 'Lead over the boulder'] }, cine: ['front', { type: 'low', fov: 52 }, 'wide'] },
   temple_door: { goals: { shot: ['Sprint the spike corridor: A/D away from the wall spikes, SPACE over the 3 floor plates, S under the 2 ceiling blocks', 'Past the red line the door drops: ease off W so DOOR AT ARRIVAL reads 0.85–1.1 m', 'Press S about 4 m before the door to slide under it', 'Then press E at once to reach back for the hat'], cut: ['The door crushes you (gap under 0.8 m when you slide)'], stars: ['Close shave under the door (closer = more)', 'The hat', 'Spike corridor'] }, cine: ['front', { type: 'low', fov: 56 }, 'track'] },
   croc_run: { goals: { shot: ['Hold W to walk, let go to stop — each croc back is only 3 m long', 'Look at NEXT CROC: hop (SPACE) onto it only when it reads CALM, just after it snaps', 'Cross all 6 crocodiles, then hop onto the far bank'], cut: ['A croc bites you (still on its back 0.4 s into a snap)', 'Falling in the water a third time'], stars: ['Footing (land in the middle of each back)', 'Pace (about 17 s)'] }, cine: [{ type: 'wide', dist: 1.3 }, 'low', 'track'] },
   rumble_bronx: { goals: { shot: ['Hold W to sprint the car park — A/D round the 7 parked cars, SPACE over the low wall', 'SPACE at the first yellow line to jump down to the second roof', 'Line up with the green marker, then jump ON the far yellow line at 34+ km/h, holding SPACE', 'Steer onto the 2 m balcony across the alley'], cut: ['Falling short of the balcony (or off the roof)'], stars: ['Take-off point', 'Speed', 'Landing on the balcony', 'Run-up'] }, cine: [{ type: 'wide', dist: 1.5 }, { type: 'low', fov: 46 }, 'track'] },
