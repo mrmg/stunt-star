@@ -9,14 +9,14 @@ const JUMP = { sp: [0.15, 0, 0], aR: [0.25, -0.3, 0.9, 0.0, 0.5, 0.8], aL: [0.3,
 // penalty, advice, quiet. Hooks: onTrip(sol) onBump(sol). Big jumps (> 0.75 s of air) are marked as replay moments.
 export class Run {
   constructor(s, o = {}) {
-    this.s = s; this.o = o = { speed: 7.2, sprint: 9.6, strafe: 6.5, jumpV: 7.4, grav: 21, slideT: 0.85, fallDeath: 7, auto: true, width: 0.35, grab: true, air: 0.6, accel: 9, airAccel: 0, cadence: 2.1, ...o };
+    this.s = s; this.o = o = { speed: 7.2, sprint: 9.6, strafe: 6.5, jumpV: 7.4, grav: 21, slideT: 0.85, fallDeath: 7, auto: true, width: 0.35, grab: true, air: 0.6, accel: 9, airAccel: 0, cadence: 3.45, ...o }; // cadence: phase rad/s per (m/s) — 2π/3.45 ≈ 1.8 m stride, so feet match the ground instead of skating
     this.c = s.char(o.char || 'ch_stunt', { x: o.x || 0, z: o.z || 0 }); this.pos = this.c.root.position; this.pos.y = o.y ?? s.course.height(this.pos.x, this.pos.z);
     this.v = 0; this.vx = 0; this.vy = 0; this.grounded = true; this.slide = 0; this.stun = 0; this.dead = false; this.frozen = false; this.grabT = 0; this.airT = 0; this.mirror = o.mirror ? -1 : 1; this.control = true; this.speedK = 1;
     this.stats = { jumps: 0, slides: 0, grabs: 0, stumbles: 0, maxDrop: 0 }; this._p = V3(); this.takeY = this.pos.y; this.takeZ = this.pos.z; this.stepT = 0;
     this.c.setPose('ready', 0);
     this.camO = { dist: 6.2, height: 2.7, ahead: 3.5, up: 1.2, stiff: 7, fov: 62, ground: false, ...(o.cam || {}) };
     s.cam.follow(() => ({ pos: this.camPos(), heading: 0 }), { ...this.camO, snap: true }); this._cp = V3(); this.camY = this.pos.y;
-    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.c.root;
+    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.c.root; s.blobR = 1.15;
   }
   camPos() { return this._cp.set(this.pos.x * (this.o.camX ?? 0.7), this.camY, this.pos.z); }
   get h() { return this.slide > 0 ? 0.75 : 1.75; }
@@ -49,9 +49,12 @@ export class Run {
       else { this.v = damp(this.v, 0, 4, dt); p.z -= this.v * dt * 0.3; }
       this.camY = damp(this.camY, p.y, 4, dt); return;
     }
-    if (this.grabT > 0) { // hanging on a ledge then pulling up
-      this.grabT -= dt; const k = 1 - this.grabT / this.grabDur; p.y = this.grabY - 1.75 + 1.75 * clamp((k - 0.45) / 0.55); if (k > 0.45) p.z = this.grabZ - 0.7 * clamp((k - 0.45) / 0.55); ch.setPose(k < 0.45 ? 'hang' : 'crouch', 0.15);
-      if (this.grabT <= 0) { this.grounded = true; this.vy = 0; this.v = o.speed * 0.6; ch.setCycle('run', 0); }
+    if (this.grabT > 0) { // hanging on a ledge then pulling up: hands pinned to the edge by IK, body swings then vaults
+      this.grabT -= dt; const k = 1 - this.grabT / this.grabDur, pull = clamp((k - 0.32) / 0.68), e = pull * pull * (3 - 2 * pull);
+      p.y = this.grabY - 1.75 + 1.75 * e + Math.sin(Math.min(1, pull) * Math.PI) * 0.12; // ease + a little hop over the lip
+      p.z = this.grabZ - 0.85 * clamp((k - 0.5) / 0.5) ** 1.4 - Math.sin(k * 6.5) * 0.03 * (1 - k); // dangle sway dying out as he climbs
+      if (k < 0.32) ch.setCycle('hang', 1.4); else if (k < 0.72) ch.setPose('pullup', 0.12); else ch.setPose('vault', 0.12);
+      if (this.grabT <= 0) { this.grounded = true; this.vy = 0; this.v = o.speed * 0.65; ch.ik = null; this._grabTgts?.forEach(t => t.removeFromParent()); this._grabTgts = null; ch.setCycle('run', 0); }
       this.camY = damp(this.camY, p.y, 5, dt); return;
     }
     // speed
@@ -75,7 +78,10 @@ export class Run {
       if (sol.type === 'break') { sol.dead = true; if (sol.obj) sol.obj.visible = false; const cp = this._p.set((sol.x0 + sol.x1) / 2, (sol.y0 + sol.y1) / 2, (sol.z0 + sol.z1) / 2); if (sol.glass) { s.fx.glass(cp, 60, { dir: V3(0, 0, -1), speed: this.v * 0.7 }); s.audio.glass(); } else { s.fx.debris(cp, 10, { color: sol.debris ?? 0x8a6a40, dir: V3(0, 0, -1), speed: this.v * 0.5, floor: sol.y0 }); s.audio.impact(0.5); } sol.on?.(this, sol); return; }
       // ledge grab: front face of something whose top is reachable
       const top = sol.y1 - p.y;
-      if (!this.grounded && o.grab && sol.grab !== false && top > 0.4 && top < (o.grabH ?? 2.8) && this.v > 1 && nz - 0.3 <= sol.z1 && p.z >= sol.z1 - 0.35) { this.grabT = this.grabDur = sol.grabT ?? 1.0; this.grabY = sol.y1; this.grabZ = sol.z1 + 0.32; p.z = this.grabZ; p.x = nx; this.vy = 0; this.v = 0; this.stats.grabs++; s.audio.thud(); s.engine.addShake(0.3); this.onGrab?.(sol); blocked = true; return true; }
+      if (!this.grounded && o.grab && sol.grab !== false && top > 0.4 && top < (o.grabH ?? 2.8) && this.v > 1 && nz - 0.3 <= sol.z1 && p.z >= sol.z1 - 0.35) { this.grabT = this.grabDur = sol.grabT ?? 1.05; this.grabY = sol.y1; this.grabZ = sol.z1 + 0.32; p.z = this.grabZ; p.x = nx; this.vy = 0; this.v = 0; this.stats.grabs++;
+        // pin both hands to the actual ledge edge (world targets just over the lip) so the grab reads as contact, not hovering
+        if (ch.ok) { const mkT = dx => { const t = new THREE.Object3D(); t.position.set(p.x + dx, sol.y1 + 0.02, sol.z1 - 0.06); s.scene.add(t); return t; }; const tR = mkT(0.27 * this.mirror), tL = mkT(-0.27 * this.mirror); this._grabTgts = [tR, tL]; ch.ik = { aR: tR, aL: tL, pole: [0.55, -0.35, -0.5] }; ch.setPose('hang', 0.07); }
+        s.audio.thud(); s.engine.addShake(0.3); this.onGrab?.(sol); blocked = true; return true; }
       if (top <= (this.grounded ? 0.45 : 0.5)) return; // step up / land on top
       blocked = true; const r = sol.on?.(this, sol); if (r === true) return true;
       if (this.onHit?.(sol) === true) return true;
@@ -108,6 +114,9 @@ export class Run {
     // animate
     if (this.grounded && this.slide <= 0 && this.stun <= 0 && !this.dead) { if (this.v > 0.6) { ch.setCycle('run', this.v * o.cadence, clamp(this.v / 8.5, 0.5, 1.15)); this.stepT -= dt * this.v; if (this.stepT <= 0) { this.stepT = 1.25; if (this.o.steps !== false) s.audio._noise(0.05, { f: 500, g: 0.12 }); } } else if (ch.cycle !== 'idle') ch.setPose(s.started ? 'ready' : 'ready', 0.2); }
     ch.heading = damp(ch.heading, -this.vx * 0.06, 10, dt);
+    // bank into strafes, pitch with the jump arc, look where you're going (down at the landing on the way down)
+    ch.lean.set(this.grounded ? clamp((this.v - o.speed) * 0.008, -0.06, 0.1) : clamp(-this.vy * 0.012, -0.12, 0.18), 0, clamp(-this.vx * 0.028, -0.2, 0.2));
+    if (!this.dead) (ch.look ||= V3()).set(p.x + this.vx * 0.7, p.y + (this.grounded ? 1.4 : this.vy < 0 ? -1.5 : 1.2), p.z - 12);
     this.camY = damp(this.camY, this.grounded ? p.y : Math.max(p.y - 0.5, this.camY - 14 * dt), 6, dt);
     s.cam.fovKick = clamp((this.v - o.speed) / 4, 0, 1) * 6;
   }

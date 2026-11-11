@@ -29,6 +29,27 @@ export class Grip {
   _railIn(p, mx, my) { const R = this.rail, i = this.railSeg(clamp(p, 0, this.railLen - 1e-4)), du = R[i + 1][0] - R[i][0], dv = R[i + 1][1] - R[i][1], m = Math.max(Math.abs(du), Math.abs(dv), 1e-6); return clamp((mx * du + my * dv) / m, -1, 1); }
   local(u, v, w, out) { const f = this.off; if (this.o.plane === 'xy') out.set(f.x + u, f.y + v, f.z + w); else if (this.o.plane === 'xz') out.set(f.x + u, f.y + w, f.z - v); else out.set(f.x + w, f.y + v, f.z - u); return out; }
   _place() { const p = this.c.root.position; this.local(this.u, this.v, this.w, p).add(this.kick); this.c.root.getWorldPosition(this.world); }
+  // Climbing contact: hands/feet pinned to the wall by IK, stepping (with a little lift) whenever the body
+  // travels too far from a hold. Only for free climbs on a wall plane (clock tower, Burj) — scripted hangs keep their poses.
+  _contacts(dt) {
+    const o = this.o, ch = this.c;
+    if (!ch.ok || o.contact === false || o.plane === 'xz' || this.rail || !o.range || o.pose !== 'cling') {
+      // a stunt phase-change (leap to the clock hand, bonnet slide...) takes over the body: drop the holds cleanly
+      if (this._holds) { for (const k in this._holds) this._holds[k].m.removeFromParent(); this._holds = null; if (ch.ik?.lR || ch.ik?.aR) ch.ik = null; }
+      return;
+    }
+    if (!this._holds) {
+      const mk = (du, dv) => { const m = new THREE.Object3D(); this.anchor.add(m); const h = { m, du, dv, u: this.u + du, v: this.v + dv, step: 1, fu: 0, fv: 0 }; this.local(h.u, h.v, this.w, m.position); return h; };
+      this._holds = { aR: mk(0.34, 1.62), aL: mk(-0.34, 1.5), lR: mk(0.2, 0.55), lL: mk(-0.2, 0.25) };
+      ch.ik = { aR: this._holds.aR.m, aL: this._holds.aL.m, lR: this._holds.lR.m, lL: this._holds.lL.m, pole: [0.5, -0.4, 0.7], legPole: [0.15, 0.05, 1], orient: false };
+    }
+    for (const k in this._holds) {
+      const h = this._holds[k], hu = this.u + h.du, hv = this.v + h.dv;
+      if (h.step >= 1 && Math.hypot(hu - h.u, hv - h.v) > (k[0] === 'a' ? 0.42 : 0.5)) { h.step = 0; h.fu = h.u; h.fv = h.v; }
+      if (h.step < 1) { h.step = Math.min(1, h.step + dt / 0.17); const e = h.step * h.step * (3 - 2 * h.step); h.u = h.fu + (hu - h.fu) * e; h.v = h.fv + (hv - h.fv) * e; this.local(h.u, h.v, this.w - 0.18 * Math.sin(e * Math.PI), h.m.position); }
+    }
+    if (ch.ik) ch.ik.w = this.braced ? 1 : 0.92; // braced = locked on; moving = firm but alive
+  }
   camTarget(heading = 0) { const t = { pos: this.world, heading }; return () => t; }
   // seconds until the next hit that has to be braced (Infinity if none) - handy for bots
   incoming() { let m = Infinity; for (const e of this.events) if (!e.fired) m = Math.min(m, e.t - this.t); return m; }
@@ -51,7 +72,7 @@ export class Grip {
   }
   fall() { if (this.dead) return; this.dead = true; this.s.hud.prompt(''); this.s.audio.whoosh(1.2); if (this.onFall?.() === true) return; this.detach(this.carry); this.s.fail(this.o.fallMsg || 'Lost your grip', { injury: this.o.injury ?? 0.8, advice: this.o.fallAdvice || 'Brace (hold SPACE) only when a warning is called, let go straight after, and rest with no keys pressed when your stamina bar turns low.' }); }
   // release the performer into the world as a tumbling body (vel = world velocity to inherit)
-  detach(vel) { const r = this.c.root; r.getWorldPosition(this._w); this.s.scene.attach(r); this.free = { v: vel ? vel.clone() : V3() }; this.c.setCycle('flail', 1); this.c.tumble(4, 1, 2); }
+  detach(vel) { const r = this.c.root; r.getWorldPosition(this._w); this.s.scene.attach(r); this.free = { v: vel ? vel.clone() : V3() }; this.c.ik = null; this.c.setCycle('flail', 1); this.c.tumble(4, 1, 2); }
   update(dt) {
     const s = this.s, o = this.o, inp = s.input, ch = this.c;
     if (this.free) { const f = this.free; f.v.y -= 9.81 * dt; ch.root.position.addScaledVector(f.v, dt); ch.root.getWorldPosition(this.world); const g = s.course.height(this.world.x, this.world.z, this.world.y + 0.5); if (g > -1e5 && this.world.y <= g) { ch.root.position.y += g - this.world.y; f.v.y = 0; const k = Math.exp(-3 * dt); f.v.x *= k; f.v.z *= k; if (!f.hit) { f.hit = true; ch.tumble(0, 0, 0); ch.spinAng.set(0, 0, 0); ch.root.rotation.set(0, ch.heading, 0); ch.setPose('lie', 0.1); s.audio.impact(1); s.engine.addShake(1); s.fx.dust(this.world, 10); } else if (f.v.lengthSq() > 4 && Math.random() < 0.5) s.fx.dust(this.world, 1); } return; }
@@ -101,6 +122,7 @@ export class Grip {
     }
     // pose
     if (this._slipT > 0) this._slipT -= dt; else if (this.braced) ch.setPose(o.bracePose, 0.12); else if (this.moving && o.movePose) ch.setCycle(o.movePose, o.moveRate ?? 7); else if (o.idleCycle) ch.setCycle(o.idleCycle, 1); else ch.setPose(o.pose, 0.2);
+    this._contacts(dt);
     this._place();
     if (o.hud) { s.hud.meter('grip', 'Grip', this.grip, { color: this.grip < 0.35 ? '#e23b2e' : '#f2c14e' }); s.hud.meter('stam', 'Stamina', this.stam / o.stamina, { color: this.tired ? '#e23b2e' : '#58d68d' }); }
   }

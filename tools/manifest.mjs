@@ -126,6 +126,30 @@ export const ASSETS = [
   PR('cardboard_boxes', 'a tall neat stack of empty brown cardboard boxes'),
   PR('bulldozer', 'a yellow Caterpillar D9 bulldozer with blade', { polys: 60000 }),
 
+  // ---------- AAA wave 2: hero set pieces (image-to-3D ready — see docs/aaa-asset-pack.md) ----------
+  // Each prompt is written for a single clean studio reference frame: whole object, three-quarter view,
+  // plain grey background (the STYLE wrapper in gen.mjs adds that). Run images first: node tools/gen.mjs --img-only
+  PR('set_drawbridge', 'one leaf of a Chicago-style steel bascule drawbridge: riveted green-steel truss roadway section 18 metres long with road deck, side trusses and counterweight pit housing at the heel, weathered paint', { polys: 90000 }),
+  PR('set_clock_tower', 'a 1950s American courthouse clock tower: cream stone tower with a large four-sided clock near the top, arched belfry openings, a pyramidal slate roof with lightning rod, columns and steps at the base, the whole tower', { polys: 90000 }),
+  PR('set_dam_face', 'a curved concrete arch dam wall section 40 metres tall with a road and lamp posts along the crest, vertical contraction joints, weather staining streaks and a small inspection gallery doorway', { polys: 70000 }),
+  PR('set_burj_spire', 'the top spire section of a needle-like supertall skyscraper: tapering stainless-steel and glass pinnacle with circular maintenance platforms and aviation beacon lights, desert haze sheen', { polys: 70000 }),
+  PR('set_boulder', 'a giant perfectly round 5-metre granite boulder with chisel marks, cracks and patches of moss, ancient temple trap ball', { polys: 50000 }),
+  PR('set_stone_door', 'a massive ancient stone temple sliding door slab 4 metres wide carved with worn Hindu temple relief figures, moss in the carvings, chipped edges, with its stone lintel frame', { polys: 70000 }),
+  PR('set_broken_bridge', 'a broken wooden-plank and steel girder river bridge with the middle span twisted down at a steep angle, splintered planks, rusted girders, one half on each side of a gap', { polys: 90000 }),
+  PR('set_a400_door', 'the open side paratroop door section of a military transport aircraft fuselage: grey riveted aluminium skin, open rectangular door with wind deflector, grab handles and warning stencils either side, a slice of fuselage barrel', { polys: 80000 }),
+  PR('set_overpass', 'a dark Chicago-style city highway overpass ramp section: weathered concrete deck on steel columns with riveted girders, guardrails, oil staining and a bent street sign', { polys: 90000 }),
+  PR('set_ramp_truck', 'a film stunt ramp truck: flatbed truck with a long steel wedge launch ramp built over the bed, safety rails, chequer-plate surface, painted hazard stripes on the lip', { polys: 80000 }),
+  PR('set_scaffold', 'a Hong Kong bamboo scaffolding tower section three storeys tall lashed with black nylon ties, with wooden plank walkways and a green safety net panel', { polys: 70000 }),
+  PR('set_mall_atrium', 'a 1980s shopping mall glass atrium dome section with brass mullions and a central hanging light pole with glass globe lamps, marble balustrade below', { polys: 80000 }),
+  PR('prop_crate_stack', 'a stack of weathered wooden shipping crates stencilled with arrows and numbers, rope handles, one lid ajar with straw packing'),
+  PR('prop_barrels', 'a cluster of five rusty steel oil drums, one tipped on its side, faded hazard diamonds and dripped paint'),
+  PR('prop_market_stall', 'a Hong Kong street market stall with striped canvas canopy, hanging lamps, stacked plastic crates of vegetables and a folding table'),
+  PR('prop_barrier', 'a galvanised steel crowd-control barrier with scuffed feet and a bent top rail'),
+  PR('prop_hay_bales', 'three round hay bales wrapped in twine, golden straw texture, one half-unrolled'),
+  PR('prop_cones', 'a stack of orange traffic cones with white reflective bands, one knocked over beside the stack'),
+  PR('prop_stunt_ramp', 'a portable aluminium stunt wedge ramp with chequer-plate top, side skirts and castor wheels, scuffed from use'),
+  PR('prop_cable_reel', 'a giant wooden industrial cable reel wound with thick black cable, weathered timber flanges with steel bolts'),
+
   // ---------- panoramic backdrops ----------
   BD('bd_turin', 'the Italian city of Turin in 1969 with terracotta rooftops, the Mole Antonelliana spire and snow-capped Alps behind, warm afternoon sun'),
   BD('bd_sf', 'San Francisco in 1968 seen from a hilltop, rows of Victorian houses falling away to the bay with Alcatraz island and distant hills, clear sunny day'),

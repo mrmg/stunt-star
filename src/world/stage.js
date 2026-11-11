@@ -251,7 +251,8 @@ export class Stage {
     }
     sc.fog = new THREE.FogExp2(fogCol, E.fog); this.fogCol = fogCol;
     const sun = this.sun = new THREE.DirectionalLight(E.sunCol, E.sunI); sun.castShadow = E.shadows !== false;
-    const sh = E.shadowSize ?? 70; sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -sh, right: sh, top: sh, bottom: -sh, near: 1, far: 600 }); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.05;
+    const sh = E.shadowSize ?? 70, sm = E.shadowMap ?? [1024, 2048, 4096][this.engine.quality] ?? 2048;
+    sun.shadow.mapSize.set(sm, sm); Object.assign(sun.shadow.camera, { left: -sh, right: sh, top: sh, bottom: -sh, near: 1, far: 600 }); sun.shadow.bias = -0.00025; sun.shadow.normalBias = 0.04; sun.shadow.radius = 2.2; this.shadowTexel = (2 * sh) / sm;
     sc.add(sun, sun.target);
     this.hemi = new THREE.HemisphereLight(hor.clone().lerp(top, 0.5), new THREE.Color(E.ground ?? 0x4a4035), E.amb * 0.55); sc.add(this.hemi);
     // image-based lighting from the sky itself
@@ -269,7 +270,18 @@ export class Stage {
     const c = this.camera.position, f = this.focus;
     if (this.sky) this.sky.position.copy(c);
     if (this.backdrop) { this.backdrop.position.x = c.x; this.backdrop.position.z = c.z; this.backdrop.position.y = this.bdBase + c.y * (this.E.bdFollow ?? 0.85); }
-    if (this.sun) { this.sun.target.position.copy(f); this.sun.position.copy(f).addScaledVector(this.sunDir, 220); }
+    if (this.sun) { // snap the shadow camera to whole texels so edges stop swimming as it follows the action
+      const t = this.shadowTexel || 0.07, sx = Math.round(f.x / t) * t, sz = Math.round(f.z / t) * t;
+      this.sun.target.position.set(sx, f.y, sz); this.sun.position.copy(this.sun.target.position).addScaledVector(this.sunDir, 220);
+    }
+    // soft contact blob under the subject: grounds performers/vehicles when the sun shadow is wide and soft
+    if (this.subject) {
+      if (!this._blob) { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d'), gr = g.createRadialGradient(64, 64, 4, 64, 64, 62); gr.addColorStop(0, 'rgba(0,0,0,0.5)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.28)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); const tx = new THREE.CanvasTexture(cv); tx.userData.own = true;
+        this._blob = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: tx, transparent: true, depthWrite: false })); this._blob.rotation.x = -Math.PI / 2; this._blob.renderOrder = 2; this._blob.userData.noRec = true; this.scene.add(this._blob); }
+      const sp = this.subject.getWorldPosition(_v), gy = this.course.height(sp.x, sp.z, sp.y + 0.5), hAbove = gy > -1e5 ? sp.y - gy : 99;
+      const B = this._blob; B.visible = hAbove < 6 && gy > -1e5;
+      if (B.visible) { const r = this.blobR ?? 2.2; B.position.set(sp.x, gy + 0.04, sp.z); B.scale.setScalar(r * (1 + hAbove * 0.35)); B.material.opacity = clamp(0.85 - hAbove * 0.13, 0, 0.85); }
+    }
     if (this.bigGround) { this.bigGround.position.x = Math.round(c.x / 50) * 50; this.bigGround.position.z = Math.round(c.z / 50) * 50; this.bigGround.material.map?.offset.set(this.bigGround.position.x / this.bigGround.userData.tile, -this.bigGround.position.z / this.bigGround.userData.tile); }
   }
   // ---------------------------------------------------------------- materials
@@ -277,7 +289,11 @@ export class Stage {
     if (typeof o === 'string') o = { tex: o };
     const key = JSON.stringify(o); if (this.mats.has(key)) return this.mats.get(key);
     const p = { color: o.color ?? 0xffffff, roughness: o.rough ?? 0.85, metalness: o.metal ?? 0 };
-    if (o.tex) { const t = tex(o.tex, o.rep ?? 1, o.repY ?? o.rep ?? 1); if (t) { t.userData.own = true; p.map = t; } else p.color = o.fallback ?? 0x888888; }
+    if (o.tex) { const t = tex(o.tex, o.rep ?? 1, o.repY ?? o.rep ?? 1); if (t) { t.userData.own = true; p.map = t;
+      // free close-range relief without new assets: reuse the diffuse luminance as a bump map on mineral/ground surfaces
+      const BUMP = { tx_asphalt: 0.35, tx_concrete: 0.25, tx_cobble: 0.8, tx_brick: 0.6, tx_rock: 1.2, tx_redrock: 1.0, tx_temple: 0.9, tx_cave: 1.1, tx_dirt: 0.4, tx_sand: 0.25, tx_roof: 0.3, tx_wood: 0.3, tx_metal: 0.15, tx_grass: 0.2, tx_jungle_floor: 0.5, tx_snow: 0.15 };
+      if (o.bump !== false && BUMP[o.tex] != null) { p.bumpMap = t; p.bumpScale = o.bump ?? BUMP[o.tex]; }
+    } else p.color = o.fallback ?? 0x888888; }
     if (o.emissive != null) { p.emissive = new THREE.Color(o.emissive); p.emissiveIntensity = o.emI ?? 1; if (o.emMap && p.map) p.emissiveMap = p.map; }
     if (o.opacity != null) { p.transparent = true; p.opacity = o.opacity; p.depthWrite = false; }
     if (o.side) p.side = THREE.DoubleSide;
@@ -304,7 +320,7 @@ export class Stage {
   cyl(o) { const m = new THREE.Mesh(new THREE.CylinderGeometry(o.r1 ?? o.r, o.r, o.h, o.seg || 16, 1, !!o.open), o.mat?.isMaterial ? o.mat : this.mat(o.mat || { color: o.color ?? 0x888888 })); m.position.set(o.x || 0, (o.y || 0) + (o.rx || o.rz ? 0 : o.h / 2), o.z || 0); if (o.rx) m.rotation.x = o.rx; if (o.rz) m.rotation.z = o.rz; m.castShadow = o.cast !== false; m.receiveShadow = true; (o.parent || this.scene).add(m); return m; }
   // Endless-looking textured ground that follows the camera
   ground(o = {}) {
-    const size = o.size ?? 7000, tile = o.tile ?? ((o.tex ?? '') === 'tx_grass' ? 5 : 12), m = this.mat({ tex: o.tex ?? 'tx_asphalt', rep: size / tile, color: o.color, rough: o.rough ?? 0.95, fallback: o.fallback ?? 0x556055 });
+    const size = o.size ?? 7000, tile = o.tile ?? ((o.tex ?? '') === 'tx_grass' ? 3.4 : 12), m = this.mat({ tex: o.tex ?? 'tx_asphalt', rep: size / tile, color: o.color, rough: o.rough ?? 0.95, fallback: o.fallback ?? 0x556055 }); // finer grass repeat: blades read as texture, not green noodles, in close shots
     const V = o.vary === false ? null : { ...(VARY_DEF[o.tex ?? 'tx_asphalt'] || {}), ...(o.vary || {}) }; let gm = m;
     if (V) { gm = m.clone(); if (m.map) gm.map = m.map; if (o.color == null && V.tint != null) gm.color.set(V.tint); varyMaterial(gm, V); }
     const g = new THREE.Mesh(new THREE.PlaneGeometry(size, size), gm); g.rotation.x = -Math.PI / 2; g.position.y = o.y ?? 0; g.receiveShadow = true; g.userData.tile = tile; this.scene.add(g);
@@ -418,11 +434,12 @@ export class Stage {
       for (const [x, y, z, r] of [[0, top, 0, 0.24], [0.2, top - 0.08, 0.05, 0.19], [-0.19, top - 0.06, -0.06, 0.2], [0.03, top - 0.1, 0.21, 0.18], [-0.04, top - 0.07, -0.2, 0.18], [0.1, top + 0.14, -0.05, 0.17], [-0.12, top + 0.1, 0.1, 0.16]]) blob(x, y, z, r, c);
       if (kind === 'cypress') for (let i = 0; i < 9; i++) { const g = new THREE.PlaneGeometry(0.05, 0.3); g.translate(Math.cos(i * 0.7) * 0.25, top - 0.3, Math.sin(i * 0.7) * 0.25); g.rotateY(i); col(g, 0.42, 0.46, 0.38); } }
     for (const g of parts) for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'color'].includes(k)) g.deleteAttribute(k);
-    const geo = mergeGeometries(parts); const leaf = kind === 'dead' || kind === 'palm' ? null : tex('tx_grass', 3, 3); const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide, ...(leaf ? { map: leaf, color: 0xffffff } : {}) }); if (leaf) { leaf.userData.own = true; m.color.setScalar(o.bright ?? 2.3); } // dead trees and palm trunks must not pick up the leaf texture
-    const im = new THREE.InstancedMesh(geo, m, n); im.castShadow = o.cast !== false; im.receiveShadow = true; im.frustumCulled = false; const M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(); srand(o.seedv ?? 17); let k = 0;
-    for (let i = 0; i < n; i++) { const a = area(sr, i); if (!a) continue; const [x, z] = a, h = sr(o.h?.[0] ?? 6, o.h?.[1] ?? 12), y = a[2] ?? this.course.height(x, z); if (y < -1e5) continue; const wv = sr(0.8, 1.2) * (o.wide ?? 1); M.compose(new THREE.Vector3(x, y - (o.sink ?? 0.1), z), q.setFromEuler(e.set(sr(-0.05, 0.05), sr(6.28), sr(-0.05, 0.05))), new THREE.Vector3(h * wv, h, h * wv)); im.setMatrixAt(k++, M);
+    const geo = mergeGeometries(parts); const leaf = kind === 'dead' || kind === 'palm' ? null : tex('tx_grass', 3, 3); const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide, ...(leaf ? { map: leaf, color: 0xffffff } : {}) }); if (leaf) { leaf.userData.own = true; m.color.setScalar(o.bright ?? 1.55); } // dead trees and palm trunks must not pick up the leaf texture (1.55: sits with the photo backdrops instead of glowing against them)
+    const im = new THREE.InstancedMesh(geo, m, n); im.castShadow = o.cast !== false; im.receiveShadow = true; im.frustumCulled = false; const M = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), tintC = new THREE.Color(); srand(o.seedv ?? 17); let k = 0;
+    for (let i = 0; i < n; i++) { const a = area(sr, i); if (!a) continue; const [x, z] = a, h = sr(o.h?.[0] ?? 6, o.h?.[1] ?? 12), y = a[2] ?? this.course.height(x, z); if (y < -1e5) continue; const wv = sr(0.8, 1.2) * (o.wide ?? 1); M.compose(new THREE.Vector3(x, y - (o.sink ?? 0.1), z), q.setFromEuler(e.set(sr(-0.05, 0.05), sr(6.28), sr(-0.05, 0.05))), new THREE.Vector3(h * wv, h, h * wv)); im.setMatrixAt(k, M);
+      const tb = sr(0.78, 1.12); im.setColorAt(k, tintC.setRGB(tb * sr(0.94, 1.04), tb, tb * sr(0.88, 1.0))); k++; // per-tree tint jitter kills the clone-army read
       if (o.solid && Math.abs(x) < (o.solidX ?? 1e9)) this.course.addSolid({ x0: x - 0.3, x1: x + 0.3, y0: y, y1: y + h, z0: z - 0.3, z1: z + 0.3, msg: o.msg || 'Wrapped it round a tree' }); }
-    im.count = k; this.scene.add(im); return im;
+    im.count = k; if (im.instanceColor) im.instanceColor.needsUpdate = true; this.scene.add(im); return im;
   }
   // Photo cut-out trees / crowds as crossed alpha-tested cards, instanced.
   sprites(id, n, area, o = {}) {

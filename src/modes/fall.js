@@ -51,7 +51,14 @@ export class Fall {
   deploy(modelId = 'parachute') {
     if (this.chute || this.dead || this.done) return false; this.chute = true; this.chuteT = 0; this.tucked = false; this.s.audio.whoosh(1.4); this.s.audio.thud(); this.s.engine.addShake(0.7);
     const m = this.canopy = model(modelId, { height: this.o.canopyH ?? 7 }); m.position.y = this.o.canopyY ?? 1.5; m.scale.multiplyScalar(0.05); this.c.root.add(m);
-    this.c.setPose('hang', 0.3); this.c.tumble(0, 0, 0); this.c.spinAng.set(0, 0, 0); this.poseLock = true;
+    this.c.setPose('risers', 0.35); this.c.tumble(0, 0, 0); this.c.spinAng.set(0, 0, 0); this.poseLock = true;
+    // hands on the steering toggles + visible riser lines, so the canopy is flown, not just worn
+    if (this.c.ok && this.o.risers !== false) {
+      const mk = x => { const t = new THREE.Object3D(); t.position.set(x, 2.35, 0.12); this.c.root.add(t); return t; };
+      this.toggles = { aR: mk(0.58), aL: mk(-0.58) }; this.c.ik = { aR: this.toggles.aR, aL: this.toggles.aL, pole: [0.85, -0.3, -0.3], orient: false };
+      const lm = new THREE.MeshBasicMaterial({ color: 0x222226 }); this.risers = [];
+      for (let i = 0; i < 4; i++) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 1, 4), lm); c.userData.noRec = true; this.s.scene.add(c); this.risers.push(c); }
+    }
     if (this.o.autoMoments !== false && this.s.started) this.s.moment('canopy', { t0: this.s.t - 1.8, dur: 4, w: 1.1, shots: this.o.deployShots });
     this.onDeploy?.(); return true;
   }
@@ -81,7 +88,14 @@ export class Fall {
     if (o.bounds) o.bounds(p, this);
     // pose
     if (!this.dead && !this.chute && !this.poseLock) { const want = this.tucked ? (o.tuckPose || 'track') : (o.pose || 'freefall'); if (this._pose !== want) { this._pose = want; ch.setPose(want, 0.3); } ch.heading = damp(ch.heading, this.yaw, 6, dt); ch.cur.body[1] += (clamp(-(this.vel.x * cs - this.vel.z * sn) / 30, -0.5, 0.5) - ch.cur.body[1]) * 0.1; }
-    if (this.chute && !this.dead) { ch.heading = damp(ch.heading, this.yaw, 4, dt); if (this.canopy) { this.canopy.rotation.z = damp(this.canopy.rotation.z, clamp(-(this.vel.x * cs - this.vel.z * sn) / 40, -0.3, 0.3), 3, dt); this.canopy.rotation.x = damp(this.canopy.rotation.x, clamp((this.vel.x * sn + this.vel.z * cs) / 40, -0.3, 0.3), 3, dt); } }
+    if (this.chute && !this.dead) { ch.heading = damp(ch.heading, this.yaw, 4, dt); if (this.canopy) { this.canopy.rotation.z = damp(this.canopy.rotation.z, clamp(-(this.vel.x * cs - this.vel.z * sn) / 40, -0.3, 0.3), 3, dt); this.canopy.rotation.x = damp(this.canopy.rotation.x, clamp((this.vel.x * sn + this.vel.z * cs) / 40, -0.3, 0.3), 3, dt); }
+      // steering pulls the inside toggle down (and both for flare near the ground); risers run shoulder -> canopy edge
+      if (this.toggles) { const flare = clamp(1 - this.alt / 12) * 0.35; this.toggles.aL.position.y = 2.35 - clamp(-(live ? inp.x : 0), 0, 1) * 0.55 - flare; this.toggles.aR.position.y = 2.35 - clamp(live ? inp.x : 0, 0, 1) * 0.55 - flare; }
+      if (this.risers) { const top = this.canopy.getWorldPosition(this._p); const cs2 = Math.cos(ch.heading), sn2 = Math.sin(ch.heading);
+        this.risers.forEach((c, i) => { const sx = (i % 2 ? 0.22 : -0.22), fz = (i < 2 ? -0.12 : 0.18); this._v.set(p.x + cs2 * sx - sn2 * fz * 0, p.y + 1.45, p.z - sn2 * sx);
+          const ex = top.x + cs2 * (i % 2 ? 2.6 : -2.6), ez = top.z - sn2 * (i % 2 ? 2.6 : -2.6), ey = top.y + 0.4; const len = Math.hypot(ex - this._v.x, ey - this._v.y, ez - this._v.z);
+          c.position.set((ex + this._v.x) / 2, (ey + this._v.y) / 2, (ez + this._v.z) / 2); c.scale.y = len; c.lookAt(ex, ey, ez); c.rotateX(Math.PI / 2); c.visible = !this.done; }); }
+    }
     // solids (cliff ledges, antenna...)
     s.course.hit(p.x, p.y + 0.9, p.z, 0.45, 0.8, 0.45, sol => { if (sol.dead) return; if (sol.type === 'trigger') { if (!sol.fired) { sol.fired = true; sol.on?.(this, sol); } return; } if (this.onHit?.(sol) === true) return true; if (!this.dead) { this.die(); s.audio.impact(1); s.engine.addShake(1); s.fail(sol.msg || 'Clipped the scenery on the way down', { injury: 0.85, advice: sol.advice || o.hitAdvice || 'Steer away from the walls early with WASD — they are closer than they look from above.' }); } return true; });
     // ground
@@ -89,7 +103,7 @@ export class Fall {
     if (this.aim) { const a = p.y - g; this.aim.visible = a > 1.5 && !this.dead && !this.aimOff; this.aim.position.set(p.x, g + 0.12, p.z); this.aim.scale.setScalar(clamp(a / (o.aim.ref ?? 45), 1, o.aim.max ?? 5)); }
     if (p.y <= g) {
       p.y = g; const speed = -this.vel.y, water = o.waterY != null && g <= o.waterY + 1e-6; this.done = true; this.vel.set(0, 0, 0); this.carry.set(0, 0, 0); this.tucked = false;
-      if (this.canopy) this.canopy.visible = false; if (this.aim) this.aim.visible = false; ch.tumble(0, 0, 0); s.cam.fovKick = 0;
+      if (this.canopy) this.canopy.visible = false; if (this.aim) this.aim.visible = false; ch.tumble(0, 0, 0); s.cam.fovKick = 0; ch.ik = null; this.risers?.forEach(c => c.visible = false);
       if (this.onLand) this.onLand({ speed, x: p.x, z: p.z, chute: this.chute, water });
       else if (speed > 11 && !this.dead) { this.dead = true; ch.setPose('lie', 0.1); ch.spinAng.set(0, 0, 0); s.audio.impact(1.2); s.engine.addShake(1.5); s.fail('Hit the ground at ' + Math.round(speed * 3.6) + ' km/h', { injury: 1, advice: o.groundAdvice || 'You hit the ground at freefall speed — open the parachute (E) inside the green zone of the timing bar.' }); }
       else { ch.spinAng.set(0, 0, 0); ch.setPose('land', 0.12); }

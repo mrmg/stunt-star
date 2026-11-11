@@ -177,7 +177,13 @@ export class ReplayPlayer {
     const ev = this.rec.fx; while (this.fxI < ev.length && ev[this.fxI].t <= this.simT) s.fx.replay(ev[this.fxI++]); s.fx.update(sdt);
     const sf = this.rec.sfx; while (this.sfxI < sf.length && sf[this.sfxI].t <= this.simT) { const e = sf[this.sfxI++]; try { if (e.k === 'set') { const [n, kd, p, v] = e.a; s.audio.set('rp_' + n, kd, p * (sh.speed < 0.7 ? 0.75 : 1), v * 0.8); } else s.audio[e.k]?.(...e.a); } catch { } }
     if (this.subj) { this.subj.updateWorldMatrix(true, false); this.subj.getWorldPosition(this.focus); }
-    const c = sh.cam(this.simT), cam = s.camera; cam.up.set(0, 1, 0); cam.position.copy(c.pos); cam.lookAt(c.look); if (Math.abs(cam.fov - c.fov) > 0.01) { cam.fov = c.fov; cam.updateProjectionMatrix(); }
+    const c = sh.cam(this.simT), cam = s.camera;
+    // operator feel: a whisper of handheld drift + a slow push-in across each shot (never during the freeze frame)
+    const pr = clamp((this.simT - sh.ta) / Math.max(0.4, sh.tb - sh.ta)), hh = this.hold > 0 ? 0 : 1;
+    c.pos.x += (Math.sin(this.simT * 1.7) + Math.sin(this.simT * 2.9 + 1.3) * 0.5) * 0.035 * hh; c.pos.y += (Math.sin(this.simT * 2.3 + 0.6) + Math.sin(this.simT * 3.7) * 0.5) * 0.028 * hh;
+    c.look.x += Math.sin(this.simT * 1.3 + 2.0) * 0.05 * hh; c.look.y += Math.sin(this.simT * 1.9 + 0.4) * 0.04 * hh;
+    const fov = c.fov - (sh.push ?? 2.5) * pr * pr;
+    cam.up.set(0, 1, 0); cam.position.copy(c.pos); cam.lookAt(c.look); if (Math.abs(cam.fov - fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
     s._updateEnv(0); s.engine.timeScale = sh.speed; s.audio.slowmo?.(sh.speed);
     const F = this.freeze; if (F && !this.froze && this.i === (F.shot ?? 1) && this.simT >= lerp(sh.ta, sh.tb, F.at ?? 0.45)) { this.froze = true; this.hold = F.dur ?? 2.6; s.engine.setLook(s.lookName, { mono: 1, sepia: 0.9, grain: 0.09, vignette: 0.6 }); s.engine.flash(0.35); s.audio.clap?.(); s.audio.say?.(F.line, { rate: 0.95, pitch: 0.75 }); this.onFreeze?.(F.line); }
     if (this.simT >= sh.tb - 1e-4) { this.i++; this.simT = null; if (this.i >= this.shots.length) { this.done = true; s.audio.slowmo?.(1); } }

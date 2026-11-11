@@ -146,11 +146,10 @@ const raiders = {
     // the boulder
     const R = 2.45, ball = new THREE.Mesh(new THREE.SphereGeometry(R, 28, 18), s.mat({ tex: 'tx_rock', rep: 2, color: 0xb0a898 })); ball.castShadow = true; ball.position.set(0, H + R + 1, 14.5); s.scene.add(ball);
     let bz = 14.5, bv = 0, by = H + R + 1, rolling = false, swapQ = 0, t0 = 0, minGap = 99, out = false, jam = false, shakeT = 0, done = false; const E0 = { sun: s.sun.intensity, hemi: s.hemi.intensity, fog: s.scene.fog.color.clone(), dens: s.scene.fog.density, env: s.scene.environmentIntensity }, dayFog = new THREE.Color(0xa8c0a0);
-    // the idol rides in his right hand (placed after each animation frame so it never lags), arm tucked to carry it
+    // the idol is picked up properly: the hand reaches out to it over ~0.4 s, closes on it, then carries it tucked to the chest
     const carry = (c, prop) => {
-      const hb = c.bones?.RightHand, fa = c.bones?.RightForeArm; if (!hb) { prop.position.set(0.34, 1.05, -0.28); prop.rotation.set(0, 0, 0); c.root.add(prop); return; }
-      s.scene.attach(prop); c.over = { aR: [0.3, -0.8, 0.4, 0.05, 0.1, 1] }; const P = V3(), F = V3();
-      c.post = () => { hb.updateWorldMatrix(true, false); hb.getWorldPosition(P); if (fa) P.addScaledVector(F.subVectors(P, fa.getWorldPosition(F)).normalize(), 0.08); c.root.getWorldQuaternion(prop.quaternion); prop.position.copy(P); prop.position.y -= 0.13; };
+      const hb = c.bones?.RightHand; if (!hb) { prop.position.set(0.34, 1.05, -0.28); prop.rotation.set(0, 0, 0); c.root.add(prop); return; }
+      s.scene.attach(prop); c.look = prop.position.clone(); c.grabProp(prop, 'aR', { dur: 0.42, fwd: 0.08, down: 0.13 }).then(() => { c.look = null; });
     };
     const grab = q => { swapQ = q; rolling = true; t0 = s.t; run.speedK = 1; s.hud.hideBar(); s.hud.prompt(''); idol.scale.multiplyScalar(0.6); carry(run.c, idol); s.rate('Idol swap', q, 1); if (q < 0.35) s.flub(q > 0 ? 'Fumbled the idol swap' : 'Never swapped the idol', { penalty: 0.08, advice: 'Press E when the swinging needle is dead centre of the bar — wait for it, it comes round every two seconds.' }); s.msg(q > 0.8 ? 'PERFECT SWAP' : q > 0.35 ? 'GOT IT' : 'CLUMSY!', q > 0.35 ? 'good' : 'bad'); s.audio.thud(); s.engine.addShake(0.8); s.objective('RUN! Sprint for daylight'); s.audio.set('rumble', 'rumble', 0.7, 0.5); };
     s.rate('Footwork', 1, 1.5); run.onStumble = () => { s.rate('Footwork', 1 - run.stats.stumbles * 0.25, 1.5); s.msg('STUMBLE!', 'bad'); s.sz = Math.round(run.pos.z); const w = warn.find(([wz]) => Math.abs(run.pos.z - wz) < 3), beam = w && w[1] === 'BEAM';
@@ -259,7 +258,8 @@ const temple = {
           s.cut([{ t: s.t, p: run.pos.clone() }, { t: s.t + 3, p: run.pos.clone() }], 'front', { pos: side, fov: 50, R: 2.2 }); // see the snatch while you play
           if (doorM) doorM.shots = [{ type: 'front', speed: 0.5, a: 0.12, b: 0.45, fov: 30 }, { type: 'low', fov: 56, speed: 0.35, a: 0.2, b: 0.6 }, { type: 'front', pos: side, lookUp: 0.55, fov: 46, speed: 0.8, a: 0.5, b: 1.02 }];
           { const g0 = s.t, gx = hat.position.x; s.onUpdate(dt => { const k = s.t - g0; if (k > 2.3) return; run.c.heading = damp(run.c.heading, Math.PI, 12, dt); if (k < 0.6) { run.pos.z = damp(run.pos.z, DZ - 0.85, 8, dt); run.pos.x = damp(run.pos.x, gx, 6, dt); } }); } // turn to the door and lunge back under it
-          s.after(0.28, () => { inHand = true; s.audio.whoosh(0.5); });
+          run.c.reach('aR', hat, { dur: 0.3, arc: 0.05 }); run.c.look = hat.position.clone(); // the hand travels back under the door to the hat instead of the hat jumping to the hand
+          s.after(0.3, () => { inHand = true; run.c.release('aR'); run.c.look = null; s.audio.whoosh(0.5); });
           s.after(0.8, () => run.c.setPose({ hip: [-0.12, 0.15, 0, 0], sp: [0.12, 0, 0], aR: [0.55, 0.6, 0.35, -0.55, 0.65, -0.05], lR: [0.15, -1, 0.2, 0.05, -1, -0.3], lL: [0.15, -1, -0.1, 0.05, -1, -0.3] }, 0.18));
           s.after(1.2, () => { inHand = false; hat.visible = false; run.c.setHat(true); s.msg('NEVER LEAVE THE HAT', 'good'); });
           s.wrap(2.1, 'And he kept the hat'); } }

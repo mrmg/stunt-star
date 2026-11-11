@@ -56,7 +56,10 @@ export class Fight {
     for (const b of this.beats) if (!b.res && this.t - b.t > o.good) { this.late++; this._miss(b, 'TOO SLOW'); if (this.dead) break; }
     if (this.dead) return;
     const nx = this.beats.find(b => !b.res); s.hud.prompt(nx && nx.t - this.t < o.look ? `next: <kbd>${KEYNAME[nx.dir]}</kbd> ${o.names[nx.dir]}` : '');
-    if (this.poseT > 0) { this.poseT -= dt; if (this.poseT <= 0) ch.setCycle('guard', 1); }
+    if (this.poseT > 0) { this.poseT -= dt; if (this.poseT <= 0) { ch.setCycle('guard', 1); this.lunge = 0; } }
+    // lunge + track the next attacker with the head, so strikes land on a person instead of in space
+    const lk = this.poseT > 0 ? Math.sin((1 - this.poseT / 0.36) * Math.PI) : 0; ch.lean.set(0.1 * lk, 0, (this.lunge || 0) * 0.1 * lk);
+    const inc = this.active.find(e => e.state === 'in'); if (inc) (ch.look ||= V3()).copy(inc.c.root.position).setY(inc.c.root.position.y + 1.5);
     this._lane();
     s.hud.meter('hp', 'Health', this.hp / o.hp, { color: this.hp <= 1 ? '#e23b2e' : '#58d68d' }); s.hud.readout('combo', 'Combo', this.combo, this.combo >= 5 ? 'ok' : '');
     if (!this.done && this.beats.every(b => b.res) && this.t > (this.beats.at(-1)?.t ?? 0) + 0.9) this._end();
@@ -73,7 +76,7 @@ export class Fight {
   _act(dir, side) {
     const ch = this.c, s = this.s; if (dir === 'L' || dir === 'R') { const sd = dir === 'L' ? -1 : 1; this.face = sd; ch.heading = sd > 0 ? -Math.PI / 2 : Math.PI / 2; ch.setPose(pick(['punchR', 'punchL', 'kick']), 0.06); }
     else if (dir === 'U') { ch.heading = side > 0 ? -Math.PI / 2 : Math.PI / 2; ch.setPose('highkick', 0.06); } else if (dir === 'D') ch.setPose('duck', 0.06); else ch.setPose('block', 0.06);
-    this.poseT = 0.36;
+    this.poseT = 0.36; this.lunge = dir === 'D' || dir === 'B' ? 0 : (dir === 'L' ? -1 : dir === 'R' ? 1 : (side || 1)); // weight drives through the strike, then settles back to guard
   }
   _success(b, perfect) {
     const s = this.s, e = b.e; b.res = perfect ? 'perfect' : 'good'; this.hits++; if (perfect) this.perfects++; this.combo++; this.maxCombo = Math.max(this.maxCombo, this.combo);

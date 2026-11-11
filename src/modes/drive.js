@@ -17,8 +17,19 @@ export const KINDS = {
   sled: { top: 40, accel: 0, brake: 3, grip: 2.5, steer: 1.2, w: 1.6, h: 0.8, wb: 2.2, nose: 0, air: 0.2, crashV: 12, hard: 14, cg: 0.3 },
 };
 
-// Handlebar wrist targets per model in vehicle-body space: [half-width, height, fwd(-z)], optional elbow pole.
-const GRIPS = { triumph: [0.34, 0.47, -0.22], fatboy: [0.38, 0.46, -0.2], ducati: [0.27, 0.36, -0.42, [0.8, -0.55, -0.1]], enduro_bike: [0.38, 0.57, -0.22, [0.85, -0.45, -0.1]], bmw_bike: [0.36, 0.5, -0.24] };
+// Handlebar wrist targets per model in vehicle-body space (body origin = CG height):
+// [half-width, height, fwd(-z)], optional elbow pole. Pegs: [half-width, height, fwd] for the boot ball.
+const GRIPS = { triumph: [0.34, 0.47, -0.22], fatboy: [0.38, 0.46, -0.2], ducati: [0.27, 0.36, -0.42, [0.8, -0.55, -0.1]], enduro_bike: [0.38, 0.57, -0.22, [0.85, -0.45, -0.1]], bmw_bike: [0.36, 0.5, -0.24], snowmobile: [0.36, 0.52, -0.3] };
+const PEGS = { triumph: [0.22, -0.38, -0.05], fatboy: [0.3, -0.4, -0.28], ducati: [0.2, -0.3, 0.28], enduro_bike: [0.2, -0.32, 0.02], bmw_bike: [0.26, -0.36, -0.1], snowmobile: [0.32, -0.42, 0.15] };
+export { GRIPS, PEGS };
+// Put a rider character's hands on a bike's bars and boots on its pegs (for scripted Movers/Convoy bikes that are not a Drive).
+// riderRootY = rider root y in the same parent space; grips/pegs are in Drive body space (CG origin) so offset by (cg - riderRootY)... callers pass cg.
+export function seatRider(char, parent, modelId, { cg = 0.55, riderY = 0 } = {}) {
+  if (!char?.ok) return; const g = GRIPS[modelId] || [0.34, 0.48, -0.26], pg = PEGS[modelId] || [0.22, -0.36, 0], dy = cg;
+  const mk = (x, y, z) => { const m = new THREE.Object3D(); m.position.set(x, y + dy, z); parent.add(m); return m; };
+  char.ik = { aR: mk(g[0], g[1], g[2]), aL: mk(-g[0], g[1], g[2]), lR: mk(pg[0], pg[1], pg[2]), lL: mk(-pg[0], pg[1], pg[2]), pole: g[3] };
+  char.ik.aR.rotation.z = char.ik.aL.rotation.z = Math.PI / 2;
+}
 
 export class Drive {
   constructor(s, o = {}) {
@@ -26,9 +37,26 @@ export class Drive {
     this.obj = new THREE.Group(); this.body = new THREE.Group(); this.obj.add(this.body); this.body.position.y = K.cg; this.obj.rotation.order = 'YXZ';
     if (o.model) { this.mesh = model(o.model, { len: o.len }); this.mesh.position.y = -K.cg + (o.ride ?? 0); this.body.add(this.mesh); const sz = this.mesh.userData.size; K.len = sz.z; K.w = o.w ?? sz.x * 0.92; K.h = o.h ?? sz.y; K.wb = o.wb ?? sz.z * 0.6; }
     else K.len = o.len ?? 1.2;
-    if (o.driver) { this.driver = s.char(o.driver, { parent: this.body }); this.driver.root.position.set(...(o.driverPos || [0, 0.25 - K.cg, 0.1])); this.driver.setPose(o.driverPose || (this.kind === 'bike' ? 'bike' : 'drive'), 0);
-      const g = o.grips ?? GRIPS[o.model]; // wrists locked onto the handlebar grips (body space, right hand; left is mirrored)
-      if (g && this.driver.ok) { const mk = x => { const m = new THREE.Object3D(); m.position.set(x * g[0], g[1], g[2]); this.body.add(m); return m; }; this.driver.ik = { aR: mk(1), aL: mk(-1), pole: g[3] }; }
+    if (o.driver) { this.driver = s.char(o.driver, { parent: this.body }); const dp = o.driverPos || [0, 0.25 - K.cg, 0.1]; this.driver.root.position.set(...dp); this.driver.setPose(o.driverPose || (this.kind === 'bike' ? 'bike' : 'wheel'), 0);
+      if (this.driver.ok) { // every driver touches the controls: bars + pegs on a bike, turning wheel in a car/boat
+        const mk = (x, y, z, parent = this.body) => { const m = new THREE.Object3D(); m.position.set(x, y, z); parent.add(m); return m; };
+        const isBike = this.kind === 'bike' || o.model === 'snowmobile';
+        const g = o.grips ?? GRIPS[o.model] ?? (isBike ? [0.34, 0.48, -0.26] : null); // fallback so a new bike model still gets held bars
+        if (g) {
+          const pg = o.pegs ?? PEGS[o.model] ?? (isBike ? [0.22, -0.36, 0] : null);
+          this.driver.ik = { aR: mk(g[0], g[1], g[2]), aL: mk(-g[0], g[1], g[2]), pole: g[3], ...(pg ? { lR: mk(pg[0], pg[1], pg[2]), lL: mk(-pg[0], pg[1], pg[2]) } : {}) };
+          // orient grip targets across the bars so the fist wraps the grip instead of hovering flat
+          for (const k of ['aR', 'aL']) this.driver.ik[k].rotation.set(0, 0, Math.PI / 2);
+        } else if (o.wheel !== false && ['car', 'muscle', 'mini', 'super', 'bus', 'truck', 'boat'].includes(this.kind)) {
+          // steering wheel at chest height forward of the seat; the rim targets rotate with steer input
+          const wr = o.wheelR ?? (this.kind === 'boat' ? 0.24 : 0.21), wy = (dp[1] ?? 0) + (o.wheelY ?? 0.84), wz = (dp[2] ?? 0.1) + (o.wheelZ ?? -0.44), wx = dp[0] ?? 0;
+          const hub = this.wheelHub = new THREE.Object3D(); hub.position.set(wx, wy, wz); hub.rotation.x = -0.45; this.body.add(hub);
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(wr, 0.022, 8, 28), new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.55 })); rim.castShadow = true; hub.add(rim);
+          for (const a of [0, 2.1, 4.2]) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.03, wr, 0.02), rim.material); sp.position.set(Math.sin(a) * wr / 2, -Math.cos(a) * wr / 2, 0); sp.rotation.z = a; hub.add(sp); }
+          const col = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.3, 8), rim.material); col.rotation.x = Math.PI / 2 - 0.45; col.position.set(wx, wy - 0.05, wz + 0.12); this.body.add(col);
+          this.driver.ik = { aR: mk(wr, 0, 0, hub), aL: mk(-wr, 0, 0, hub), pole: [0.75, -0.7, -0.2] };
+        }
+      }
     }
     s.scene.add(this.obj);
     this.pos = this.obj.position; this.pos.set(o.x || 0, 0, o.z || 0); this.pos.y = s.course.height(this.pos.x, this.pos.z); if (this.pos.y < -1e5) this.pos.y = o.y ?? 0; if (o.y != null) this.pos.y = o.y;
@@ -39,7 +67,7 @@ export class Drive {
     this.vis = { roll: 0, pitch: 0 }; this.camHead = this.heading; this._n = V3(); this._p = V3(); this.takeoff = null; this.gear = 0; this.offroad = false; this.movers = [];
     this.camO = { dist: Math.max(6.5, K.len * 1.55), height: Math.max(2.3, K.h * 1.45), ahead: 5, up: 1.0, stiff: 7, fov: 62, ...(o.cam || {}) };
     s.cam.follow(() => this._camT(), { ...this.camO, snap: true });
-    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.obj;
+    s.onUpdate(dt => this.update(dt)); s.focus = this.pos; s.subject ??= this.obj; s.blobR = Math.max(s.blobR || 0, (K.len || 4) * 0.95);
   }
   _camT() { return { pos: this.pos, heading: this.camHead }; }
   get kmh() { return Math.abs(this.v) * 3.6; } get mph() { return Math.abs(this.v) * 2.237; }
@@ -182,6 +210,14 @@ export class Drive {
     const s = this.s, K = this.k, p = this.pos, o = this.obj;
     const lean = K.lean ? clamp(-this.yawRate * Math.abs(this.v) / 22, -0.75, 0.75) * K.lean / 0.6 : clamp(this.yawRate * Math.abs(this.v) / 260, -0.07, 0.07);
     this.vis.roll = damp(this.vis.roll, this.grounded ? lean : 0, 8, dt); this.vis.pitch = damp(this.vis.pitch, this.grounded ? clamp(drive, -1, 1) * (K.squat ?? 0.025) : 0, 6, dt);
+    // the driver works the controls: wheel follows steer, body braces with g, engine buzz at speed, eyes through the turn
+    if (this.wheelHub) this.wheelHub.rotation.z = damp(this.wheelHub.rotation.z, -(this.inSteer || 0) * 1.9, 10, dt);
+    if (this.driver?.ok) {
+      const d = this.driver, sp = Math.abs(this.v), latG = clamp(this.lat * 0.02 + this.yawRate * sp * 0.004, -0.22, 0.22);
+      d.lean.set(clamp(-drive * 0.05 - this.pitchRate * 0.04, -0.15, 0.15) + Math.sin(s.t * 31) * 0.004 * clamp(sp / 30), 0, latG * (this.grounded ? 1 : 0.3));
+      const lx = p.x - Math.sin(this.heading) * 30 - Math.cos(this.heading) * (this.inSteer || 0) * 6, lz = p.z - Math.cos(this.heading) * 30 + Math.sin(this.heading) * (this.inSteer || 0) * 6;
+      (d.look ||= V3()).set(lx, p.y + 1.2, lz);
+    }
     o.rotation.set((this.pitchOverride ?? this.pitch) + this.vis.pitch, this.heading + (this.grounded ? clamp(this.lat / Math.max(8, Math.abs(this.v)), -0.5, 0.5) * (K.slipVis ?? 0.6) : 0), (this.rollOverride ?? this.roll) + this.vis.roll);
     this.camHead = damp(this.camHead, this.heading, this.dead ? 1 : (this.camK ?? 5), dt); s.cam.fovKick = clamp(Math.abs(this.v) / K.top, 0, 1.3) * (this.fovK ?? 13);
     s.engine.fx.uBlur.value = damp(s.engine.fx.uBlur.value, clamp((Math.abs(this.v) - 22) / 55, 0, 0.75) * (this.blurK ?? 1), 4, dt);

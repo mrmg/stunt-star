@@ -55,20 +55,20 @@ const FilmShader = {
 };
 
 export const LOOKS = {
-  neutral: { tint: [1, 1, 1], lift: [0, 0, 0], sat: 1.05, contrast: 1.06, vignette: 0.26, grain: 0.03, bloom: 0.3 },
-  warm60s: { tint: [1.06, 1.0, 0.9], lift: [0.03, 0.02, 0.0], sat: 0.95, contrast: 1.04, vignette: 0.4, grain: 0.06, bloom: 0.3 },
-  teal_orange: { tint: [1.08, 1.0, 0.92], lift: [0.0, 0.03, 0.05], sat: 1.2, contrast: 1.12, vignette: 0.4, grain: 0.035, bloom: 0.4 },
-  matrix: { tint: [0.86, 1.06, 0.84], lift: [0.0, 0.035, 0.0], sat: 0.75, contrast: 1.15, vignette: 0.45, grain: 0.04, bloom: 0.45 },
-  wasteland: { tint: [1.15, 0.98, 0.78], lift: [0.0, 0.02, 0.05], sat: 1.3, contrast: 1.18, vignette: 0.4, grain: 0.05, bloom: 0.4 },
-  cold: { tint: [0.92, 0.98, 1.08], lift: [0.0, 0.01, 0.03], sat: 0.85, contrast: 1.08, vignette: 0.38, grain: 0.035, bloom: 0.3 },
-  night: { tint: [0.9, 0.97, 1.1], lift: [0.0, 0.01, 0.03], sat: 1.05, contrast: 1.12, vignette: 0.5, grain: 0.05, bloom: 0.7 },
-  neon: { tint: [1.02, 0.96, 1.08], lift: [0.02, 0.0, 0.04], sat: 1.25, contrast: 1.1, vignette: 0.45, grain: 0.04, bloom: 0.8 },
-  silent: { tint: [1, 1, 1], lift: [0, 0, 0], sat: 1, contrast: 1.1, vignette: 0.5, grain: 0.12, bloom: 0.15, mono: 1, sepia: 0.35, old: 1 },
-  noir: { tint: [1, 1, 1], lift: [0, 0, 0], sat: 1, contrast: 1.2, vignette: 0.5, grain: 0.07, bloom: 0.3, mono: 1, sepia: 0 },
-  bleach: { tint: [1.0, 1.0, 0.97], lift: [0.01, 0.01, 0.01], sat: 0.7, contrast: 1.2, vignette: 0.42, grain: 0.05, bloom: 0.3 },
-  golden: { tint: [1.12, 1.0, 0.85], lift: [0.03, 0.01, 0.0], sat: 1.15, contrast: 1.08, vignette: 0.4, grain: 0.035, bloom: 0.5 },
-  jungle: { tint: [0.98, 1.04, 0.9], lift: [0.01, 0.02, 0.0], sat: 1.12, contrast: 1.1, vignette: 0.45, grain: 0.04, bloom: 0.4 },
-  vhs80s: { tint: [1.04, 1.0, 0.96], lift: [0.03, 0.02, 0.03], sat: 1.15, contrast: 1.0, vignette: 0.35, grain: 0.07, bloom: 0.35 },
+  neutral: { tint: [1, 1, 1], lift: [0, 0, 0], sat: 1.05, contrast: 1.06, vignette: 0.26, grain: 0.03, bloom: 0.3, ca: 0.0016 },
+  warm60s: { tint: [1.06, 1.0, 0.9], lift: [0.03, 0.02, 0.0], sat: 0.98, contrast: 1.05, vignette: 0.4, grain: 0.055, bloom: 0.34, ca: 0.0022 },
+  teal_orange: { tint: [1.08, 1.0, 0.92], lift: [0.0, 0.03, 0.05], sat: 1.2, contrast: 1.12, vignette: 0.4, grain: 0.035, bloom: 0.42, ca: 0.0018 },
+  matrix: { tint: [0.86, 1.06, 0.84], lift: [0.0, 0.035, 0.0], sat: 0.75, contrast: 1.15, vignette: 0.45, grain: 0.04, bloom: 0.45, ca: 0.002 },
+  wasteland: { tint: [1.15, 0.98, 0.78], lift: [0.0, 0.02, 0.05], sat: 1.28, contrast: 1.17, vignette: 0.4, grain: 0.05, bloom: 0.42, ca: 0.0024 },
+  cold: { tint: [0.92, 0.98, 1.08], lift: [0.0, 0.01, 0.03], sat: 0.85, contrast: 1.08, vignette: 0.38, grain: 0.035, bloom: 0.3, ca: 0.0015 },
+  night: { tint: [0.9, 0.97, 1.1], lift: [0.0, 0.01, 0.03], sat: 1.05, contrast: 1.12, vignette: 0.5, grain: 0.05, bloom: 0.72, ca: 0.002 },
+  neon: { tint: [1.02, 0.96, 1.08], lift: [0.02, 0.0, 0.04], sat: 1.25, contrast: 1.1, vignette: 0.45, grain: 0.04, bloom: 0.82, ca: 0.0026 },
+  silent: { tint: [1, 1, 1], lift: [0, 0, 0], sat: 1, contrast: 1.1, vignette: 0.5, grain: 0.12, bloom: 0.15, mono: 1, sepia: 0.35, old: 1, ca: 0.001 },
+  noir: { tint: [1, 1, 1], lift: [0, 0, 0], sat: 1, contrast: 1.2, vignette: 0.5, grain: 0.07, bloom: 0.3, mono: 1, sepia: 0, ca: 0.0012 },
+  bleach: { tint: [1.0, 1.0, 0.97], lift: [0.01, 0.01, 0.01], sat: 0.72, contrast: 1.19, vignette: 0.42, grain: 0.05, bloom: 0.3, ca: 0.0014 },
+  golden: { tint: [1.12, 1.0, 0.85], lift: [0.03, 0.01, 0.0], sat: 1.14, contrast: 1.08, vignette: 0.4, grain: 0.035, bloom: 0.52, ca: 0.0018 },
+  jungle: { tint: [0.98, 1.04, 0.9], lift: [0.01, 0.02, 0.0], sat: 1.12, contrast: 1.1, vignette: 0.45, grain: 0.04, bloom: 0.42, ca: 0.0018 },
+  vhs80s: { tint: [1.04, 1.0, 0.96], lift: [0.03, 0.02, 0.03], sat: 1.15, contrast: 1.0, vignette: 0.35, grain: 0.07, bloom: 0.4, ca: 0.004 },
 };
 
 export class Engine {
@@ -76,7 +76,7 @@ export class Engine {
     this.canvas = canvas;
     const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', stencil: false });
     this.quality = +(localStorage.getItem('ss_quality') ?? 1);
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     r.outputColorSpace = THREE.SRGBColorSpace;
     this.scene = new THREE.Scene();
@@ -107,6 +107,7 @@ export class Engine {
     this.look = L; const u = this.fx;
     u.uTint.value.fromArray(L.tint); u.uLift.value.fromArray(L.lift); u.uSat.value = L.sat; u.uContrast.value = L.contrast;
     u.uVignette.value = L.vignette; u.uGrain.value = L.grain; u.uMono.value = L.mono; u.uSepia.value = L.sepia; u.uOld.value = L.old;
+    u.uCA.value = L.ca ?? 0.0016; // lens fringing belongs to the stock/era, not a global constant
     this.bloom.strength = L.bloom; this.renderer.toneMappingExposure = L.exposure ?? 1;
   }
   addShake(a) { this.shake = Math.min(2.5, this.shake + a); }

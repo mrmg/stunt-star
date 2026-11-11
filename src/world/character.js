@@ -58,6 +58,16 @@ export const POSES = {
   tray: P({ sp: [0.1, 0, 0], aR: [0.25, -0.75, 0.55, -0.15, 0.0, 1], aL: [0.25, -0.75, 0.55, -0.15, 0.0, 1] }),
   hoseswing: P({ body: [0.3, 0, 0], aR: [0.15, 1, 0.3, 0.0, 1, 0.2], aL: [0.15, 1, 0.3, 0.0, 1, 0.2], lR: [0.1, -0.8, 0.7, 0.03, -1, -0.2], lL: [0.1, -0.9, 0.5, 0.03, -1, -0.3] }),
   brace: P({ hip: [-0.25, 0.3, 0, 0], sp: [0.4, 0, 0], aR: [0.3, -0.2, 0.9, 0.1, -0.1, 1], aL: [0.3, -0.2, 0.9, 0.1, -0.1, 1], lR: [0.25, -0.8, 0.5, 0.05, -1, -0.5], lL: [0.25, -1, -0.2, 0.05, -0.8, -0.7] }),
+  // interaction poses: the IK/reach solver does the precise contact, these give the body the right shape around it
+  wheel: P({ hip: [-0.42, 0, 0, 0], sp: [-0.1, 0, 0], aR: [0.42, -0.28, 0.86, 0.1, 0.08, 1], aL: [0.42, -0.28, 0.86, 0.1, 0.08, 1], lR: [0.14, 0.05, 1, 0.03, -0.5, 0.85], lL: [0.14, 0.05, 1, 0.03, -0.5, 0.85] }), // 9-and-3 on a steering wheel
+  reachR: P({ sp: [0.18, 0.3, 0], aR: [0.05, 0.12, 1, 0.02, 0.1, 1], aL: [0.3, -0.8, 0.2, 0.0, -0.3, 0.9] }),
+  reachL: P({ sp: [0.18, -0.3, 0], aL: [0.05, 0.12, 1, 0.02, 0.1, 1], aR: [0.3, -0.8, 0.2, 0.0, -0.3, 0.9] }),
+  reachUpR: P({ sp: [0.05, 0.25, 0], hd: [-0.4, 0, 0], aR: [0.25, 0.95, 0.35, 0.05, 1, 0.3], aL: [0.4, -0.8, 0.2, 0.1, -0.4, 0.8] }),
+  carryR: P({ aR: [0.32, -0.72, 0.5, 0.05, 0.18, 1] }), // forearm up, fist closed round a held prop (idol, hat brim)
+  carryBoth: P({ sp: [0.12, 0, 0], aR: [0.3, -0.55, 0.75, -0.1, 0.12, 1], aL: [0.3, -0.55, 0.75, -0.1, 0.12, 1] }),
+  vault: P({ hip: [-0.1, 0.3, 0.1, 0], sp: [0.3, 0.15, 0], aR: [0.4, -0.6, 0.8, 0.1, -0.4, 0.9], aL: [0.5, -0.3, -0.6, 0.3, -0.6, -0.6], lR: [0.1, -0.4, 1, 0.02, -1, 0.2], lL: [0.1, -0.7, -0.8, 0.02, -0.4, -1] }),
+  pullup: P({ hip: [-0.25, 0.15, 0, 0], sp: [0.25, 0, 0], hd: [-0.2, 0, 0], aR: [0.3, 0.75, 0.55, 0.0, 0.55, 0.85], aL: [0.3, 0.75, 0.55, 0.0, 0.55, 0.85], lR: [0.2, -0.55, 0.8, 0.04, -1, -0.6], lL: [0.2, -1, 0.1, 0.04, -1, -0.5] }),
+  risers: P({ sp: [-0.05, 0, 0], hd: [-0.45, 0, 0], aR: [0.45, 0.7, 0.25, 0.1, 0.95, 0.15], aL: [0.45, 0.7, 0.25, 0.1, 0.95, 0.15], lR: [0.08, -1, 0.18, 0.03, -1, -0.3], lL: [0.08, -1, 0.05, 0.03, -1, -0.4] }), // hands up on parachute toggles
 };
 
 const S = Math.sin, C = Math.cos;
@@ -95,6 +105,10 @@ export class Character {
     this.id = id; this.root = new THREE.Group(); this.pivot = new THREE.Group(); this.root.add(this.pivot);
     this.heading = 0; this.cur = JSON.parse(JSON.stringify(BASE)); this.target = BASE; this.cycle = null; this.phase = 0; this.rate = 0; this.k = 12; this.t = Math.random() * 10;
     this.spin = V(); this.spinAng = V(); this.bones = {}; this.ok = false; this.height = height;
+    // interaction state: IK fade + smoothed targets, reach-to-grab tweens, held props, head look, secondary sway
+    this._ikW = 0; this._ikSm = { aR: V(), aL: V(), lR: V(), lL: V() }; this._ikInit = false;
+    this._reach = {}; this._held = {}; this.look = null; this.lookW = 0; this._lookSm = [0, 0];
+    this.breathe = 1; this.lean = V(); this._plantK = 0;
     const sk = skinned(id) || skinned('ch_stunt');
     if (!sk) { // capsule fallback
       const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, height - 0.56, 6, 12), new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.6 })); m.castShadow = true; m.position.y = 0; this.hipH = height * 0.53; this.pivot.position.y = this.hipH; this.pivot.add(m); m.position.y = height / 2 - this.hipH; return;
@@ -118,40 +132,115 @@ export class Character {
     this.world = {}; for (const n in B) this.world[n] = Q();
     this.apply(1);
   }
-  setPose(p, blend = 0.15) { this.cycle = null; this.target = typeof p === 'string' ? (POSES[p] || BASE) : { ...BASE, ...p }; this.k = blend <= 0 ? 1e6 : 2.5 / blend; if (blend <= 0) this.snap(); return this; }
+  setPose(p, blend = 0.15) { this.cycle = null; this.target = typeof p === 'string' ? (POSES[p] || BASE) : { ...BASE, ...p }; this.k = blend <= 0 ? 1e6 : 2.5 / Math.max(0.04, blend); if (blend <= 0) this.snap(); return this; }
   setCycle(name, rate = 1, arg) { if (this.cycle !== name) { this.k = 14; } this.cycle = name; this.rate = rate; this.cycleArg = arg; return this; }
   snap() { for (const k of KEYS) { const t = this.target[k] || BASE[k]; for (let i = 0; i < t.length; i++) this.cur[k][i] = t[i]; } }
   tumble(x = 0, y = 0, z = 0) { this.spin.set(x, y, z); return this; }
+  // ---- reach / grab: move one hand smoothly onto a world target instead of snapping ----
+  // reach('aR', target, {dur, arc, pose}) target = Object3D | Vector3 | (()=>Vector3). Returns a promise resolved on contact.
+  // grabProp(prop, 'aR', {dur, off:[fwd,down]}) reaches, then pins the prop to the hand every frame until dropProp().
+  reach(hand, target, { dur = 0.35, arc = 0.14, pose } = {}) {
+    if (!this.ok) return Promise.resolve(this);
+    const proxy = this._reach[hand]?.proxy || new THREE.Object3D();
+    const bone = this.bones[LIMB[hand][2]]; bone.getWorldPosition(proxy.position);
+    if (pose !== false) this.over = { ...(this.over || {}), ...(pose ? { [hand]: (POSES[pose] || {})[hand] } : (POSES[hand === 'aR' ? 'reachR' : 'reachL'] || {})) };
+    if (!this.cycle && !pose) { /* keep current body pose; arm shape comes from the override above */ }
+    this.ik = { ...(this.ik || {}), [hand]: proxy };
+    return new Promise(res => { this._reach[hand] = { proxy, from: proxy.position.clone(), target, t: 0, dur: Math.max(0.08, dur), arc, res }; });
+  }
+  release(hand, { dur = 0.3 } = {}) { // let go: hand eases back to wherever the pose wants it
+    const r = this._reach[hand]; if (r?.res) r.res(this); delete this._reach[hand]; this.unhold(hand);
+    if (this.ik?.[hand]) { const ik = { ...this.ik }; delete ik[hand]; this.ik = Object.keys(ik).some(k => LIMB[k]) ? ik : (ik.pole || ik.legPole ? ik : null); }
+    if (this.over) { const o = { ...this.over }; delete o[hand]; this.over = Object.keys(o).length ? o : null; }
+    return this;
+  }
+  grabProp(prop, hand = 'aR', { dur = 0.35, fwd = 0.08, down = 0.06, spin = 0 } = {}) {
+    const held = this._held[hand] = { prop, fwd, down, spin, on: false };
+    const parent = prop.parent; if (parent) parent.updateWorldMatrix(true, false);
+    return this.reach(hand, prop, { dur, pose: 'carryR' }).then(() => { held.on = true; return this; });
+  }
+  unhold(hand = 'aR') { const h = this._held[hand]; if (h) h.on = false; return this; }
+  dropProp(hand = 'aR', opts) { this.unhold(hand); return this.release(hand, opts); }
+  _stepReach(dt) {
+    for (const hand in this._reach) {
+      const r = this._reach[hand]; r.t += dt; const k = Math.min(1, r.t / r.dur), e = k * k * (3 - 2 * k); // smoothstep: fast out, soft landing — reads as a grab, not a teleport
+      const to = typeof r.target === 'function' ? r.target(_v1) : r.target?.isVector3 ? _v1.copy(r.target) : r.target.getWorldPosition(_v1);
+      r.proxy.position.lerpVectors(r.from, to, e); r.proxy.position.y += Math.sin(e * Math.PI) * r.arc * (1 - e * 0.4);
+      if (k >= 1 && !r.done) { r.done = true; r.res?.(this); } // keep tracking a moving target after contact
+      if (r.done) r.proxy.position.copy(to);
+    }
+    // held props ride the hand bone (forward of the fist, hanging slightly)
+    for (const hand in this._held) {
+      const h = this._held[hand]; if (!h.on) continue; const hb = this.bones[LIMB[hand][2]], fa = this.bones[LIMB[hand][1]]; if (!hb) continue;
+      hb.getWorldPosition(_v1); if (fa) _v1.addScaledVector(_v2.subVectors(_v1, fa.getWorldPosition(_ik[0])).normalize(), h.fwd);
+      h.prop.position.copy(_v1); h.prop.position.y -= h.down; this.root.getWorldQuaternion(h.prop.quaternion); if (h.spin) h.prop.rotateY(h.spin);
+    }
+  }
   update(dt) {
     this.t += dt; this.root.rotation.y = this.heading;
     let T = this.target;
     if (this.cycle) { this.phase += this.rate * dt; const f = CYCLES[this.cycle]; T = f(this.cycle === 'run' || this.cycle === 'walk' || this.cycle === 'climb' ? this.phase : this.t * (this.rate || 1), this.cycleArg); if (this.over) T = { ...T, ...this.over }; }
+    else if (this.over) T = { ...T, ...this.over };
     const a = 1 - Math.exp(-this.k * dt);
     for (const k of KEYS) { const t = T[k] || BASE[k], c = this.cur[k]; for (let i = 0; i < t.length; i++) c[i] += (t[i] - c[i]) * a; }
+    // secondary life (kept tiny so stunt poses always win): breathing + head look + velocity lean
+    if (this.ok && !this.spin.lengthSq()) {
+      const br = this.breathe * (this.cycle === 'run' ? 1.6 : 1); this.cur.sp[0] += 0.014 * br * Math.sin(this.t * (this.cycle === 'run' ? 5.5 : 1.5));
+      this.cur.body[0] += this.lean.x; this.cur.body[1] += this.lean.z;
+      this.lookW += ((this.look ? 1 : 0) - this.lookW) * Math.min(1, dt * 5);
+      if (this.look && this.lookW > 0.01) {
+        const hp = this.bones.Head?.getWorldPosition(_v1) || _v1.copy(this.root.position).setY(this.root.position.y + 1.6);
+        _v2.subVectors(this.look, hp); const yaw = Math.atan2(-_v2.x * Math.cos(this.heading) + _v2.z * Math.sin(this.heading), -_v2.z * Math.cos(this.heading) - _v2.x * Math.sin(this.heading));
+        const pit = Math.atan2(_v2.y, Math.hypot(_v2.x, _v2.z));
+        const cl = (v, m) => Math.max(-m, Math.min(m, v)); const sm = Math.min(1, dt * 8);
+        this._lookSm[0] += (cl(pit, 0.55) * -1 - this._lookSm[0]) * sm; this._lookSm[1] += (cl(yaw, 0.9) - this._lookSm[1]) * sm;
+        this.cur.hd[0] += this._lookSm[0] * this.lookW * 0.7; this.cur.hd[1] += this._lookSm[1] * this.lookW * 0.7;
+      }
+    }
     if (this.spin.lengthSq() > 0) this.spinAng.addScaledVector(this.spin, dt); else if (this.spinAng.lengthSq() > 0 && this.settle) this.spinAng.multiplyScalar(Math.exp(-8 * dt));
-    this.apply(); if (this.ik) this.solveIK(); this.post?.(dt); // post: attach props to bones after the pose is final
+    this._stepReach(dt);
+    this.apply(); if (this.ik) this.solveIK(dt); else this._ikW = Math.max(0, this._ikW - dt * 4);
+    this._stepReach(0); // re-pin held props against the final bone matrices
+    this.post?.(dt); // post: attach props to bones after the pose is final
   }
-  // Two-bone arm IK: after the pose is applied, pull each hand onto a world-space target (e.g. handlebar grips).
-  // ik = { aR: Object3D, aL: Object3D, pole?: [out, up, fwd] }. Targets parented to the same vehicle body, so no lag.
-  solveIK() {
+  // Two-bone IK for arms AND legs: after the pose is applied, pull each end-effector onto a world-space target
+  // (handlebar grips, foot pegs, steering-wheel rim, ledge edge, parachute toggles...).
+  // ik = { aR, aL, lR, lL: Object3D|Vector3, pole:[out,up,fwd] (arms), legPole:[out,up,fwd] (knees forward),
+  //        w: 0..1 weight (default 1), orient: align hand/foot to the target's quaternion when it has one }.
+  // Targets parented to the same vehicle body move with zero lag; world targets are smoothed so engagement never pops.
+  solveIK(dt = 0.016) {
     const ik = this.ik; if (!this.ok || !this.root.visible) return;
+    this._ikW = Math.min(ik.w ?? 1, this._ikW + dt * 5); // fade IK in over ~0.2 s instead of snapping the limb
+    const W = this._ikW; if (W <= 0.001) return;
     this.root.updateWorldMatrix(true, true);
-    const pl = ik.pole || [0.7, -0.75, -0.25];
-    for (const k of ['aR', 'aL']) {
+    const aim = (bone, from, curTip, want, w) => {
+      _v1.subVectors(curTip, from).normalize(); _v2.subVectors(want, from).normalize();
+      const dq = _q1.setFromUnitVectors(_v1, _v2); if (w < 1) _q1.slerp(new THREE.Quaternion(), 1 - w);
+      const wq = bone.getWorldQuaternion(_q2); wq.premultiply(_q1);
+      bone.quaternion.copy(bone.parent.getWorldQuaternion(_qp).invert().multiply(wq)); bone.updateMatrixWorld(true);
+    };
+    for (const k of ['aR', 'aL', 'lR', 'lL']) {
       const tgt = ik[k]; if (!tgt) continue; const [u, f, h, side] = LIMB[k], U = this.bones[u], F = this.bones[f], H = this.bones[h]; if (!U || !F || !H) continue;
-      const S = U.getWorldPosition(_ik[0]), E0 = F.getWorldPosition(_ik[1]), H0 = H.getWorldPosition(_ik[2]), T = tgt.getWorldPosition(_ik[3]);
+      const isLeg = k[0] === 'l', pl = isLeg ? (ik.legPole || [0.08, 0.1, 1]) : (ik.pole || [0.7, -0.75, -0.25]);
+      const S = U.getWorldPosition(_ik[0]).clone(), E0 = F.getWorldPosition(_ik[1]).clone(), H0 = H.getWorldPosition(_ik[2]).clone();
+      const Traw = tgt.isVector3 ? _ik[3].copy(tgt) : tgt.getWorldPosition(_ik[3]);
+      const sm = this._ikSm[k]; if (!this._ikInit) sm.copy(H0);
+      // blend goal between the posed hand/foot and the true target by weight, then damp: no pops, no jitter
+      _ik[7].copy(H0).lerp(Traw, W); sm.lerp(_ik[7], 1 - Math.exp(-22 * dt)); const T = _ik[3].copy(sm);
       const L1 = S.distanceTo(E0), L2 = E0.distanceTo(H0), dir = _ik[4].subVectors(T, S); let d = dir.length(); if (d < 1e-4) continue; dir.divideScalar(d);
       d = Math.min(d, (L1 + L2) * 0.999); d = Math.max(d, Math.abs(L1 - L2) + 1e-3);
       const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d), hh = Math.sqrt(Math.max(0, L1 * L1 - a * a));
-      const pole = _ik[5].set(side * pl[0], pl[1], -pl[2]).transformDirection(this.root.matrixWorld); pole.addScaledVector(dir, -pole.dot(dir)).normalize();
+      const pole = _ik[5].set(side * pl[0], pl[1], -pl[2]).transformDirection(this.root.matrixWorld); pole.addScaledVector(dir, -pole.dot(dir));
+      if (pole.lengthSq() < 1e-6) pole.set(0, isLeg ? 0 : -1, isLeg ? -1 : 0); pole.normalize();
       const E = _ik[6].copy(S).addScaledVector(dir, a).addScaledVector(pole, hh), Tc = _ik[7].copy(S).addScaledVector(dir, d);
-      const aim = (bone, from, curTip, want) => { // rotate bone so (curTip-from) points along (want-from)
-        _v1.subVectors(curTip, from).normalize(); _v2.subVectors(want, from).normalize();
-        const dq = _q1.setFromUnitVectors(_v1, _v2), wq = bone.getWorldQuaternion(_q2); wq.premultiply(dq);
-        bone.quaternion.copy(bone.parent.getWorldQuaternion(_qp).invert().multiply(wq)); bone.updateMatrixWorld(true);
-      };
-      aim(U, S, E0, E); const E1 = F.getWorldPosition(_ik[1]), H1 = H.getWorldPosition(_ik[2]); aim(F, E1, H1, Tc);
+      aim(U, S, E0, E, 1); const E1 = F.getWorldPosition(_ik[1]).clone(), H1 = H.getWorldPosition(_ik[2]).clone(); aim(F, E1, H1, Tc, 1);
+      // wrap the hand/foot onto the grip: orient the end bone to the target frame (bar/wheel/peg direction)
+      if (ik.orient !== false && tgt.quaternion) {
+        const want = tgt.getWorldQuaternion(_q1), have = H.getWorldQuaternion(_q2); have.slerp(want, 0.55 * W);
+        H.quaternion.copy(H.parent.getWorldQuaternion(_qp).invert().multiply(have)); H.updateMatrixWorld(true);
+      }
     }
+    this._ikInit = true;
   }
   apply() {
     const c = this.cur, sa = this.spinAng;

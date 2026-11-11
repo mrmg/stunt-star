@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Drive, Movers } from '../modes/drive.js';
+import { Drive, Movers, seatRider } from '../modes/drive.js';
 import { model } from '../core/assets.js';
 import { clamp, near, smooth, V3, rnd, sr, srand, lerp, damp, varyMaterial } from '../world/stage.js';
 import { K, CTL, street, botDrive, sign, tumbleScript } from './common.js';
@@ -279,7 +279,7 @@ const roadWarrior = {
     const mv = new Movers(s, car); const S = s.S = { MZ, raiders: [], rammed: 0, rolled: false }; const N = 9;
     for (let i = 0; i < N; i++) {
       const g = new THREE.Group(), bike = i % 3 === 2, m = model(bike ? 'enduro_bike' : ['mach1', 'sedan_grey', 'wagon_brown', 'ww2_truck'][i % 4]); g.add(m); const sz = m.userData.size; g.userData.size = bike ? V3(1, 1.6, sz.z) : sz.clone();
-      if (bike) { const r = s.char('ch_roadwarrior', { parent: g, x: 0, y: 0.03, z: 0.28 }); r.setPose('bike', 0); }
+      if (bike) { const r = s.char('ch_roadwarrior', { parent: g, x: 0, y: 0.03, z: 0.28 }); r.setPose('bike', 0); seatRider(r, g, 'enduro_bike', { cg: 0.55 }); }
       else { s.box({ parent: g, x: 0, y: sz.y * 0.55, z: -sz.z / 2 - 0.15, w: sz.x * 0.95, h: 0.5, d: 0.3, mat: rust }); s.box({ parent: g, x: 0, y: sz.y, z: 0.3, w: sz.x * 0.7, h: 0.5, d: sz.z * 0.4, mat: black }); for (const k of [-1, 1]) s.box({ parent: g, x: k * sz.x * 0.5, y: sz.y * 0.5, z: 0, w: 0.08, h: 0.35, d: sz.z * 0.8, mat: rust }); }
       const bx = [-2.2, 1.8, 0, 2.4, -1.6, 0.6, -2.4, 2, -0.5][i], ph = i * 1.7, cruise = 12 + (i % 3) * 2.5;
       const e = mv.add({ obj: g, z: -70 - i * 72, path: z => bx + Math.sin(z * 0.035 + ph) * 0.8, v: 0, type: 'weak', nearMiss: false, on: () => { mv.fling(e, 5 + rnd(4)); e.v = Math.abs(car.v) * 1.15; S.rammed++; s.bonus('Raiders rammed', 450); s.msg(['PUNTED!', 'OFF THE ROAD!', 'SCRAP!'][S.rammed % 3], 'small good'); s.audio.crash(); s.engine.addShake(0.7); s.fx.debris(e.m.position, 16, { color: 0x553322, speed: 10 }); if (S.rammed % 3 === 0) s.fx.explosion(e.m.position, 0.8); },
