@@ -48,7 +48,8 @@ export class Screens {
       const sec = el('div', 'tier' + (open ? '' : ' locked'), `<h2>${T.name}<em>${open ? T.blurb : `Locked — earn ${T.need} ★ prestige`}</em></h2>`); const cards = el('div', 'cards');
       for (const s of list) {
         const b = c.d.best[s.id]; const cd = el('div', 'card' + (open ? '' : ' lock') + (s === next ? ' next' : ''));
-        if (s.art) cd.style.backgroundImage = `url(tex/${s.art}.jpg)`;
+        // every level's own iconic in-engine still (tools/cards.mjs); the location backdrop layers underneath as fallback
+        cd.style.backgroundImage = `url(cards/${s.id}.jpg)${s.art ? `,url(tex/${s.art}.jpg)` : ''}`;
         cd.innerHTML = `<span class="yr">#${s.order} · ${s.year}</span><span class="pay">${money(c.offer(s))}</span><div class="info"><div class="t">${s.title}</div><div class="m">${open ? s.film : '???'}</div><div class="stars">${b ? stars(b.stars) : '<i>★★★★★</i>'}</div></div><span class="tag">${MODE_TAG[s.mode] || s.mode} · ${s.takes === 1 ? '1 take' : s.takes + ' takes'}</span>`;
         if (open) cd.onclick = () => { this.audio.click(); onPick(s); };
         cards.appendChild(cd);

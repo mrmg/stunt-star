@@ -1,7 +1,11 @@
 # STUNT STAR
 
+**▶ Play it in your browser: https://mrmg.github.io/stunt-star/** · Source: https://github.com/mrmg/stunt-star
+
 A Three.js stunt-performer career game: 61 homages to famous film stunts, from silent-era falls to modern aerial work.
 The director briefs you, the slate claps, ACTION — then you are paid on how well the take went, minus agent fees and medical bills.
+Every level's menu card is an iconic frame captured from that stunt's own signature replay camera in-engine
+(`node tools/cards.mjs` recaptures them; picks live in `PICKS` at the top of that file).
 
 ## Run
 ```
